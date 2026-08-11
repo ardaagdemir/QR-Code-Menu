@@ -7,6 +7,9 @@ spring:
     url: jdbc:postgresql://localhost:5433/qrmenu
     username: qrmenu
     password: qrmenu
+  mail:
+    host: localhost
+    port: 1025
 
 management:
   endpoint:

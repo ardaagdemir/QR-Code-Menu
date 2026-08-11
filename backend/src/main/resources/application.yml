@@ -11,6 +11,21 @@ spring:
     open-in-view: false
     hibernate:
       ddl-auto: validate
+  # Gap-analysis #11 (Section 15): OwnerNotificationPort's email adapter. Not a blocker
+  # (spec: "WhatsApp entegrasyonu çekirdek raporlama için blocker değildir"), so unlike
+  # internal.admin.token/payment.mock.webhook-secret below these have real defaults
+  # rather than failing closed - pointed at the docker-compose "mailhog" dev SMTP catcher.
+  mail:
+    host: ${SMTP_HOST:mailhog}
+    port: ${SMTP_PORT:1025}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: ${SMTP_AUTH:false}
+          starttls:
+            enable: ${SMTP_STARTTLS:false}
 
 # Shared-secret guard for the /internal/** bootstrap API (PLATFORM_ADMIN, no dedicated
 # UI in v1 - see docs/product-requirements.md Section 3/9). Empty by default so a
@@ -33,6 +48,10 @@ payment:
   provider: ${PAYMENT_PROVIDER:mock}
   mock:
     webhook-secret: ${PAYMENT_MOCK_WEBHOOK_SECRET:}
+
+owner-notification:
+  email:
+    from: ${OWNER_NOTIFICATION_FROM_EMAIL:no-reply@qrmenu.local}
 
 management:
   endpoints:

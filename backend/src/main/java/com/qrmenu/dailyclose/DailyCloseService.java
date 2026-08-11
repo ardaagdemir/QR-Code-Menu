@@ -1,5 +1,6 @@
 package com.qrmenu.dailyclose;
 
+import com.qrmenu.common.web.ResourceNotFoundException;
 import com.qrmenu.dailyclose.repository.DailyCloseReportRepository;
 import com.qrmenu.reporting.BranchSalesReportView;
 import com.qrmenu.reporting.ReportingService;
@@ -97,6 +98,18 @@ public class DailyCloseService {
         DailyBranchCloseReport report = generatePreview(businessId, branchId, businessDate);
         report.markFinal(Instant.now());
         return repository.save(report);
+    }
+
+    /** Gap-analysis #11: tenant-scoped lookup used by the owner-notification resend endpoint. */
+    @Transactional(readOnly = true)
+    public DailyBranchCloseReport getById(UUID businessId, UUID branchId, UUID reportId) {
+        DailyBranchCloseReport report = repository
+                .findById(reportId)
+                .orElseThrow(() -> new ResourceNotFoundException("Daily close report not found: " + reportId));
+        if (!report.getBusinessId().equals(businessId) || !report.getBranchId().equals(branchId)) {
+            throw new ResourceNotFoundException("Daily close report not found: " + reportId);
+        }
+        return report;
     }
 
     @Transactional(readOnly = true)

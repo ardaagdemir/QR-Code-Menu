@@ -1,5 +1,6 @@
 package com.qrmenu.dailyclose;
 
+import com.qrmenu.ownernotification.OwnerNotificationService;
 import com.qrmenu.tenant.Branch;
 import com.qrmenu.tenant.BranchBusinessHours;
 import com.qrmenu.tenant.TenantService;
@@ -32,10 +33,15 @@ class DailyCloseScheduler {
 
     private final TenantService tenantService;
     private final DailyCloseService dailyCloseService;
+    private final OwnerNotificationService ownerNotificationService;
 
-    DailyCloseScheduler(TenantService tenantService, DailyCloseService dailyCloseService) {
+    DailyCloseScheduler(
+            TenantService tenantService,
+            DailyCloseService dailyCloseService,
+            OwnerNotificationService ownerNotificationService) {
         this.tenantService = tenantService;
         this.dailyCloseService = dailyCloseService;
+        this.ownerNotificationService = ownerNotificationService;
     }
 
     @Scheduled(fixedDelayString = "PT5M", initialDelayString = "PT2M")
@@ -67,7 +73,11 @@ class DailyCloseScheduler {
             dailyCloseService.generatePreview(branch.getBusinessId(), branch.getId(), businessDate);
         }
         if (!now.isBefore(closingInstant.plus(FINAL_GRACE))) {
-            dailyCloseService.generateFinal(branch.getBusinessId(), branch.getId(), businessDate);
+            DailyBranchCloseReport report =
+                    dailyCloseService.generateFinal(branch.getBusinessId(), branch.getId(), businessDate);
+            // Gap-analysis #11 (Section 15): idempotent per (report, contact) inside the service,
+            // so re-polling an already-FINAL day here every 5 minutes never double-sends.
+            ownerNotificationService.dispatchAutoForDailyClose(report);
         }
     }
 }

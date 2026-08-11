@@ -174,4 +174,17 @@ class ModuleBoundaryTest {
 
         rule.check(importedClasses);
     }
+
+    @Test
+    void ownerNotificationRepositoriesAreOnlyUsedWithinTheOwnerNotificationModule() {
+        ArchRule rule = noClasses()
+                .that()
+                .resideOutsideOfPackage("com.qrmenu.ownernotification..")
+                .should()
+                .dependOnClassesThat()
+                .resideInAPackage("com.qrmenu.ownernotification.repository..")
+                .because("cross-module access must go through OwnerNotificationService, not its repositories");
+
+        rule.check(importedClasses);
+    }
 }

@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.util.UUID;
 
 public record DailyCloseReportResponse(
+        UUID id,
         UUID branchId,
         String branchName,
         LocalDate businessDate,

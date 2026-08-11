@@ -4,6 +4,9 @@ import com.qrmenu.dailyclose.DailyBranchCloseReport;
 import com.qrmenu.dailyclose.DailyCloseExcelExportService;
 import com.qrmenu.dailyclose.DailyCloseService;
 import com.qrmenu.dailyclose.web.dto.DailyCloseReportResponse;
+import com.qrmenu.ownernotification.OwnerNotificationLog;
+import com.qrmenu.ownernotification.OwnerNotificationService;
+import com.qrmenu.ownernotification.web.dto.OwnerNotificationLogResponse;
 import com.qrmenu.staffaccess.Permission;
 import com.qrmenu.staffaccess.StaffAuthService;
 import com.qrmenu.staffaccess.StaffContext;
@@ -37,16 +40,19 @@ public class StaffDailyCloseController {
     private final DailyCloseExcelExportService excelExportService;
     private final TenantService tenantService;
     private final StaffAuthService staffAuthService;
+    private final OwnerNotificationService ownerNotificationService;
 
     public StaffDailyCloseController(
             DailyCloseService dailyCloseService,
             DailyCloseExcelExportService excelExportService,
             TenantService tenantService,
-            StaffAuthService staffAuthService) {
+            StaffAuthService staffAuthService,
+            OwnerNotificationService ownerNotificationService) {
         this.dailyCloseService = dailyCloseService;
         this.excelExportService = excelExportService;
         this.tenantService = tenantService;
         this.staffAuthService = staffAuthService;
+        this.ownerNotificationService = ownerNotificationService;
     }
 
     @GetMapping("/api/staff/branches/{branchId}/daily-close")
@@ -91,6 +97,34 @@ public class StaffDailyCloseController {
     }
 
     /** Section 13.2 ile aynı BUSINESS_ADMIN/PLATFORM_ADMIN-only zincir görünürlüğü. */
+    /** Gap-analysis #11 (Section 15): hangi rapor kime, ne zaman, hangi durumda gönderildi. */
+    @GetMapping("/api/staff/branches/{branchId}/daily-close/{reportId}/notifications")
+    public List<OwnerNotificationLogResponse> listNotifications(
+            @PathVariable UUID branchId,
+            @PathVariable UUID reportId,
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie) {
+        StaffContext context = staffAuthService.resolveStaffContextForBranch(
+                StaffCookieSupport.parseSessionId(sessionCookie), Permission.REPORT_VIEW, branchId);
+        dailyCloseService.getById(context.businessId(), branchId, reportId);
+        return ownerNotificationService.listForReport(reportId).stream()
+                .map(StaffDailyCloseController::toNotificationResponse)
+                .toList();
+    }
+
+    /** Manuel yeniden gönderme - AUTO idempotency kontrolünü atlar, uygun her alıcıya yeni bir deneme yazar. */
+    @PostMapping("/api/staff/branches/{branchId}/daily-close/{reportId}/notifications/resend")
+    public List<OwnerNotificationLogResponse> resendNotifications(
+            @PathVariable UUID branchId,
+            @PathVariable UUID reportId,
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie) {
+        StaffContext context = staffAuthService.resolveStaffContextForBranch(
+                StaffCookieSupport.parseSessionId(sessionCookie), Permission.REPORT_VIEW, branchId);
+        DailyBranchCloseReport report = dailyCloseService.getById(context.businessId(), branchId, reportId);
+        return ownerNotificationService.resend(report, context.staffUserId()).stream()
+                .map(StaffDailyCloseController::toNotificationResponse)
+                .toList();
+    }
+
     @GetMapping("/api/staff/daily-close/excel")
     public ResponseEntity<byte[]> exportChainExcel(
             @RequestParam LocalDate from,
@@ -114,8 +148,20 @@ public class StaffDailyCloseController {
                 .body(workbook);
     }
 
+    private static OwnerNotificationLogResponse toNotificationResponse(OwnerNotificationLog log) {
+        return new OwnerNotificationLogResponse(
+                log.getId(),
+                log.getRecipientEmail(),
+                log.getChannel().name(),
+                log.getStatus().name(),
+                log.getErrorMessage(),
+                log.getTriggeredBy().name(),
+                log.getAttemptedAt());
+    }
+
     private static DailyCloseReportResponse toResponse(DailyBranchCloseReport report, String branchName) {
         return new DailyCloseReportResponse(
+                report.getId(),
                 report.getBranchId(),
                 branchName,
                 report.getBusinessDate(),
