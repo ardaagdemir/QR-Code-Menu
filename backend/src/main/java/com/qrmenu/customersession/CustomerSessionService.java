@@ -76,4 +76,10 @@ public class CustomerSessionService {
         }
         return visit;
     }
+
+    /** Gap-analysis #7 chain comparison: non-financial table-visit volume per branch since a cutoff. */
+    @Transactional(readOnly = true)
+    public long countTableVisitsSince(UUID branchId, Instant since) {
+        return tableVisitRepository.countByBranchIdAndStartedAtAfter(branchId, since);
+    }
 }

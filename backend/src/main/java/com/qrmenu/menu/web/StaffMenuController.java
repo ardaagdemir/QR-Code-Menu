@@ -7,6 +7,7 @@ import com.qrmenu.menu.Product;
 import com.qrmenu.menu.ProductOption;
 import com.qrmenu.menu.ProductOptionGroup;
 import com.qrmenu.menu.web.dto.BranchProductAdminResponse;
+import com.qrmenu.menu.web.dto.BulkAssignBranchesRequest;
 import com.qrmenu.menu.web.dto.CreateMenuCategoryRequest;
 import com.qrmenu.menu.web.dto.CreateOptionGroupRequest;
 import com.qrmenu.menu.web.dto.CreateOptionRequest;
@@ -188,6 +189,21 @@ public class StaffMenuController {
                 request.priceOverrideMinorUnits(),
                 context.staffUserId());
         return ResponseEntity.ok(toResponse(branchProduct));
+    }
+
+    /** Gap-analysis #7: "tüm şubelere ata" / "seçili şubelere ata" bulk assignment. */
+    @PostMapping("/products/{productId}/branch-assignments")
+    public List<BranchProductAdminResponse> bulkAssignBranches(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
+            @PathVariable UUID productId,
+            @Valid @RequestBody BulkAssignBranchesRequest request) {
+        StaffContext context = requireMenuManage(sessionCookie);
+        return menuService
+                .bulkAssignProductToBranches(
+                        context.businessId(), productId, request.target(), request.branchIdsOrEmpty(), context.staffUserId())
+                .stream()
+                .map(this::toResponse)
+                .toList();
     }
 
     private StaffContext requireMenuManage(String sessionCookie) {

@@ -24,4 +24,7 @@ public interface OrderRepository extends JpaRepository<CustomerOrder, UUID> {
 
     /** Staff-facing order lookup by its readable order number (Milestone 7 refund flow). */
     Optional<CustomerOrder> findByBranchIdAndOrderNumber(UUID branchId, Integer orderNumber);
+
+    /** Gap-analysis #7 chain comparison: real orders only, abandoned DRAFT/CANCELLED carts excluded. */
+    long countByBranchIdAndCreatedAtAfterAndStatusNotIn(UUID branchId, Instant since, List<OrderStatus> excludedStatuses);
 }

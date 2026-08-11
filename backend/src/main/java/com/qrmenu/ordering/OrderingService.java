@@ -22,6 +22,7 @@ import com.qrmenu.shared.Money;
 import com.qrmenu.shared.outbox.OutboxEventWriter;
 import com.qrmenu.tenant.DeliveryModel;
 import com.qrmenu.tenant.TenantService;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -519,6 +520,13 @@ public class OrderingService {
         CustomerOrder order = orderRepository.save(
                 new CustomerOrder(visit.getBusinessId(), visit.getBranchId(), visit.getId(), tokenHash));
         return new CreateOrReuseDraftResult(order, rawToken);
+    }
+
+    /** Gap-analysis #7 chain comparison: non-financial order volume per branch since a cutoff. */
+    @Transactional(readOnly = true)
+    public long countOrdersSince(UUID branchId, Instant since) {
+        return orderRepository.countByBranchIdAndCreatedAtAfterAndStatusNotIn(
+                branchId, since, List.of(OrderStatus.DRAFT, OrderStatus.CANCELLED));
     }
 
     private void recalculateOrderTotal(CustomerOrder order) {

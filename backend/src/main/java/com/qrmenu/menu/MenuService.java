@@ -7,6 +7,7 @@ import com.qrmenu.menu.repository.MenuCategoryRepository;
 import com.qrmenu.menu.repository.ProductOptionGroupRepository;
 import com.qrmenu.menu.repository.ProductOptionRepository;
 import com.qrmenu.menu.repository.ProductRepository;
+import com.qrmenu.tenant.Branch;
 import com.qrmenu.tenant.TenantService;
 import java.util.List;
 import java.util.Map;
@@ -166,6 +167,30 @@ public class MenuService {
                 businessId, actorStaffUserId, "BranchProduct", branchProduct.getId(), "UPSERTED",
                 Map.of("branchId", branchId.toString(), "productId", productId.toString(), "availability", availability.name()));
         return branchProduct;
+    }
+
+    /**
+     * Gap-analysis #7: "tüm şubelere ata" / "seçili şubelere ata" bulk operation
+     * (product-requirements.md Section 3.3). Availability-only - sets AVAILABLE with no
+     * price override, one upsertBranchProduct call per target branch so each branch keeps
+     * its own opt-in row (Section 5's opt-in model is preserved, not bypassed).
+     */
+    @Transactional
+    public List<BranchProduct> bulkAssignProductToBranches(
+            UUID businessId, UUID productId, BranchAssignmentTarget target, List<UUID> selectedBranchIds, UUID actorStaffUserId) {
+        productRepository
+                .findByIdAndBusinessId(productId, businessId)
+                .orElseThrow(() -> new ResourceNotFoundException("Product not found for business: " + productId));
+        List<UUID> targetBranchIds = target == BranchAssignmentTarget.ALL_BRANCHES
+                ? tenantService.listBranches(businessId).stream().map(Branch::getId).toList()
+                : selectedBranchIds;
+        if (targetBranchIds.isEmpty()) {
+            throw new IllegalArgumentException("At least one target branch is required");
+        }
+        return targetBranchIds.stream()
+                .map(branchId -> upsertBranchProduct(
+                        businessId, branchId, productId, BranchProductAvailability.AVAILABLE, null, actorStaffUserId))
+                .toList();
     }
 
     /**
