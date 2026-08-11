@@ -88,7 +88,15 @@ export default function StaffNav() {
               <Link href="/reports" className={linkClass("/reports")}>
                 Satış Raporları
               </Link>
+              <Link href="/expenses" className={linkClass("/expenses")}>
+                Giderler
+              </Link>
             </>
+          ) : null}
+          {context?.role === "BRANCH_MANAGER" ? (
+            <Link href="/expenses" className={linkClass("/expenses")}>
+              Giderler
+            </Link>
           ) : null}
         </div>
         <div className={styles.right}>

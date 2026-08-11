@@ -9,8 +9,10 @@ import {
   generateDailyCloseFinal,
   getBranchSalesReport,
   getDailyCloseReports,
+  getOperatingResult,
   type BranchSalesReport,
   type DailyCloseReport,
+  type OperatingResult,
 } from "@/lib/api";
 import StaffNav from "@/components/layout/StaffNav";
 import Badge from "@/components/ui/Badge";
@@ -44,6 +46,8 @@ export default function BranchReportPage() {
   const [closingToday, setClosingToday] = useState(false);
   const [dailyCloseError, setDailyCloseError] = useState<string | null>(null);
 
+  const [operatingResult, setOperatingResult] = useState<OperatingResult | null>(null);
+
   /** setState calls only happen inside the promise callbacks, never synchronously - safe to call from an effect body. */
   function applyReport(promise: Promise<BranchSalesReport>) {
     promise
@@ -61,9 +65,16 @@ export default function BranchReportPage() {
       .catch(() => setDailyCloseReports([]));
   }
 
+  function reloadOperatingResult() {
+    getOperatingResult(branchId, from, to)
+      .then((data) => setOperatingResult(data))
+      .catch(() => setOperatingResult(null));
+  }
+
   useEffect(() => {
     applyReport(getBranchSalesReport(branchId, from, to));
     reloadDailyClose();
+    reloadOperatingResult();
     // Only re-fetch automatically when the branch changes - date range changes are applied via the "Uygula" button.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [branchId]);
@@ -73,6 +84,7 @@ export default function BranchReportPage() {
     setLoading(true);
     applyReport(getBranchSalesReport(branchId, from, to));
     reloadDailyClose();
+    reloadOperatingResult();
   }
 
   function handleCloseToday() {
@@ -200,6 +212,20 @@ export default function BranchReportPage() {
                 </div>
               )}
             </section>
+
+            {operatingResult ? (
+              <section className={adminStyles.section}>
+                <h2 className={adminStyles.sectionTitle}>Yönetimsel Net Sonuç</h2>
+                <p className={adminStyles.empty} style={{ padding: 0 }}>
+                  Vergi, stok maliyeti ve personel tahakkuku gibi kalemler dahil değildir - yasal net kâr değildir.
+                </p>
+                <div className={styles.statGrid}>
+                  <StatCard label="Net satış" value={formatPriceMinorUnits(operatingResult.netSalesMinorUnits)} />
+                  <StatCard label="Onaylı giderler" value={formatPriceMinorUnits(operatingResult.approvedExpensesMinorUnits)} />
+                  <StatCard label="Yönetimsel net sonuç" value={formatPriceMinorUnits(operatingResult.netOperatingResultMinorUnits)} />
+                </div>
+              </section>
+            ) : null}
 
             <section className={adminStyles.section}>
               <h2 className={adminStyles.sectionTitle}>Ürün Bazında Satış</h2>

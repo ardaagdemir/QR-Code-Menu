@@ -755,3 +755,135 @@ export async function downloadBranchDailyCloseExcel(
     `gun-sonu-${branchName}-${from}_${to}.xlsx`,
   );
 }
+
+// ---------------------------------------------------------------------------
+// Gap-analysis #10 (Section 16/17): gider yönetimi + "Yönetimsel Net Sonuç".
+// ---------------------------------------------------------------------------
+
+export type ExpenseCategory = {
+  id: string;
+  name: string;
+  active: boolean;
+};
+
+export async function listExpenseCategories(): Promise<ExpenseCategory[]> {
+  return apiFetch("/api/staff/expense-categories");
+}
+
+export async function createExpenseCategory(name: string): Promise<ExpenseCategory> {
+  return apiFetch("/api/staff/expense-categories", { method: "POST", body: JSON.stringify({ name }) });
+}
+
+export async function deactivateExpenseCategory(categoryId: string): Promise<void> {
+  await apiFetch(`/api/staff/expense-categories/${encodeURIComponent(categoryId)}/deactivate`, { method: "POST" });
+}
+
+export type ExpenseStatus = "DRAFT" | "SUBMITTED" | "APPROVED" | "REJECTED";
+
+export type Expense = {
+  id: string;
+  branchId: string | null;
+  categoryId: string;
+  categoryName: string | null;
+  amountMinorUnits: number;
+  incurredAt: string;
+  vendor: string | null;
+  description: string | null;
+  receiptImageUrl: string | null;
+  status: ExpenseStatus;
+  approvedByStaffUserId: string | null;
+  approvedAt: string | null;
+  sourceTemplateId: string | null;
+  createdAt: string;
+};
+
+export type ExpenseInput = {
+  branchId: string | null;
+  categoryId: string;
+  amountMinorUnits: number;
+  incurredAt: string;
+  vendor: string | null;
+  description: string | null;
+  receiptImageUrl: string | null;
+};
+
+export async function listExpenses(branchId: string | null, from: string, to: string): Promise<Expense[]> {
+  const branchParam = branchId ? `&branchId=${encodeURIComponent(branchId)}` : "";
+  return apiFetch(`/api/staff/expenses?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}${branchParam}`);
+}
+
+export async function createExpense(input: ExpenseInput): Promise<Expense> {
+  return apiFetch("/api/staff/expenses", { method: "POST", body: JSON.stringify(input) });
+}
+
+export async function updateExpenseDraft(expenseId: string, input: Omit<ExpenseInput, "branchId">): Promise<Expense> {
+  return apiFetch(`/api/staff/expenses/${encodeURIComponent(expenseId)}`, { method: "POST", body: JSON.stringify(input) });
+}
+
+export async function submitExpense(expenseId: string): Promise<Expense> {
+  return apiFetch(`/api/staff/expenses/${encodeURIComponent(expenseId)}/submit`, { method: "POST" });
+}
+
+export async function approveExpense(expenseId: string): Promise<Expense> {
+  return apiFetch(`/api/staff/expenses/${encodeURIComponent(expenseId)}/approve`, { method: "POST" });
+}
+
+export async function rejectExpense(expenseId: string): Promise<Expense> {
+  return apiFetch(`/api/staff/expenses/${encodeURIComponent(expenseId)}/reject`, { method: "POST" });
+}
+
+export type RecurringExpenseTemplate = {
+  id: string;
+  branchId: string | null;
+  categoryId: string;
+  categoryName: string | null;
+  amountMinorUnits: number;
+  vendor: string | null;
+  description: string | null;
+  dayOfMonth: number;
+  startDate: string;
+  endDate: string | null;
+  active: boolean;
+};
+
+export type RecurringExpenseTemplateInput = {
+  branchId: string | null;
+  categoryId: string;
+  amountMinorUnits: number;
+  vendor: string | null;
+  description: string | null;
+  dayOfMonth: number;
+  startDate: string;
+  endDate: string | null;
+};
+
+export async function listRecurringExpenseTemplates(): Promise<RecurringExpenseTemplate[]> {
+  return apiFetch("/api/staff/recurring-expense-templates");
+}
+
+export async function createRecurringExpenseTemplate(input: RecurringExpenseTemplateInput): Promise<RecurringExpenseTemplate> {
+  return apiFetch("/api/staff/recurring-expense-templates", { method: "POST", body: JSON.stringify(input) });
+}
+
+export async function deactivateRecurringExpenseTemplate(templateId: string): Promise<void> {
+  await apiFetch(`/api/staff/recurring-expense-templates/${encodeURIComponent(templateId)}/deactivate`, { method: "POST" });
+}
+
+/** Section 17: kâr olarak sunulmaz - UI etiketi her zaman "Yönetimsel Net Sonuç" olmalı. */
+export type OperatingResult = {
+  branchId: string;
+  branchName: string;
+  from: string;
+  to: string;
+  grossSalesMinorUnits: number;
+  refundTotalMinorUnits: number;
+  netSalesMinorUnits: number;
+  approvedExpensesMinorUnits: number;
+  netOperatingResultMinorUnits: number;
+};
+
+export async function getOperatingResult(branchId: string, from: string, to: string): Promise<OperatingResult> {
+  return apiFetch(
+    `/api/staff/branches/${encodeURIComponent(branchId)}/reports/operating-result?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+  );
+}
