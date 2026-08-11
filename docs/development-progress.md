@@ -552,3 +552,51 @@ erişim 403 ama /active açık kalıyor -, `ChainComparisonFlowIntegrationTest` 
 
 **Not:** Bu madde de canlı tarayıcı doğrulaması olmadan tamamlandı (bkz. proje hafızası - Chrome testi bu
 projede kapalı); doğrulama backend integration testleri + `npm run build`/`lint` ile yapıldı.
+
+---
+
+## Gap-Analysis #8 — Raporlama Modülü: Temel Metrikler + Zincir Görünümü — ✅ COMPLETED
+
+Gap-analysis'in "Önerilen Geliştirme Sırası" #8 maddesi (product-requirements.md Section 13.1/13.2). Kapsam
+bilinçli olarak Bölüm 13'e (satış raporlama) sınırlandırıldı - gün sonu snapshot/Excel export (Bölüm 14, gap-
+analysis #9) ve gider yönetimi (gap-analysis #10) bu maddenin dışında bırakıldı.
+
+**Ana özellikler:**
+- **`com.qrmenu.reporting` modülü:** kendi persistence'ı yok - `ChainComparisonService` (gap-analysis #7) ile
+  aynı desen, `OrderingService`/`RefundService`/`MenuService`/`TenantService`/`CustomerSessionService`'in zaten
+  public facade metotlarını besliyor. `ReportingService.getBranchReport`/`getChainReport` bir `[from, to]`
+  business-date aralığını şubenin kendi timezone'unda (Bölüm 4/gap-analysis #6'nın `Branch.timezone`'u,
+  yoksa UTC) Instant sınırlarına çeviriyor.
+- **Gross/net/refund matematiği (Bölüm 13.4):** gross = `OrderingService.findOrdersForReport`'un döndürdüğü
+  "ödemesi başarılı" statülerdeki (`AWAITING_STORE_ACCEPTANCE`/`IN_KITCHEN`/`READY`/`COMPLETED`/
+  `REJECTED_BY_STORE` - hepsi yalnızca başarılı bir webhook sonrası ulaşılabilir statüler)
+  `CustomerOrder.totalMinorUnits` toplamı; refund = `RefundService.sumCompletedRefundAmount`'ın döndürdüğü
+  tamamlanmış refund toplamı; net = gross - refund. Reddedilen bir sipariş gross'a girip tam refund'la
+  netlenerek geri çıkıyor - canlı Product fiyatına değil, immutable Order/OrderItem snapshot'ına dayanıyor.
+- **Ürün/kategori kırılımı:** yalnızca `OrderItem.acceptedQuantity > 0` olan kalemlerden (mutfağın gerçekten
+  kabul ettiği adet - sipariş edilen değil), `productNameSnapshot` kullanılıyor (menu modülüne bağımlılık
+  yok); kategori adı için tek yeni cross-module çağrı `MenuService.getProductsByIds` (+ mevcut
+  `getCategoriesForBusiness`).
+- **Yeni `Permission.REPORT_VIEW`** (CASHIER/BRANCH_MANAGER/BUSINESS_ADMIN, şube-scope'lu -
+  `resolveStaffContextForBranch` ile) ve **`Permission.REPORT_CHAIN_VIEW`** (yalnızca BUSINESS_ADMIN/
+  PLATFORM_ADMIN). `GET /api/staff/branches/{branchId}/reports` ve `GET /api/staff/reports/chain`
+  (`?from=&to=` ISO tarih, seçilebilir aralık).
+- **staff-web:** yeni `/reports` (admin-only nav, zincir toplamları + şube karşılaştırma tablosu, her satır
+  şube detayına bağlanıyor) ve `/reports/[branchId]` (tarih aralığı formu, stat kartları, ürün/kategori/saatlik
+  tablo) ekranları; `/branches` satır aksiyonlarına "Raporlar" linki (Kasa/Mutfak/İadeler ile aynı desen).
+
+**Teknik kararlar:**
+- Facade metotları status/business-logic'i kendi modülünde tutuyor (`OrderingService.findOrdersForReport`
+  kendi `PAID_ORDER_STATUSES` sabitini kapsüllüyor - `countOrdersSince`'in izlediği aynı disiplin), reporting
+  modülü yalnızca sonuçları birleştiriyor.
+- Ortalama sepet = gross / orderCount (refund öncesi, standart AOV tanımı); "kaç kişi geldi" yerine mevcut
+  `TableVisit` sayısı kullanılıyor (Bölüm 13.3'ün `guestCount` alanı hâlâ yok - gelecekteki iş).
+- `ModuleBoundaryTest`'e yeni bir case gerekmedi (`chain` modülüyle aynı sebep - `reporting`'in kendi
+  repository'si yok).
+
+**Backend test sayısı 95 → 98** (yeni: `ReportingFlowIntegrationTest` 3 - gross/net/refund matematiği + ürün/
+kategori kırılımı + saatlik dağılım, zincir agregasyonu + REPORT_CHAIN_VIEW admin-only gate + BRANCH_MANAGER'ın
+kendi şubesini görüp diğerini görememesi, KITCHEN_STAFF'ın REPORT_VIEW'i olmadığı için 403 alması).
+
+**Not:** Bu madde de canlı tarayıcı doğrulaması olmadan tamamlandı (bkz. proje hafızası - Chrome testi bu
+projede kapalı); doğrulama backend integration testleri + `npm run build`/`lint` ile yapıldı.

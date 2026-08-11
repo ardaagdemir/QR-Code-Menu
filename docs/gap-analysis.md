@@ -56,7 +56,8 @@ log, pickup board, `DeliveryModel`, rate limiting, payment timeout scheduler.
    Gap-Analysis #6.)
 7. ✅ **Toplu menü atama + Zincir karşılaştırma + StaffAnnouncement** (finansal-olmayan kapsam; bkz.
    development-progress.md, Gap-Analysis #7).
-8. **Raporlama modülü** — temel metrikler önce, sonra şube karşılaştırma.
+8. ✅ **Raporlama modülü** — temel metrikler önce, sonra şube karşılaştırma. (Bkz. development-progress.md,
+   Gap-Analysis #8.)
 9. **Gün sonu snapshot + Excel export**.
 10. **Gider yönetimi** (expense + recurring).
 11. **Sahibine otomatik bildirim** (email adapter önce, WhatsApp sonra — blocker değil).
