@@ -703,48 +703,70 @@ projede kapalı); doğrulama backend integration testleri + `npm run build`/`lin
 
 ---
 
-## Gap-Analysis #11 — Sahibine Otomatik Gün Sonu Bildirimi — 🔄 TASARIM ONAYLANDI, UYGULAMA SÜRÜYOR
+## Gap-Analysis #11 — Sahibine Otomatik Gün Sonu Bildirimi — ✅ COMPLETED
 
 Gap-analysis'in "Önerilen Geliştirme Sırası" #11 maddesi (product-requirements.md Section 15 + M12). WhatsApp
-adapter spec gereği blocker değil - bu madde yalnızca email kanalını kapsıyor.
+adapter spec gereği blocker değil - bu madde yalnızca email kanalını kapsıyor; tasarım
+superpowers:brainstorming akışıyla (4 netleştirme sorusu: gerçek SMTP vs mock, async vs senkron tetikleme,
+kalıcı denetim kaydı var/yok, staff-web'de manuel resend var/yok) kullanıcıyla netleştirilip onaylandıktan
+sonra uygulandı.
 
-**Onaylanmış tasarım:**
+**Ana özellikler:**
 - **Yeni `com.qrmenu.ownernotification` modülü** (kendi persistence'ı var - `expense`/`dailyclose` ile aynı
   desen). `OwnerNotificationPort` arayüzü + `EmailOwnerNotificationAdapter` (`spring-boot-starter-mail` /
-  `JavaMailSender`). Port yalnızca `EMAIL` kanalıyla başlıyor, WhatsApp için ayrı bir adapter ileride eklenecek
+  `JavaMailSender`). Port yalnızca `EMAIL` kanalıyla başlıyor, WhatsApp için ayrı bir adapter ileride eklenebilir
   (port zaten sağlayıcı-bağımsız kurulduğu için genişletmek kod değişikliği gerektirmeyecek).
 - **`OwnerNotificationLog` entity (V19 migration):** `dailyCloseReportId`, `businessId`, `branchId`,
   `businessContactId`, `recipientEmail`, `channel`(=EMAIL), `status`(SENT/FAILED), `errorMessage` nullable,
   `triggeredBy`(AUTO/MANUAL), `triggeredByStaffUserId` nullable, `attemptedAt`. Her deneme (otomatik veya
   manuel) ayrı bir satır - üzerine yazılmıyor, denetim izi.
 - **Tetikleme:** `DailyCloseScheduler`, bir branch için `generateFinal(...)` başarılı dönünce
-  `OwnerNotificationService.dispatchAutoForDailyClose(report)`'u `@Async` çağırır (M5'teki
-  `MockPaymentSimulationDispatcher` ile aynı desen - SMTP yavaşlığı scheduler'ın diğer şubeleri işlemesini
-  bloklamasın diye). Alıcılar `TenantService.listBusinessContacts(businessId)` üzerinden
-  `active && dailyReportRecipient && email dolu` filtresiyle bulunuyor.
-- **Idempotency (AUTO):** aynı `(reportId, contactId)` için zaten bir `AUTO` log satırı varsa tekrar
-  gönderilmiyor (recurring-expense'teki "bir dönem için tam bir kez" idempotency felsefesiyle aynı). **Manuel
-  yeniden gönder** bu kontrolü atlar, her seferinde yeni bir deneme/log satırı oluşturur.
+  `OwnerNotificationService.dispatchAutoForDailyClose(report)`'u çağırır - metot `@Async` + `CompletableFuture<Void>`
+  döner (M5'teki `MockPaymentSimulationDispatcher` ile aynı fire-and-forget desen; future'ın tek amacı testlerin
+  async dispatch'i deterministik biçimde bekleyebilmesi, scheduler dönüş değerini kullanmıyor). Alıcılar
+  `TenantService.listBusinessContacts(businessId)` üzerinden `active && dailyReportRecipient && email dolu`
+  filtresiyle bulunuyor.
+- **Idempotency (AUTO):** aynı `(reportId, contactId)` için zaten bir log satırı varsa tekrar gönderilmiyor
+  (recurring-expense'teki "bir dönem için tam bir kez" idempotency felsefesiyle aynı) - scheduler'ın FINAL
+  gününü 5 dakikada bir yeniden yoklaması hiç double-send yaratmıyor. **Manuel yeniden gönder** bu kontrolü
+  atlar, her seferinde yeni bir deneme/log satırı oluşturur.
 - Mesaj içeriği (şube, tarih, brüt/net satış, refund, sipariş sayısı, top-5 ürün) gönderim anında
   `ReportingService.getBranchReport(...)`'tan üretiliyor - `DailyBranchCloseReport` ürün kırılımını
   saklamadığı için (Excel export'la aynı "DB'den anlık yeniden üretilebilir" ilkesi). Bir alıcıya gönderim
-  başarısız olursa diğer alıcılar etkilenmiyor (izole hata).
-- **SMTP (dev):** `docker-compose.yml`'e Mailhog eklenir (SMTP :1025, web UI :8025, auth yok);
+  başarısız olursa diğer alıcılar etkilenmiyor (her deneme kendi try/catch'i içinde izole).
+- **SMTP (dev):** `docker-compose.yml`'e Mailhog eklendi (SMTP :1025, web UI :8025, auth yok);
   `SMTP_HOST`/`SMTP_PORT`/`SMTP_USERNAME`/`SMTP_PASSWORD`/`OWNER_NOTIFICATION_FROM_EMAIL` env değişkenleri -
   email opsiyonel/blocker olmadığından `INTERNAL_ADMIN_TOKEN` gibi zorunlu değil, Mailhog'a işaret eden sane
-  default'larla gelir.
-- **API:** mevcut `Permission.REPORT_VIEW` yeniden kullanılıyor (`daily-close/final` ile aynı gerekçe) -
+  default'larla geliyor (`application.yml`'in `spring.mail.*` bloğu, tek `spring:` kökü altında - ayrı bir
+  ikinci `spring:` anahtarı YAML'da sessizce çakışırdı, tek blokta birleştirildi).
+- **API:** mevcut `Permission.REPORT_VIEW` yeniden kullanıldı (`daily-close/final` ile aynı gerekçe) -
   `GET /api/staff/branches/{branchId}/daily-close/{reportId}/notifications` (log listesi) ve
-  `POST .../notifications/resend` (manuel tetikleme). `StaffDailyCloseController`'a eklenecek;
-  `DailyCloseService`'e tenant-scope doğrulamalı küçük bir `getById` metodu gerekiyor.
-- **staff-web:** `/reports/[branchId]` Gün Sonu Kapanışları listesindeki FINAL satırlara "Bildirim: N
-  gönderildi / M başarısız" rozeti + eksik/başarısız varsa "Tekrar Gönder" butonu.
-- **Test planı:** `OwnerNotificationFlowIntegrationTest` - auto-dispatch idempotency, manuel resend'in her
-  zaman yeni satır oluşturması, kısmi başarısızlıkta izolasyon, uygun olmayan contact'lara (dailyReportRecipient
-  =false / email boş) gönderilmemesi, REPORT_VIEW olmayan role 403. Email doğrulaması gerçek SMTP yerine
-  GreenMail (in-memory test SMTP) ile yapılacak.
+  `POST .../notifications/resend` (manuel tetikleme, `StaffDailyCloseController`'a eklendi).
+  `DailyCloseService`'e tenant-scope doğrulamalı yeni bir `getById` metodu eklendi;
+  `DailyCloseReportResponse`'a da `id` alanı eklendi (önceden hiç dönmüyordu, staff-web'in bu uçları
+  çağırabilmesi için gerekliydi).
+- **staff-web:** `/reports/[branchId]` Gün Sonu Kapanışları tablosuna yeni "Bildirim" sütunu - her FINAL
+  satırda "N gönderildi"/"M başarısız" rozetleri + her zaman görünen "Tekrar Gönder" butonu (PREVIEW satırlarda
+  "-").
 
-Bu tasarım superpowers:brainstorming akışıyla (4 netleştirme sorusu: gerçek SMTP vs mock, async vs senkron
-tetikleme, kalıcı denetim kaydı var/yok, staff-web'de manuel resend var/yok) kullanıcıyla netleştirildi ve
-onaylandı; kullanıcı talebiyle ayrı bir `docs/superpowers/specs/*.md` dosyası yerine doğrudan buraya yazıldı.
-Uygulama adımları ilerledikçe bu bölüm güncellenecek, tamamlandığında `✅ COMPLETED` olarak kapatılacak.
+**Teknik kararlar:**
+- `dispatchAutoForDailyClose` `CompletableFuture<Void>` dönüyor ama scheduler bunu görmezden geliyor - salt
+  testlerin `@Async` tamamlanmasını `.get(timeout)` ile deterministik bekleyebilmesi için (aksi halde
+  idempotency testi race condition'a düşerdi).
+- `OwnerNotificationService` içindeki private `saveLog`/`dispatch` metotları `this.` üzerinden çağrıldığından
+  bilinçli olarak `@Transactional`/`@Async` taşımıyor (Spring proxy'si self-invocation'ı yakalamaz - M5'in
+  `MockPaymentSimulationDispatcher` notundaki aynı tuzak); `repository.save()` zaten kendi transaction'ını
+  taşıyor, ek sarmalayıcıya gerek yok.
+- Manuel resend, AUTO idempotency kontrolünü tamamen atlıyor ve mevcut tüm uygun alıcılara yeniden gönderiyor
+  (kısmi/hedefli resend değil) - basitlik tercih edildi, spec bunu zorunlu kılmıyor.
+- `ModuleBoundaryTest`'e yeni bir case eklendi (`ownernotification.repository` yalnızca kendi modülü içinden
+  erişilebilir).
+
+**Backend test sayısı 109 → 114** (yeni: `OwnerNotificationFlowIntegrationTest` 4 - auto-dispatch idempotency
+GreenMail ile gerçek SMTP üzerinden doğrulanıyor, uygun olmayan contact'ların [pasif/opt-out/email'siz]
+atlanması, manuel resend'in her zaman yeni log satırı üretmesi + AUTO zaten göndermişken bile çalışması,
+REPORT_VIEW olmayan role 403; `ModuleBoundaryTest` +1).
+
+**Not:** Bu madde de canlı tarayıcı doğrulaması olmadan tamamlandı (bkz. proje hafızası - Chrome testi bu
+projede kapalı); doğrulama backend integration testleri (GreenMail in-memory SMTP dahil) +
+`npm run build`/`lint`/`tsc --noEmit` ile yapıldı.
