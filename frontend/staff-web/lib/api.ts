@@ -697,3 +697,61 @@ export async function getBranchSalesReport(branchId: string, from: string, to: s
 export async function getChainSalesReport(from: string, to: string): Promise<ChainSalesReport> {
   return apiFetch(`/api/staff/reports/chain?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
 }
+
+export type DailyCloseReport = {
+  branchId: string;
+  branchName: string;
+  businessDate: string;
+  periodStart: string;
+  periodEnd: string;
+  grossSalesMinorUnits: number;
+  refundTotalMinorUnits: number;
+  netSalesMinorUnits: number;
+  orderCount: number;
+  acceptedOrderCount: number;
+  rejectedOrderCount: number;
+  averageOrderValueMinorUnits: number;
+  tableVisitCount: number;
+  status: "PREVIEW" | "FINAL";
+  generatedAt: string;
+};
+
+export async function getDailyCloseReports(branchId: string, from: string, to: string): Promise<DailyCloseReport[]> {
+  return apiFetch(
+    `/api/staff/branches/${encodeURIComponent(branchId)}/daily-close?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+  );
+}
+
+export async function generateDailyCloseFinal(branchId: string, businessDate: string): Promise<DailyCloseReport> {
+  return apiFetch(
+    `/api/staff/branches/${encodeURIComponent(branchId)}/daily-close/final?businessDate=${encodeURIComponent(businessDate)}`,
+    { method: "POST" },
+  );
+}
+
+/** Excel export bypasses apiFetch (which always parses JSON) - the response body is the .xlsx binary itself. */
+async function downloadFile(path: string, filename: string): Promise<void> {
+  const response = await fetch(`${getApiBaseUrl()}${path}`, { credentials: "include" });
+  if (!response.ok) {
+    await parseErrorOrThrow(response);
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+export async function downloadBranchDailyCloseExcel(
+  branchId: string,
+  branchName: string,
+  from: string,
+  to: string,
+): Promise<void> {
+  await downloadFile(
+    `/api/staff/branches/${encodeURIComponent(branchId)}/daily-close/excel?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+    `gun-sonu-${branchName}-${from}_${to}.xlsx`,
+  );
+}

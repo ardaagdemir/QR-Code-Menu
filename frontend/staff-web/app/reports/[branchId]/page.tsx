@@ -2,8 +2,18 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { ApiError, formatPriceMinorUnits, getBranchSalesReport, type BranchSalesReport } from "@/lib/api";
+import {
+  ApiError,
+  downloadBranchDailyCloseExcel,
+  formatPriceMinorUnits,
+  generateDailyCloseFinal,
+  getBranchSalesReport,
+  getDailyCloseReports,
+  type BranchSalesReport,
+  type DailyCloseReport,
+} from "@/lib/api";
 import StaffNav from "@/components/layout/StaffNav";
+import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import adminStyles from "@/styles/admin.module.css";
 import styles from "../reports.module.css";
@@ -30,6 +40,10 @@ export default function BranchReportPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [dailyCloseReports, setDailyCloseReports] = useState<DailyCloseReport[]>([]);
+  const [closingToday, setClosingToday] = useState(false);
+  const [dailyCloseError, setDailyCloseError] = useState<string | null>(null);
+
   /** setState calls only happen inside the promise callbacks, never synchronously - safe to call from an effect body. */
   function applyReport(promise: Promise<BranchSalesReport>) {
     promise
@@ -41,8 +55,15 @@ export default function BranchReportPage() {
       .finally(() => setLoading(false));
   }
 
+  function reloadDailyClose() {
+    getDailyCloseReports(branchId, from, to)
+      .then((data) => setDailyCloseReports(data))
+      .catch(() => setDailyCloseReports([]));
+  }
+
   useEffect(() => {
     applyReport(getBranchSalesReport(branchId, from, to));
+    reloadDailyClose();
     // Only re-fetch automatically when the branch changes - date range changes are applied via the "Uygula" button.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [branchId]);
@@ -51,7 +72,30 @@ export default function BranchReportPage() {
     event.preventDefault();
     setLoading(true);
     applyReport(getBranchSalesReport(branchId, from, to));
+    reloadDailyClose();
   }
+
+  function handleCloseToday() {
+    setClosingToday(true);
+    setDailyCloseError(null);
+    generateDailyCloseFinal(branchId, todayIsoDate())
+      .then(() => reloadDailyClose())
+      .catch(() => setDailyCloseError("Gün sonu kapatılamadı."))
+      .finally(() => setClosingToday(false));
+  }
+
+  function handleDownloadExcel() {
+    if (!report) {
+      return;
+    }
+    downloadBranchDailyCloseExcel(branchId, report.branchName, from, to).catch(() =>
+      setDailyCloseError("Excel indirilemedi."),
+    );
+  }
+
+  const todayAlreadyFinal = dailyCloseReports.some(
+    (row) => row.businessDate === todayIsoDate() && row.status === "FINAL",
+  );
 
   return (
     <>
@@ -107,6 +151,55 @@ export default function BranchReportPage() {
               <StatCard label="Ortalama sepet" value={formatPriceMinorUnits(report.averageOrderValueMinorUnits)} />
               <StatCard label="Masa ziyareti" value={String(report.tableVisitCount)} />
             </div>
+
+            <section className={adminStyles.section}>
+              <div className={styles.dailyCloseHeader}>
+                <h2 className={adminStyles.sectionTitle}>Gün Sonu Kapanışları</h2>
+                <div className={styles.dailyCloseActions}>
+                  <Button type="button" variant="secondary" onClick={handleDownloadExcel}>
+                    Excel indir
+                  </Button>
+                  {todayAlreadyFinal ? null : (
+                    <Button type="button" onClick={handleCloseToday} disabled={closingToday}>
+                      {closingToday ? "Kapatılıyor…" : "Bugünü kapat (FINAL)"}
+                    </Button>
+                  )}
+                </div>
+              </div>
+              {dailyCloseError ? <p className={adminStyles.error}>{dailyCloseError}</p> : null}
+              {dailyCloseReports.length === 0 ? (
+                <p className={adminStyles.empty}>Bu aralıkta gün sonu kapanışı yok.</p>
+              ) : (
+                <div className={styles.tableWrap}>
+                  <table className={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>Tarih</th>
+                        <th>Durum</th>
+                        <th>Brüt Satış</th>
+                        <th>Net Satış</th>
+                        <th>Sipariş</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dailyCloseReports.map((row) => (
+                        <tr key={row.businessDate}>
+                          <td>{row.businessDate}</td>
+                          <td>
+                            <Badge tone={row.status === "FINAL" ? "success" : "neutral"}>
+                              {row.status === "FINAL" ? "FINAL" : "Ön izleme"}
+                            </Badge>
+                          </td>
+                          <td>{formatPriceMinorUnits(row.grossSalesMinorUnits)}</td>
+                          <td>{formatPriceMinorUnits(row.netSalesMinorUnits)}</td>
+                          <td>{row.orderCount}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
 
             <section className={adminStyles.section}>
               <h2 className={adminStyles.sectionTitle}>Ürün Bazında Satış</h2>
