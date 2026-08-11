@@ -10,9 +10,12 @@ import {
   getBranchSalesReport,
   getDailyCloseReports,
   getOperatingResult,
+  getOwnerNotifications,
+  resendOwnerNotifications,
   type BranchSalesReport,
   type DailyCloseReport,
   type OperatingResult,
+  type OwnerNotificationLog,
 } from "@/lib/api";
 import StaffNav from "@/components/layout/StaffNav";
 import Badge from "@/components/ui/Badge";
@@ -45,6 +48,8 @@ export default function BranchReportPage() {
   const [dailyCloseReports, setDailyCloseReports] = useState<DailyCloseReport[]>([]);
   const [closingToday, setClosingToday] = useState(false);
   const [dailyCloseError, setDailyCloseError] = useState<string | null>(null);
+  const [notificationsByReport, setNotificationsByReport] = useState<Record<string, OwnerNotificationLog[]>>({});
+  const [resendingReportId, setResendingReportId] = useState<string | null>(null);
 
   const [operatingResult, setOperatingResult] = useState<OperatingResult | null>(null);
 
@@ -61,8 +66,29 @@ export default function BranchReportPage() {
 
   function reloadDailyClose() {
     getDailyCloseReports(branchId, from, to)
-      .then((data) => setDailyCloseReports(data))
+      .then((data) => {
+        setDailyCloseReports(data);
+        void reloadNotifications(data);
+      })
       .catch(() => setDailyCloseReports([]));
+  }
+
+  /** Gap-analysis #11: one lookup per FINAL row - PREVIEW rows never had a notification dispatched. */
+  async function reloadNotifications(rows: DailyCloseReport[]) {
+    const finalRows = rows.filter((row) => row.status === "FINAL");
+    const entries = await Promise.all(
+      finalRows.map(async (row) => [row.id, await getOwnerNotifications(branchId, row.id).catch(() => [])] as const),
+    );
+    setNotificationsByReport(Object.fromEntries(entries));
+  }
+
+  function handleResend(reportId: string) {
+    setResendingReportId(reportId);
+    setDailyCloseError(null);
+    resendOwnerNotifications(branchId, reportId)
+      .then((logs) => setNotificationsByReport((prev) => ({ ...prev, [reportId]: logs })))
+      .catch(() => setDailyCloseError("Bildirim yeniden gönderilemedi."))
+      .finally(() => setResendingReportId(null));
   }
 
   function reloadOperatingResult() {
@@ -191,6 +217,7 @@ export default function BranchReportPage() {
                         <th>Brüt Satış</th>
                         <th>Net Satış</th>
                         <th>Sipariş</th>
+                        <th>Bildirim</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -205,6 +232,17 @@ export default function BranchReportPage() {
                           <td>{formatPriceMinorUnits(row.grossSalesMinorUnits)}</td>
                           <td>{formatPriceMinorUnits(row.netSalesMinorUnits)}</td>
                           <td>{row.orderCount}</td>
+                          <td>
+                            {row.status === "FINAL" ? (
+                              <NotificationCell
+                                logs={notificationsByReport[row.id]}
+                                resending={resendingReportId === row.id}
+                                onResend={() => handleResend(row.id)}
+                              />
+                            ) : (
+                              "-"
+                            )}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -313,6 +351,38 @@ export default function BranchReportPage() {
         )}
       </main>
     </>
+  );
+}
+
+function NotificationCell({
+  logs,
+  resending,
+  onResend,
+}: {
+  logs: OwnerNotificationLog[] | undefined;
+  resending: boolean;
+  onResend: () => void;
+}) {
+  if (logs === undefined) {
+    return <span className={adminStyles.empty}>…</span>;
+  }
+  const sent = logs.filter((log) => log.status === "SENT").length;
+  const failed = logs.filter((log) => log.status === "FAILED").length;
+
+  return (
+    <div className={styles.notificationCell}>
+      {logs.length === 0 ? (
+        <Badge tone="neutral">Gönderilmedi</Badge>
+      ) : (
+        <>
+          {sent > 0 ? <Badge tone="success">{sent} gönderildi</Badge> : null}
+          {failed > 0 ? <Badge tone="danger">{failed} başarısız</Badge> : null}
+        </>
+      )}
+      <Button type="button" variant="secondary" onClick={onResend} disabled={resending}>
+        {resending ? "Gönderiliyor…" : "Tekrar Gönder"}
+      </Button>
+    </div>
   );
 }
 

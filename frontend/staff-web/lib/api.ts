@@ -699,6 +699,7 @@ export async function getChainSalesReport(from: string, to: string): Promise<Cha
 }
 
 export type DailyCloseReport = {
+  id: string;
   branchId: string;
   branchName: string;
   businessDate: string;
@@ -753,6 +754,33 @@ export async function downloadBranchDailyCloseExcel(
   await downloadFile(
     `/api/staff/branches/${encodeURIComponent(branchId)}/daily-close/excel?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
     `gun-sonu-${branchName}-${from}_${to}.xlsx`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Gap-analysis #11 (Section 15): sahibine otomatik gün sonu bildirimi (email).
+// ---------------------------------------------------------------------------
+
+export type OwnerNotificationLog = {
+  id: string;
+  recipientEmail: string;
+  channel: "EMAIL";
+  status: "SENT" | "FAILED";
+  errorMessage: string | null;
+  triggeredBy: "AUTO" | "MANUAL";
+  attemptedAt: string;
+};
+
+export async function getOwnerNotifications(branchId: string, reportId: string): Promise<OwnerNotificationLog[]> {
+  return apiFetch(
+    `/api/staff/branches/${encodeURIComponent(branchId)}/daily-close/${encodeURIComponent(reportId)}/notifications`,
+  );
+}
+
+export async function resendOwnerNotifications(branchId: string, reportId: string): Promise<OwnerNotificationLog[]> {
+  return apiFetch(
+    `/api/staff/branches/${encodeURIComponent(branchId)}/daily-close/${encodeURIComponent(reportId)}/notifications/resend`,
+    { method: "POST" },
   );
 }
 
