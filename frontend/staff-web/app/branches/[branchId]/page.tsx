@@ -6,15 +6,38 @@ import Link from "next/link";
 import {
   createTable,
   getActiveQrToken,
+  getBusinessHours,
+  listBranches,
   listTables,
   regenerateQrToken,
   revokeQrToken,
+  setAddress,
+  setBranchTimezone,
+  setBusinessHours,
+  type Branch,
+  type BranchBusinessHoursEntry,
+  type DayOfWeek,
   type QrToken,
   type StaffTable,
 } from "@/lib/api";
 import StaffNav from "@/components/layout/StaffNav";
 import Button from "@/components/ui/Button";
 import styles from "@/styles/admin.module.css";
+
+const DAY_LABELS: Record<DayOfWeek, string> = {
+  MONDAY: "Pazartesi",
+  TUESDAY: "Salı",
+  WEDNESDAY: "Çarşamba",
+  THURSDAY: "Perşembe",
+  FRIDAY: "Cuma",
+  SATURDAY: "Cumartesi",
+  SUNDAY: "Pazar",
+};
+const DAYS_OF_WEEK: DayOfWeek[] = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
+
+function defaultHoursForDay(dayOfWeek: DayOfWeek): BranchBusinessHoursEntry {
+  return { dayOfWeek, openingTime: null, closingTime: null, closed: false };
+}
 
 /** Section 4, staff-web admin screen: Table + QR token management (Permission.BRANCH_MANAGE / QR_MANAGE). */
 export default function BranchDetailPage() {
@@ -28,6 +51,16 @@ export default function BranchDetailPage() {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busyTableId, setBusyTableId] = useState<string | null>(null);
+
+  const [branch, setBranch] = useState<Branch | null>(null);
+  const [addressInput, setAddressInput] = useState("");
+  const [timezoneInput, setTimezoneInput] = useState("");
+  const [hours, setHours] = useState<BranchBusinessHoursEntry[]>(DAYS_OF_WEEK.map(defaultHoursForDay));
+  const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [settingsSuccess, setSettingsSuccess] = useState<string | null>(null);
+  const [savingAddress, setSavingAddress] = useState(false);
+  const [savingTimezone, setSavingTimezone] = useState(false);
+  const [savingHours, setSavingHours] = useState(false);
 
   async function reload() {
     try {
@@ -67,6 +100,83 @@ export default function BranchDetailPage() {
       cancelled = true;
     };
   }, [branchId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchSettings() {
+      try {
+        const [branches, hoursList] = await Promise.all([listBranches(), getBusinessHours(branchId)]);
+        if (cancelled) {
+          return;
+        }
+        const current = branches.find((b) => b.id === branchId) ?? null;
+        setBranch(current);
+        setAddressInput(current?.address ?? "");
+        setTimezoneInput(current?.timezone ?? "");
+        const byDay = Object.fromEntries(hoursList.map((entry) => [entry.dayOfWeek, entry]));
+        setHours(DAYS_OF_WEEK.map((day) => byDay[day] ?? defaultHoursForDay(day)));
+      } catch {
+        if (!cancelled) {
+          setSettingsError("Şube ayarları yüklenemedi.");
+        }
+      }
+    }
+    void fetchSettings();
+    return () => {
+      cancelled = true;
+    };
+  }, [branchId]);
+
+  async function handleSaveAddress(event: React.FormEvent) {
+    event.preventDefault();
+    setSavingAddress(true);
+    setSettingsError(null);
+    setSettingsSuccess(null);
+    try {
+      const updated = await setAddress(branchId, addressInput.trim());
+      setBranch(updated);
+      setSettingsSuccess("Adres kaydedildi.");
+    } catch {
+      setSettingsError("Adres kaydedilemedi.");
+    } finally {
+      setSavingAddress(false);
+    }
+  }
+
+  async function handleSaveTimezone(event: React.FormEvent) {
+    event.preventDefault();
+    setSavingTimezone(true);
+    setSettingsError(null);
+    setSettingsSuccess(null);
+    try {
+      const updated = await setBranchTimezone(branchId, timezoneInput.trim() || null);
+      setBranch(updated);
+      setSettingsSuccess("Saat dilimi kaydedildi.");
+    } catch {
+      setSettingsError("Saat dilimi kaydedilemedi. Geçerli bir IANA saat dilimi kimliği girin (ör. Europe/Istanbul).");
+    } finally {
+      setSavingTimezone(false);
+    }
+  }
+
+  async function handleSaveHours() {
+    setSavingHours(true);
+    setSettingsError(null);
+    setSettingsSuccess(null);
+    try {
+      const updated = await setBusinessHours(branchId, hours);
+      setHours(updated);
+      setSettingsSuccess("Çalışma saatleri kaydedildi.");
+    } catch {
+      setSettingsError("Çalışma saatleri kaydedilemedi.");
+    } finally {
+      setSavingHours(false);
+    }
+  }
+
+  function updateDay(dayOfWeek: DayOfWeek, patch: Partial<BranchBusinessHoursEntry>) {
+    setHours((current) => current.map((entry) => (entry.dayOfWeek === dayOfWeek ? { ...entry, ...patch } : entry)));
+  }
 
   async function handleCreateTable(event: React.FormEvent) {
     event.preventDefault();
@@ -117,13 +227,94 @@ export default function BranchDetailPage() {
       <StaffNav />
       <main className={styles.page}>
         <div className={styles.header}>
-          <h1 className={styles.title}>Masalar &amp; QR Kodları</h1>
+          <h1 className={styles.title}>{branch ? branch.name : "Şube"}</h1>
           <Link href="/branches" className={styles.backLink}>
             Şubelere dön
           </Link>
         </div>
 
-        <form className={styles.form} onSubmit={handleCreateTable}>
+        <section className={styles.section}>
+          <h2 className={styles.sectionTitle}>Şube Ayarları</h2>
+          {settingsError ? <p className={styles.error}>{settingsError}</p> : null}
+          {settingsSuccess ? <p className={styles.success}>{settingsSuccess}</p> : null}
+
+          <form className={styles.form} onSubmit={handleSaveAddress}>
+            <div className={styles.field}>
+              <label className={styles.label} htmlFor="branch-address">
+                Adres
+              </label>
+              <input
+                id="branch-address"
+                className={styles.input}
+                value={addressInput}
+                onChange={(event) => setAddressInput(event.target.value)}
+              />
+            </div>
+            <Button type="submit" disabled={savingAddress}>
+              {savingAddress ? "Kaydediliyor…" : "Adresi Kaydet"}
+            </Button>
+          </form>
+
+          <form className={styles.form} onSubmit={handleSaveTimezone}>
+            <div className={styles.field}>
+              <label className={styles.label} htmlFor="branch-timezone">
+                Saat Dilimi (opsiyonel - boş bırakılırsa işletme varsayılanı kullanılır)
+              </label>
+              <input
+                id="branch-timezone"
+                className={styles.input}
+                placeholder="Europe/Istanbul"
+                value={timezoneInput}
+                onChange={(event) => setTimezoneInput(event.target.value)}
+              />
+            </div>
+            <Button type="submit" disabled={savingTimezone}>
+              {savingTimezone ? "Kaydediliyor…" : "Saat Dilimini Kaydet"}
+            </Button>
+          </form>
+
+          <div className={styles.list}>
+            {hours.map((entry) => (
+              <div key={entry.dayOfWeek} className={styles.row}>
+                <div className={styles.rowMain}>
+                  <span className={styles.rowTitle}>{DAY_LABELS[entry.dayOfWeek]}</span>
+                </div>
+                <div className={styles.rowActions}>
+                  <label className={styles.rowMeta}>
+                    <input
+                      type="checkbox"
+                      checked={entry.closed}
+                      onChange={(event) => updateDay(entry.dayOfWeek, { closed: event.target.checked })}
+                    />{" "}
+                    Kapalı
+                  </label>
+                  <input
+                    type="time"
+                    className={styles.input}
+                    disabled={entry.closed}
+                    value={entry.openingTime?.slice(0, 5) ?? ""}
+                    onChange={(event) => updateDay(entry.dayOfWeek, { openingTime: event.target.value || null })}
+                  />
+                  <span className={styles.rowMeta}>–</span>
+                  <input
+                    type="time"
+                    className={styles.input}
+                    disabled={entry.closed}
+                    value={entry.closingTime?.slice(0, 5) ?? ""}
+                    onChange={(event) => updateDay(entry.dayOfWeek, { closingTime: event.target.value || null })}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+          <Button disabled={savingHours} onClick={handleSaveHours}>
+            {savingHours ? "Kaydediliyor…" : "Çalışma Saatlerini Kaydet"}
+          </Button>
+        </section>
+
+        <section className={styles.section}>
+          <h2 className={styles.sectionTitle}>Masalar &amp; QR Kodları</h2>
+          <form className={styles.form} onSubmit={handleCreateTable}>
           <div className={styles.field}>
             <label className={styles.label} htmlFor="table-label">
               Yeni masa adı
@@ -166,6 +357,7 @@ export default function BranchDetailPage() {
             })
           )}
         </div>
+        </section>
       </main>
     </>
   );

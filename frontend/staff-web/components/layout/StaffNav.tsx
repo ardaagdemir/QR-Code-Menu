@@ -10,6 +10,7 @@ const ROLE_LABELS: Record<string, string> = {
   PLATFORM_ADMIN: "Platform Yöneticisi",
   BUSINESS_ADMIN: "İşletme Yöneticisi",
   BRANCH_MANAGER: "Şube Sorumlusu",
+  CASHIER: "Kasa",
   KITCHEN_STAFF: "Mutfak Personeli",
 };
 
@@ -72,6 +73,9 @@ export default function StaffNav() {
             </Link>
             <Link href="/audit" className={linkClass("/audit")}>
               Denetim Kaydı
+            </Link>
+            <Link href="/business-settings" className={linkClass("/business-settings")}>
+              İşletme Ayarları
             </Link>
           </>
         ) : null}

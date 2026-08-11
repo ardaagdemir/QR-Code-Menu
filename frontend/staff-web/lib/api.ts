@@ -40,7 +40,7 @@ export type StaffContext = {
   staffUserId: string;
   businessId: string;
   email: string;
-  role: "PLATFORM_ADMIN" | "BUSINESS_ADMIN" | "BRANCH_MANAGER" | "KITCHEN_STAFF";
+  role: "PLATFORM_ADMIN" | "BUSINESS_ADMIN" | "BRANCH_MANAGER" | "CASHIER" | "KITCHEN_STAFF";
   branchIds: string[];
 };
 
@@ -167,6 +167,49 @@ export async function completeOrder(branchId: string, orderId: string): Promise<
   });
 }
 
+// ---------------------------------------------------------------------------
+// Kasa kabul/red kapısı (gap-analysis #1, product-requirements.md Section 6) -
+// Permission.ORDER_VIEW/ORDER_ACCEPT/ORDER_REJECT.
+// ---------------------------------------------------------------------------
+
+export type OrderControlItem = {
+  id: string;
+  productName: string;
+  orderedQuantity: number;
+  acceptedQuantity: number;
+  rejectedQuantity: number;
+  status: string;
+  options: KitchenOrderItemOption[];
+};
+
+export type OrderControlOrder = {
+  orderId: string;
+  orderNumber: number | null;
+  status: string;
+  totalMinorUnits: number;
+  rejectionReasonCode: string | null;
+  rejectionNote: string | null;
+  items: OrderControlItem[];
+};
+
+/** Section 10.1: kasa dashboard'un "yeni ödenmiş/onay bekleyen siparişler" listesi. */
+export async function getPendingAcceptanceOrders(branchId: string): Promise<OrderControlOrder[]> {
+  return apiFetch(`/api/staff/branches/${encodeURIComponent(branchId)}/orders/pending-acceptance`);
+}
+
+export async function acceptOrder(branchId: string, orderId: string): Promise<OrderControlOrder> {
+  return apiFetch(`/api/staff/branches/${encodeURIComponent(branchId)}/orders/${encodeURIComponent(orderId)}/accept`, {
+    method: "POST",
+  });
+}
+
+export async function rejectOrder(branchId: string, orderId: string, reasonCode: string, note: string): Promise<OrderControlOrder> {
+  return apiFetch(`/api/staff/branches/${encodeURIComponent(branchId)}/orders/${encodeURIComponent(orderId)}/reject`, {
+    method: "POST",
+    body: JSON.stringify({ reasonCode, note: note || null }),
+  });
+}
+
 export function formatPriceMinorUnits(priceMinorUnits: number): string {
   return new Intl.NumberFormat("tr-TR", {
     style: "currency",
@@ -185,8 +228,8 @@ export type Branch = {
   businessId: string;
   name: string;
   orderingEnabled: boolean;
-  openingTime: string | null;
-  closingTime: string | null;
+  address: string | null;
+  timezone: string | null;
   deliveryModel: DeliveryModel;
 };
 
@@ -209,6 +252,40 @@ export async function setDeliveryModel(branchId: string, deliveryModel: Delivery
   return apiFetch(`/api/staff/branches/${encodeURIComponent(branchId)}/delivery-model`, {
     method: "POST",
     body: JSON.stringify({ deliveryModel }),
+  });
+}
+
+export async function setAddress(branchId: string, address: string): Promise<Branch> {
+  return apiFetch(`/api/staff/branches/${encodeURIComponent(branchId)}/address`, {
+    method: "POST",
+    body: JSON.stringify({ address }),
+  });
+}
+
+export async function setBranchTimezone(branchId: string, timezone: string | null): Promise<Branch> {
+  return apiFetch(`/api/staff/branches/${encodeURIComponent(branchId)}/timezone`, {
+    method: "POST",
+    body: JSON.stringify({ timezone }),
+  });
+}
+
+export type DayOfWeek = "MONDAY" | "TUESDAY" | "WEDNESDAY" | "THURSDAY" | "FRIDAY" | "SATURDAY" | "SUNDAY";
+
+export type BranchBusinessHoursEntry = {
+  dayOfWeek: DayOfWeek;
+  openingTime: string | null;
+  closingTime: string | null;
+  closed: boolean;
+};
+
+export async function getBusinessHours(branchId: string): Promise<BranchBusinessHoursEntry[]> {
+  return apiFetch(`/api/staff/branches/${encodeURIComponent(branchId)}/business-hours`);
+}
+
+export async function setBusinessHours(branchId: string, days: BranchBusinessHoursEntry[]): Promise<BranchBusinessHoursEntry[]> {
+  return apiFetch(`/api/staff/branches/${encodeURIComponent(branchId)}/business-hours`, {
+    method: "POST",
+    body: JSON.stringify({ days }),
   });
 }
 
@@ -278,6 +355,25 @@ export async function createMenuCategory(name: string): Promise<MenuCategoryAdmi
   return apiFetch("/api/staff/menu-categories", { method: "POST", body: JSON.stringify({ name }) });
 }
 
+export const ALLERGENS = [
+  "GLUTEN",
+  "CRUSTACEANS",
+  "EGGS",
+  "FISH",
+  "PEANUTS",
+  "SOYBEANS",
+  "MILK",
+  "TREE_NUTS",
+  "CELERY",
+  "MUSTARD",
+  "SESAME",
+  "SULPHITES",
+  "LUPIN",
+  "MOLLUSCS",
+] as const;
+
+export type Allergen = (typeof ALLERGENS)[number];
+
 export type ProductAdmin = {
   id: string;
   businessId: string;
@@ -288,6 +384,9 @@ export type ProductAdmin = {
   basePriceMinorUnits: number;
   taxRatePercent: number;
   displayOrder: number;
+  active: boolean;
+  estimatedPreparationMinutes: number | null;
+  allergens: Allergen[];
 };
 
 export async function listProductsForCategory(categoryId: string): Promise<ProductAdmin[]> {
@@ -303,6 +402,18 @@ export async function createProduct(
   return apiFetch("/api/staff/products", {
     method: "POST",
     body: JSON.stringify({ categoryId, name, basePriceMinorUnits, taxRatePercent }),
+  });
+}
+
+export async function updateProductDetails(
+  productId: string,
+  active: boolean,
+  estimatedPreparationMinutes: number | null,
+  allergens: Allergen[],
+): Promise<ProductAdmin> {
+  return apiFetch(`/api/staff/products/${encodeURIComponent(productId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ active, estimatedPreparationMinutes, allergens }),
   });
 }
 
@@ -334,7 +445,7 @@ export async function upsertBranchProduct(
 // Staff / role management (Permission.STAFF_MANAGE)
 // ---------------------------------------------------------------------------
 
-export type StaffRole = "BUSINESS_ADMIN" | "BRANCH_MANAGER" | "KITCHEN_STAFF";
+export type StaffRole = "BUSINESS_ADMIN" | "BRANCH_MANAGER" | "CASHIER" | "KITCHEN_STAFF";
 
 export type StaffUser = {
   id: string;
@@ -395,4 +506,67 @@ export async function getPickupBoard(branchId: string): Promise<PickupBoardEntry
 
 export function buildPickupBoardStreamUrl(branchId: string): string {
   return `${getApiBaseUrl()}/api/branches/${encodeURIComponent(branchId)}/pickup-board/stream`;
+}
+
+// ---------------------------------------------------------------------------
+// Business settings + contacts (gap-analysis #6, Section 12.1/12.3) -
+// Permission.BUSINESS_SETTINGS_MANAGE.
+// ---------------------------------------------------------------------------
+
+export type Business = {
+  id: string;
+  name: string;
+  active: boolean;
+  defaultCurrency: string;
+  defaultTimeZone: string;
+  createdAt: string;
+};
+
+export async function getBusiness(): Promise<Business> {
+  return apiFetch("/api/staff/business");
+}
+
+export async function updateBusinessSettings(defaultCurrency: string, defaultTimeZone: string): Promise<Business> {
+  return apiFetch("/api/staff/business/settings", {
+    method: "POST",
+    body: JSON.stringify({ defaultCurrency, defaultTimeZone }),
+  });
+}
+
+export type BusinessContact = {
+  id: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  whatsappEnabled: boolean;
+  dailyReportRecipient: boolean;
+  monthlyReportRecipient: boolean;
+  active: boolean;
+};
+
+export async function listBusinessContacts(): Promise<BusinessContact[]> {
+  return apiFetch("/api/staff/business/contacts");
+}
+
+export type BusinessContactInput = {
+  name: string;
+  phone: string;
+  email: string;
+  whatsappEnabled: boolean;
+  dailyReportRecipient: boolean;
+  monthlyReportRecipient: boolean;
+};
+
+export async function createBusinessContact(input: BusinessContactInput): Promise<BusinessContact> {
+  return apiFetch("/api/staff/business/contacts", { method: "POST", body: JSON.stringify(input) });
+}
+
+export async function updateBusinessContact(
+  contactId: string,
+  input: BusinessContactInput & { active: boolean },
+): Promise<BusinessContact> {
+  return apiFetch(`/api/staff/business/contacts/${encodeURIComponent(contactId)}`, {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
 }
