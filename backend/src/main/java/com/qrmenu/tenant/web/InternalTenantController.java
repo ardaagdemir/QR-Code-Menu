@@ -48,12 +48,7 @@ class InternalTenantController {
     ResponseEntity<BranchResponse> createBranch(
             @PathVariable UUID businessId, @Valid @RequestBody CreateBranchRequest request) {
         Branch branch = tenantService.createBranch(
-                businessId,
-                request.name(),
-                request.orderingEnabledOrDefault(),
-                request.openingTime(),
-                request.closingTime(),
-                request.deliveryModelOrDefault());
+                businessId, request.name(), request.orderingEnabledOrDefault(), request.address(), request.deliveryModelOrDefault());
         return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(branch));
     }
 
@@ -83,18 +78,15 @@ class InternalTenantController {
     }
 
     private BusinessResponse toResponse(Business business) {
-        return new BusinessResponse(business.getId(), business.getName(), business.isActive(), business.getCreatedAt());
+        return new BusinessResponse(
+                business.getId(), business.getName(), business.isActive(), business.getDefaultCurrency(),
+                business.getDefaultTimeZone(), business.getCreatedAt());
     }
 
     private BranchResponse toResponse(Branch branch) {
         return new BranchResponse(
-                branch.getId(),
-                branch.getBusinessId(),
-                branch.getName(),
-                branch.isOrderingEnabled(),
-                branch.getOpeningTime(),
-                branch.getClosingTime(),
-                branch.getDeliveryModel().name());
+                branch.getId(), branch.getBusinessId(), branch.getName(), branch.isOrderingEnabled(), branch.getAddress(),
+                branch.getTimezone(), branch.getDeliveryModel().name());
     }
 
     private TableResponse toResponse(RestaurantTable table) {

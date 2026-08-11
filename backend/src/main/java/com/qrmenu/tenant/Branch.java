@@ -9,7 +9,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
-import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.UUID;
 
 /**
@@ -17,6 +17,14 @@ import java.util.UUID;
  * explicit/id-based on purpose, in the same spirit as the "no magic
  * TenantScopedRepository" decision in Section 2: every business_id used in a query is
  * visible in the code, not hidden behind lazy-loaded associations.
+ *
+ * <p>Gap-analysis #4: the single openingTime/closingTime pair this used to carry
+ * couldn't represent different hours per day of week, so it was replaced by
+ * BranchBusinessHours (one row per java.time.DayOfWeek, product-requirements.md
+ * Section 12.2). orderingEnabled is what already fulfills that section's "temporary
+ * closed/open override" - a manual toggle that overrides the weekly schedule
+ * regardless of what day/hour it is; a second field for the same concept would be
+ * redundant (Section 26: "gereksiz karmaşıklık").
  */
 @Entity
 @Table(name = "branch")
@@ -35,11 +43,13 @@ public class Branch {
     @Column(name = "ordering_enabled", nullable = false)
     private boolean orderingEnabled;
 
-    @Column(name = "opening_time")
-    private LocalTime openingTime;
+    /** Opsiyonel (Section 12.2). */
+    @Column
+    private String address;
 
-    @Column(name = "closing_time")
-    private LocalTime closingTime;
+    /** Opsiyonel (Section 12.2) - null olduğunda tüketen tarafın Business.defaultTimeZone'a düşmesi beklenir. */
+    @Column
+    private String timezone;
 
     @Column(name = "delivery_model", nullable = false)
     @Enumerated(EnumType.STRING)
@@ -55,18 +65,11 @@ public class Branch {
         // JPA
     }
 
-    public Branch(
-            UUID businessId,
-            String name,
-            boolean orderingEnabled,
-            LocalTime openingTime,
-            LocalTime closingTime,
-            DeliveryModel deliveryModel) {
+    public Branch(UUID businessId, String name, boolean orderingEnabled, String address, DeliveryModel deliveryModel) {
         this.businessId = businessId;
         this.name = name;
         this.orderingEnabled = orderingEnabled;
-        this.openingTime = openingTime;
-        this.closingTime = closingTime;
+        this.address = address;
         this.deliveryModel = deliveryModel;
         Instant now = Instant.now();
         this.createdAt = now;
@@ -82,6 +85,23 @@ public class Branch {
     /** Section 9, Milestone 9: BUSINESS_ADMIN can change a branch's delivery model after creation. */
     public void setDeliveryModel(DeliveryModel deliveryModel) {
         this.deliveryModel = deliveryModel;
+        this.updatedAt = Instant.now();
+    }
+
+    public void setAddress(String address) {
+        this.address = address;
+        this.updatedAt = Instant.now();
+    }
+
+    public void setTimezone(String timezone) {
+        if (timezone != null) {
+            try {
+                ZoneId.of(timezone);
+            } catch (RuntimeException e) {
+                throw new IllegalArgumentException("Invalid IANA time zone id: " + timezone);
+            }
+        }
+        this.timezone = timezone;
         this.updatedAt = Instant.now();
     }
 
@@ -101,12 +121,12 @@ public class Branch {
         return orderingEnabled;
     }
 
-    public LocalTime getOpeningTime() {
-        return openingTime;
+    public String getAddress() {
+        return address;
     }
 
-    public LocalTime getClosingTime() {
-        return closingTime;
+    public String getTimezone() {
+        return timezone;
     }
 
     public DeliveryModel getDeliveryModel() {

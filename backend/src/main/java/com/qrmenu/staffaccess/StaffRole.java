@@ -15,6 +15,7 @@ public enum StaffRole {
     PLATFORM_ADMIN,
     BUSINESS_ADMIN,
     BRANCH_MANAGER,
+    CASHIER,
     KITCHEN_STAFF;
 
     public Set<Permission> permissions() {
@@ -30,13 +31,27 @@ public enum StaffRole {
                     Permission.ORDER_HISTORY_VIEW,
                     Permission.AUDIT_VIEW,
                     Permission.ORDERING_TOGGLE,
-                    Permission.ORDER_COMPLETE);
+                    Permission.ORDER_COMPLETE,
+                    Permission.ORDER_VIEW,
+                    Permission.ORDER_ACCEPT,
+                    Permission.ORDER_REJECT,
+                    Permission.BUSINESS_SETTINGS_MANAGE);
             case BRANCH_MANAGER -> EnumSet.of(
                     Permission.REFUND_ISSUE,
                     Permission.ORDER_HISTORY_VIEW,
                     Permission.ORDERING_TOGGLE,
                     Permission.KITCHEN_DECIDE,
-                    Permission.ORDER_COMPLETE);
+                    Permission.ORDER_COMPLETE,
+                    Permission.ORDER_VIEW,
+                    Permission.ORDER_ACCEPT,
+                    Permission.ORDER_REJECT);
+            // Section 11: kasa - siparişi kabul/red eder, tam refund'u tetikler; mutfak/menü/personel yönetimine dokunmaz.
+            case CASHIER -> EnumSet.of(
+                    Permission.ORDER_VIEW,
+                    Permission.ORDER_ACCEPT,
+                    Permission.ORDER_REJECT,
+                    Permission.ORDER_COMPLETE,
+                    Permission.ORDER_HISTORY_VIEW);
             case KITCHEN_STAFF -> EnumSet.of(Permission.KITCHEN_DECIDE);
         };
     }

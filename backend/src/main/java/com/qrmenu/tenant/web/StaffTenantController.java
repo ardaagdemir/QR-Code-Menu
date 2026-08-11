@@ -5,16 +5,29 @@ import com.qrmenu.staffaccess.StaffAuthService;
 import com.qrmenu.staffaccess.StaffContext;
 import com.qrmenu.staffaccess.StaffCookieSupport;
 import com.qrmenu.tenant.Branch;
+import com.qrmenu.tenant.BranchBusinessHours;
+import com.qrmenu.tenant.Business;
+import com.qrmenu.tenant.BusinessContact;
 import com.qrmenu.tenant.RestaurantTable;
 import com.qrmenu.tenant.TableQrToken;
 import com.qrmenu.tenant.TenantService;
+import com.qrmenu.tenant.TenantService.BranchBusinessHoursEntry;
+import com.qrmenu.tenant.web.dto.BranchBusinessHoursResponse;
 import com.qrmenu.tenant.web.dto.BranchResponse;
+import com.qrmenu.tenant.web.dto.BusinessContactResponse;
+import com.qrmenu.tenant.web.dto.BusinessResponse;
 import com.qrmenu.tenant.web.dto.CreateBranchRequest;
+import com.qrmenu.tenant.web.dto.CreateBusinessContactRequest;
 import com.qrmenu.tenant.web.dto.CreateTableRequest;
 import com.qrmenu.tenant.web.dto.QrTokenResponse;
+import com.qrmenu.tenant.web.dto.SetAddressRequest;
+import com.qrmenu.tenant.web.dto.SetBranchBusinessHoursRequest;
+import com.qrmenu.tenant.web.dto.SetBranchTimezoneRequest;
 import com.qrmenu.tenant.web.dto.SetDeliveryModelRequest;
 import com.qrmenu.tenant.web.dto.SetOrderingEnabledRequest;
 import com.qrmenu.tenant.web.dto.TableResponse;
+import com.qrmenu.tenant.web.dto.UpdateBusinessContactRequest;
+import com.qrmenu.tenant.web.dto.UpdateBusinessSettingsRequest;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
@@ -24,6 +37,7 @@ import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -48,6 +62,53 @@ public class StaffTenantController {
         this.staffAuthService = staffAuthService;
     }
 
+    @GetMapping("/business")
+    public BusinessResponse getBusiness(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie) {
+        StaffContext context = resolveContext(sessionCookie, Permission.BUSINESS_SETTINGS_MANAGE);
+        return toResponse(tenantService.getBusiness(context.businessId()));
+    }
+
+    @PostMapping("/business/settings")
+    public BusinessResponse updateBusinessSettings(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
+            @Valid @RequestBody UpdateBusinessSettingsRequest request) {
+        StaffContext context = resolveContext(sessionCookie, Permission.BUSINESS_SETTINGS_MANAGE);
+        Business business = tenantService.updateBusinessSettings(
+                context.businessId(), request.defaultCurrency(), request.defaultTimeZone(), context.staffUserId());
+        return toResponse(business);
+    }
+
+    @GetMapping("/business/contacts")
+    public List<BusinessContactResponse> listBusinessContacts(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie) {
+        StaffContext context = resolveContext(sessionCookie, Permission.BUSINESS_SETTINGS_MANAGE);
+        return tenantService.listBusinessContacts(context.businessId()).stream().map(StaffTenantController::toResponse).toList();
+    }
+
+    @PostMapping("/business/contacts")
+    public ResponseEntity<BusinessContactResponse> createBusinessContact(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
+            @Valid @RequestBody CreateBusinessContactRequest request) {
+        StaffContext context = resolveContext(sessionCookie, Permission.BUSINESS_SETTINGS_MANAGE);
+        BusinessContact contact = tenantService.createBusinessContact(
+                context.businessId(), request.name(), request.phone(), request.email(), request.whatsappEnabled(),
+                request.dailyReportRecipient(), request.monthlyReportRecipient(), context.staffUserId());
+        return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(contact));
+    }
+
+    @PutMapping("/business/contacts/{contactId}")
+    public ResponseEntity<BusinessContactResponse> updateBusinessContact(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
+            @PathVariable UUID contactId,
+            @Valid @RequestBody UpdateBusinessContactRequest request) {
+        StaffContext context = resolveContext(sessionCookie, Permission.BUSINESS_SETTINGS_MANAGE);
+        BusinessContact contact = tenantService.updateBusinessContact(
+                context.businessId(), contactId, request.name(), request.phone(), request.email(), request.whatsappEnabled(),
+                request.dailyReportRecipient(), request.monthlyReportRecipient(), request.active(), context.staffUserId());
+        return ResponseEntity.ok(toResponse(contact));
+    }
+
     @GetMapping("/branches")
     public List<BranchResponse> listBranches(
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie) {
@@ -61,13 +122,29 @@ public class StaffTenantController {
             @Valid @RequestBody CreateBranchRequest request) {
         StaffContext context = resolveContext(sessionCookie, Permission.BRANCH_MANAGE);
         Branch branch = tenantService.createBranch(
-                context.businessId(),
-                request.name(),
-                request.orderingEnabledOrDefault(),
-                request.openingTime(),
-                request.closingTime(),
+                context.businessId(), request.name(), request.orderingEnabledOrDefault(), request.address(),
                 request.deliveryModelOrDefault());
         return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(branch));
+    }
+
+    @PostMapping("/branches/{branchId}/address")
+    public ResponseEntity<BranchResponse> setAddress(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
+            @PathVariable UUID branchId,
+            @Valid @RequestBody SetAddressRequest request) {
+        StaffContext context = resolveContext(sessionCookie, Permission.BRANCH_MANAGE);
+        Branch branch = tenantService.setAddress(context.businessId(), branchId, request.address(), context.staffUserId());
+        return ResponseEntity.ok(toResponse(branch));
+    }
+
+    @PostMapping("/branches/{branchId}/timezone")
+    public ResponseEntity<BranchResponse> setTimezone(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
+            @PathVariable UUID branchId,
+            @Valid @RequestBody SetBranchTimezoneRequest request) {
+        StaffContext context = resolveContext(sessionCookie, Permission.BRANCH_MANAGE);
+        Branch branch = tenantService.setBranchTimezone(context.businessId(), branchId, request.timezone(), context.staffUserId());
+        return ResponseEntity.ok(toResponse(branch));
     }
 
     @PostMapping("/branches/{branchId}/ordering-enabled")
@@ -90,6 +167,27 @@ public class StaffTenantController {
         Branch branch =
                 tenantService.setDeliveryModel(context.businessId(), branchId, request.deliveryModel(), context.staffUserId());
         return ResponseEntity.ok(toResponse(branch));
+    }
+
+    @GetMapping("/branches/{branchId}/business-hours")
+    public List<BranchBusinessHoursResponse> getBusinessHours(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie, @PathVariable UUID branchId) {
+        StaffContext context = resolveContext(sessionCookie, Permission.BRANCH_MANAGE);
+        return tenantService.getBranchBusinessHours(context.businessId(), branchId).stream().map(StaffTenantController::toResponse).toList();
+    }
+
+    @PostMapping("/branches/{branchId}/business-hours")
+    public List<BranchBusinessHoursResponse> setBusinessHours(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
+            @PathVariable UUID branchId,
+            @Valid @RequestBody SetBranchBusinessHoursRequest request) {
+        StaffContext context = resolveContext(sessionCookie, Permission.BRANCH_MANAGE);
+        List<BranchBusinessHoursEntry> entries = request.days().stream()
+                .map(day -> new BranchBusinessHoursEntry(day.dayOfWeek(), day.openingTime(), day.closingTime(), day.closed()))
+                .toList();
+        return tenantService.setBranchBusinessHours(context.businessId(), branchId, entries, context.staffUserId()).stream()
+                .map(StaffTenantController::toResponse)
+                .toList();
     }
 
     @GetMapping("/branches/{branchId}/tables")
@@ -145,13 +243,24 @@ public class StaffTenantController {
 
     private BranchResponse toResponse(Branch branch) {
         return new BranchResponse(
-                branch.getId(),
-                branch.getBusinessId(),
-                branch.getName(),
-                branch.isOrderingEnabled(),
-                branch.getOpeningTime(),
-                branch.getClosingTime(),
-                branch.getDeliveryModel().name());
+                branch.getId(), branch.getBusinessId(), branch.getName(), branch.isOrderingEnabled(), branch.getAddress(),
+                branch.getTimezone(), branch.getDeliveryModel().name());
+    }
+
+    private BusinessResponse toResponse(Business business) {
+        return new BusinessResponse(
+                business.getId(), business.getName(), business.isActive(), business.getDefaultCurrency(),
+                business.getDefaultTimeZone(), business.getCreatedAt());
+    }
+
+    private static BusinessContactResponse toResponse(BusinessContact contact) {
+        return new BusinessContactResponse(
+                contact.getId(), contact.getName(), contact.getPhone(), contact.getEmail(), contact.isWhatsappEnabled(),
+                contact.isDailyReportRecipient(), contact.isMonthlyReportRecipient(), contact.isActive());
+    }
+
+    private static BranchBusinessHoursResponse toResponse(BranchBusinessHours hours) {
+        return new BranchBusinessHoursResponse(hours.getDayOfWeek(), hours.getOpeningTime(), hours.getClosingTime(), hours.isClosed());
     }
 
     private TableResponse toResponse(RestaurantTable table) {

@@ -3,10 +3,14 @@ package com.qrmenu.tenant;
 import com.qrmenu.audit.AuditService;
 import com.qrmenu.common.web.OrderingNotAllowedException;
 import com.qrmenu.common.web.ResourceNotFoundException;
+import com.qrmenu.tenant.repository.BranchBusinessHoursRepository;
 import com.qrmenu.tenant.repository.BranchRepository;
+import com.qrmenu.tenant.repository.BusinessContactRepository;
 import com.qrmenu.tenant.repository.BusinessRepository;
 import com.qrmenu.tenant.repository.RestaurantTableRepository;
 import com.qrmenu.tenant.repository.TableQrTokenRepository;
+import java.time.DayOfWeek;
+import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
@@ -28,6 +32,8 @@ public class TenantService {
     private final BranchRepository branchRepository;
     private final RestaurantTableRepository tableRepository;
     private final TableQrTokenRepository qrTokenRepository;
+    private final BranchBusinessHoursRepository branchBusinessHoursRepository;
+    private final BusinessContactRepository businessContactRepository;
     private final AuditService auditService;
 
     public TenantService(
@@ -35,11 +41,15 @@ public class TenantService {
             BranchRepository branchRepository,
             RestaurantTableRepository tableRepository,
             TableQrTokenRepository qrTokenRepository,
+            BranchBusinessHoursRepository branchBusinessHoursRepository,
+            BusinessContactRepository businessContactRepository,
             AuditService auditService) {
         this.businessRepository = businessRepository;
         this.branchRepository = branchRepository;
         this.tableRepository = tableRepository;
         this.qrTokenRepository = qrTokenRepository;
+        this.branchBusinessHoursRepository = branchBusinessHoursRepository;
+        this.businessContactRepository = businessContactRepository;
         this.auditService = auditService;
     }
 
@@ -48,18 +58,29 @@ public class TenantService {
         return businessRepository.save(new Business(name));
     }
 
+    @Transactional(readOnly = true)
+    public Business getBusiness(UUID businessId) {
+        return businessRepository
+                .findById(businessId)
+                .orElseThrow(() -> new ResourceNotFoundException("Business not found: " + businessId));
+    }
+
+    /** Gap-analysis #6, Section 12.1: BUSINESS_ADMIN-editable default currency/timezone fallback. */
     @Transactional
-    public Branch createBranch(
-            UUID businessId,
-            String name,
-            boolean orderingEnabled,
-            LocalTime openingTime,
-            LocalTime closingTime,
-            DeliveryModel deliveryModel) {
+    public Business updateBusinessSettings(UUID businessId, String defaultCurrency, String defaultTimeZone, UUID actorStaffUserId) {
+        Business business = getBusiness(businessId);
+        business.setSettings(defaultCurrency, defaultTimeZone);
+        businessRepository.save(business);
+        auditService.record(businessId, actorStaffUserId, "Business", businessId, "SETTINGS_CHANGED", Map.of());
+        return business;
+    }
+
+    @Transactional
+    public Branch createBranch(UUID businessId, String name, boolean orderingEnabled, String address, DeliveryModel deliveryModel) {
         businessRepository
                 .findById(businessId)
                 .orElseThrow(() -> new ResourceNotFoundException("Business not found: " + businessId));
-        return branchRepository.save(new Branch(businessId, name, orderingEnabled, openingTime, closingTime, deliveryModel));
+        return branchRepository.save(new Branch(businessId, name, orderingEnabled, address, deliveryModel));
     }
 
     @Transactional
@@ -143,6 +164,94 @@ public class TenantService {
         return branch;
     }
 
+    /** Section 12.2: opsiyonel adres alanı. */
+    @Transactional
+    public Branch setAddress(UUID businessId, UUID branchId, String address, UUID actorStaffUserId) {
+        Branch branch = branchRepository
+                .findByIdAndBusinessId(branchId, businessId)
+                .orElseThrow(() -> new ResourceNotFoundException("Branch not found for business: " + branchId));
+        branch.setAddress(address);
+        branchRepository.save(branch);
+        auditService.record(businessId, actorStaffUserId, "Branch", branch.getId(), "ADDRESS_CHANGED", Map.of());
+        return branch;
+    }
+
+    /** Section 12.2: opsiyonel şube saat dilimi - null ise tüketen taraf Business.defaultTimeZone'a düşer. */
+    @Transactional
+    public Branch setBranchTimezone(UUID businessId, UUID branchId, String timezone, UUID actorStaffUserId) {
+        Branch branch = branchRepository
+                .findByIdAndBusinessId(branchId, businessId)
+                .orElseThrow(() -> new ResourceNotFoundException("Branch not found for business: " + branchId));
+        branch.setTimezone(timezone);
+        branchRepository.save(branch);
+        auditService.record(businessId, actorStaffUserId, "Branch", branch.getId(), "TIMEZONE_CHANGED", Map.of());
+        return branch;
+    }
+
+    /** Section 12.3: bir işletmenin birden fazla sahibi/rapor alıcısı olabilir. */
+    @Transactional
+    public BusinessContact createBusinessContact(
+            UUID businessId, String name, String phone, String email, boolean whatsappEnabled,
+            boolean dailyReportRecipient, boolean monthlyReportRecipient, UUID actorStaffUserId) {
+        getBusiness(businessId);
+        BusinessContact contact = businessContactRepository.save(new BusinessContact(
+                businessId, name, phone, email, whatsappEnabled, dailyReportRecipient, monthlyReportRecipient));
+        auditService.record(businessId, actorStaffUserId, "BusinessContact", contact.getId(), "CREATED", Map.of());
+        return contact;
+    }
+
+    @Transactional
+    public BusinessContact updateBusinessContact(
+            UUID businessId, UUID contactId, String name, String phone, String email, boolean whatsappEnabled,
+            boolean dailyReportRecipient, boolean monthlyReportRecipient, boolean active, UUID actorStaffUserId) {
+        BusinessContact contact = businessContactRepository
+                .findByIdAndBusinessId(contactId, businessId)
+                .orElseThrow(() -> new ResourceNotFoundException("Business contact not found: " + contactId));
+        contact.update(name, phone, email, whatsappEnabled, dailyReportRecipient, monthlyReportRecipient, active);
+        businessContactRepository.save(contact);
+        auditService.record(businessId, actorStaffUserId, "BusinessContact", contact.getId(), "UPDATED", Map.of());
+        return contact;
+    }
+
+    @Transactional(readOnly = true)
+    public List<BusinessContact> listBusinessContacts(UUID businessId) {
+        return businessContactRepository.findAllByBusinessIdOrderByNameAsc(businessId);
+    }
+
+    public record BranchBusinessHoursEntry(DayOfWeek dayOfWeek, LocalTime openingTime, LocalTime closingTime, boolean closed) {
+    }
+
+    /**
+     * Gap-analysis #4: replaces the whole weekly schedule in one call (delete-then-
+     * insert, within this one transaction) rather than a per-day upsert - simpler than
+     * reconciling partial updates, and a "set my hours" admin screen naturally submits
+     * the whole week at once anyway. Days not included in `entries` end up with no row
+     * at all, i.e. unrestricted for that day (see BranchBusinessHours Javadoc).
+     */
+    @Transactional
+    public List<BranchBusinessHours> setBranchBusinessHours(
+            UUID businessId, UUID branchId, List<BranchBusinessHoursEntry> entries, UUID actorStaffUserId) {
+        branchRepository
+                .findByIdAndBusinessId(branchId, businessId)
+                .orElseThrow(() -> new ResourceNotFoundException("Branch not found for business: " + branchId));
+        branchBusinessHoursRepository.deleteAllByBranchId(branchId);
+        List<BranchBusinessHours> saved = entries.stream()
+                .map(entry -> branchBusinessHoursRepository.save(new BranchBusinessHours(
+                        businessId, branchId, entry.dayOfWeek(), entry.openingTime(), entry.closingTime(), entry.closed())))
+                .toList();
+        auditService.record(
+                businessId, actorStaffUserId, "Branch", branchId, "BUSINESS_HOURS_CHANGED", Map.of("dayCount", entries.size()));
+        return saved;
+    }
+
+    @Transactional(readOnly = true)
+    public List<BranchBusinessHours> getBranchBusinessHours(UUID businessId, UUID branchId) {
+        branchRepository
+                .findByIdAndBusinessId(branchId, businessId)
+                .orElseThrow(() -> new ResourceNotFoundException("Branch not found for business: " + branchId));
+        return branchBusinessHoursRepository.findAllByBranchId(branchId);
+    }
+
     /** Used by order tracking (customer-facing) to show the delivery model - Section 4, screen #9. */
     @Transactional(readOnly = true)
     public DeliveryModel getDeliveryModel(UUID branchId) {
@@ -200,12 +309,13 @@ public class TenantService {
     /**
      * The authoritative, pre-payment ordering-allowed check (Section 9, Milestone 5:
      * "Branch ordering-enabled/çalışma saati kontrolünün 'kesin/otoriter' hali ...
-     * ödeme başlamadan hemen önce eklenmeli"). Branch.orderingEnabled/openingTime/
-     * closingTime existed since Milestone 2 but were never read anywhere until now
-     * (cart add/remove deliberately skips this soft check - Section 1.1's "katmanlı
-     * savunma": soft check at add-to-cart time is out of scope, this is the one
-     * authoritative check). A null opening/closing time means no hours restriction
-     * (only orderingEnabled applies); an overnight window (opening after closing, e.g.
+     * ödeme başlamadan hemen önce eklenmeli"; gap-analysis #4 moved the hours source
+     * from Branch.openingTime/closingTime to per-day BranchBusinessHours). Cart
+     * add/remove deliberately skips this soft check - Section 1.1's "katmanlı savunma":
+     * soft check at add-to-cart time is out of scope, this is the one authoritative
+     * check. No row for today's day-of-week means no hours restriction (only
+     * orderingEnabled applies) - see BranchBusinessHours Javadoc; a `closed=true` row
+     * blocks ordering outright; an overnight window (opening after closing, e.g.
      * 18:00-02:00) is treated as wrapping past midnight.
      */
     @Transactional(readOnly = true)
@@ -216,11 +326,17 @@ public class TenantService {
         if (!branch.isOrderingEnabled()) {
             throw new OrderingNotAllowedException("Branch is not currently accepting orders: " + branchId);
         }
-        LocalTime opening = branch.getOpeningTime();
-        LocalTime closing = branch.getClosingTime();
-        if (opening != null && closing != null && !isWithinHours(LocalTime.now(), opening, closing)) {
-            throw new OrderingNotAllowedException("Branch is outside its ordering hours: " + branchId);
-        }
+        LocalTime now = LocalTime.now();
+        branchBusinessHoursRepository.findByBranchIdAndDayOfWeek(branchId, LocalDate.now().getDayOfWeek()).ifPresent(hours -> {
+            if (hours.isClosed()) {
+                throw new OrderingNotAllowedException("Branch is closed today: " + branchId);
+            }
+            LocalTime opening = hours.getOpeningTime();
+            LocalTime closing = hours.getClosingTime();
+            if (opening != null && closing != null && !isWithinHours(now, opening, closing)) {
+                throw new OrderingNotAllowedException("Branch is outside its ordering hours: " + branchId);
+            }
+        });
     }
 
     private static boolean isWithinHours(LocalTime now, LocalTime opening, LocalTime closing) {
