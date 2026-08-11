@@ -54,7 +54,8 @@ log, pickup board, `DeliveryModel`, rate limiting, payment timeout scheduler.
 6. ✅ **Branch/Business ayarları** — `BranchBusinessHours`, `address`, `timezone`, geçici kapatma;
    `Business.defaultCurrency/defaultTimeZone`, `BusinessContact`. (Bkz. development-progress.md,
    Gap-Analysis #6.)
-7. **Toplu menü atama + Zincir karşılaştırma + StaffAnnouncement**.
+7. ✅ **Toplu menü atama + Zincir karşılaştırma + StaffAnnouncement** (finansal-olmayan kapsam; bkz.
+   development-progress.md, Gap-Analysis #7).
 8. **Raporlama modülü** — temel metrikler önce, sonra şube karşılaştırma.
 9. **Gün sonu snapshot + Excel export**.
 10. **Gider yönetimi** (expense + recurring).

@@ -500,3 +500,55 @@ testleri + `npm run build`/`lint` ile yapıldı; önceki milestone'larda birkaç
 gibi hataların testlerden kaçtığı not edilmişti (bkz. yukarıdaki Product Alanları notu) - bu sınıf bir regresyon
 bu PR'da mümkün (örn. yeni `PATCH`/`PUT` metodu yok, mevcut `CorsConfig.allowedMethods` zaten `PUT` içeriyor, ama
 gerçek tarayıcı doğrulaması yapılmadığı açıkça belirtilsin diye).
+
+---
+
+## Gap-Analysis #7 — Toplu Menü Atama + Zincir Karşılaştırma + StaffAnnouncement — ✅ COMPLETED
+
+Gap-analysis'in "Önerilen Geliştirme Sırası" #7 maddesi. Kapsam bilinçli olarak finansal-olmayan verilerle
+sınırlandırıldı (Bölüm 13.2'nin tam ciro/refund karşılaştırması gelecekteki Raporlama modülüne - gap-analysis
+#8 - bırakıldı); StaffAnnouncement tamamen manuel, ayrı bir özellik olarak kuruldu (toplu menü atamasının
+otomatik tetiklediği bir bildirim değil).
+
+**Ana özellikler:**
+- **Toplu menü atama:** `MenuService.bulkAssignProductToBranches` - "tüm şubelere ata" (`TenantService.
+  listBranches` ile çözülür) veya "seçili şubelere ata", mevcut `upsertBranchProduct`'ı şube başına çağırıyor
+  (yalnızca availability=AVAILABLE, fiyat override'sız - Bölüm 5'in opt-in modeli korunuyor, bypass edilmiyor).
+  Yeni `POST /api/staff/products/{id}/branch-assignments` (`Permission.MENU_MANAGE`). `/menu` ekranına her ürün
+  satırına "Şubelere Ata" paneli eklendi (tüm/seçili radio + şube checkbox'ları).
+- **StaffAnnouncement (Bölüm 18.1):** yeni `com.qrmenu.announcement` modülü (entity/repository/service/
+  controller, V16 migration - `staff_announcement` + `staff_announcement_branch` element-collection tablosu).
+  `AnnouncementService.create/listForBusiness/endNow/listActiveFor` - hedef `ALL_BRANCHES`/`SELECTED_BRANCHES`,
+  opsiyonel `expiresAt` (erken sonlandırma için `endNow` de var). Yeni `Permission.ANNOUNCEMENT_MANAGE`
+  (yalnızca `BUSINESS_ADMIN`). `GET/POST /api/staff/announcements`, `POST /api/staff/announcements/{id}/end`
+  bu permission'la korunuyor; `GET /api/staff/announcements/active` ise permission'sız, herhangi bir oturum
+  açmış personel görebiliyor (banner'ın her rol için çalışması için) - görünürlük `StaffContext.
+  canAccessBranch` ile filtreleniyor (admin hepsini görür, şube-scope'lu roller yalnızca ALL_BRANCHES + kendi
+  şubesini kapsayan SELECTED_BRANCHES duyurularını görür). Yeni `/announcements` ekranı (admin-only nav) +
+  `AnnouncementBanner` bileşeni `StaffNav` içinde her role gösteriliyor, kapatma yalnızca `localStorage`'da
+  tutuluyor (sunucu tarafı okunma takibi yok - kasıtlı minimal kapsam).
+- **Zincir/şube karşılaştırma (Bölüm 13.2, finansal-olmayan):** yeni ince `com.qrmenu.chain` modülü - kendi
+  persistence'ı yok, salt-okunur `ChainComparisonService` mevcut `TenantService.listBranches` +
+  `OrderingService.countOrdersSince` (yeni, DRAFT/CANCELLED hariç) + `CustomerSessionService.
+  countTableVisitsSince` (yeni) metotlarını son 24 saatlik sabit pencerede birleştiriyor. Yeni
+  `GET /api/staff/branches/comparison` (`Permission.BRANCH_MANAGE`). Yeni `/chain-comparison` ekranı (admin-only
+  nav): şube × {sipariş sayısı, masa ziyareti sayısı} tablosu.
+
+**Teknik kararlar:**
+- Bulk assign ve StaffAnnouncement için ayrı `BranchAssignmentTarget`/`AnnouncementTarget` enum'ları (aynı
+  ALL_BRANCHES/SELECTED_BRANCHES şekli ama modüller arası paylaşılan bir soyutlama yok - YAGNI, iki modülün
+  birbirinden habersiz kalması tercih edildi).
+- `ChainComparisonService`'in kendi repository'si yok; yalnızca üç modülün zaten public facade'lerini (
+  TenantService/OrderingService/CustomerSessionService) besliyor - ModuleBoundaryTest'e yeni bir case gerekmedi,
+  yalnızca `announcement.repository` için yeni bir case eklendi.
+- `OrderingService.countOrdersSince` DRAFT ve CANCELLED durumlarını hariç tutuyor (terk edilmiş sepetler
+  "sipariş" sayılmıyor) - CustomerSessionService.countTableVisitsSince ise ham TableVisit sayısı (finansal
+  olmayan bir "trafik" metriği, bilinçli olarak filtresiz).
+
+**Backend test sayısı 84 → 95** (yeni: `BulkAssignBranchesFlowIntegrationTest` 4, `AnnouncementFlowIntegrationTest`
+4 - create/list/end, SELECTED_BRANCHES görünürlük filtresi şube-scope'lu role göre, boş branchIds reddi, izinsiz
+erişim 403 ama /active açık kalıyor -, `ChainComparisonFlowIntegrationTest` 2, `ModuleBoundaryTest` +1 yeni
+`announcement.repository` case'i). staff-web build+lint temiz.
+
+**Not:** Bu madde de canlı tarayıcı doğrulaması olmadan tamamlandı (bkz. proje hafızası - Chrome testi bu
+projede kapalı); doğrulama backend integration testleri + `npm run build`/`lint` ile yapıldı.
