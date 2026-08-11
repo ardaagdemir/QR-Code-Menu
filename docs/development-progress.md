@@ -649,3 +649,54 @@ lead/final-grace eşiklerine uyması; `ModuleBoundaryTest`'e 1 yeni case).
 
 **Not:** Bu madde de canlı tarayıcı doğrulaması olmadan tamamlandı (bkz. proje hafızası - Chrome testi bu
 projede kapalı); doğrulama backend integration testleri + `npm run build`/`lint`/`tsc --noEmit` ile yapıldı.
+
+## Gap-Analysis #10 — Gider Yönetimi — ✅ COMPLETED
+
+Gap-analysis'in "Önerilen Geliştirme Sırası" #10 maddesi (product-requirements.md Section 16: Expense +
+Recurring). Section 17 (Gelir/Gider ve Yönetimsel Kârlılık) de bu maddeye dahil edildi - gider verisi tek
+başına anlamlı değil, doğal sonucu olan "Yönetimsel Net Sonuç" dashboard'u olmadan eksik kalırdı; gap-analysis
+listesinde ayrı bir madde olarak numaralanmamıştı.
+
+**Ana özellikler:**
+- **Yeni `com.qrmenu.expense` modülü:** `ExpenseCategory` (business-scoped, manuel yönetim), `Expense`
+  (`DRAFT`→`SUBMITTED`→`APPROVED`/`REJECTED`; `APPROVED`/`REJECTED` sonrası **immutable** - gün sonu kapanış
+  raporunun FINAL kilidiyle aynı desen), `RecurringExpenseTemplate` (yalnızca `MONTHLY`, spec'in "ilk ihtiyaç"
+  dediği tek değer). `branchId` nullable - business-level (şube bağımsız) gider de mümkün (Section 16.1).
+- **Yeni permission'lar:** `EXPENSE_VIEW`/`EXPENSE_MANAGE` (BUSINESS_ADMIN + BRANCH_MANAGER - kendi şubesi için
+  oluştur/gönder), `EXPENSE_APPROVE` (yalnızca BUSINESS_ADMIN - finansal onay merkezi kalıyor, `REPORT_CHAIN_
+  VIEW` ile aynı gerekçe). Business-level (branchId=null) gider oluşturma da BUSINESS_ADMIN-only.
+- **`RecurringExpenseScheduler`** (`@Scheduled`, 6 saatte bir): aktif şablonları tarar, `dayOfMonth` bugüne
+  denk geliyorsa (kısa aylarda ayın son gününe düşürülüyor) ve o dönem (`YearMonth`) için henüz üretilmemişse
+  otomatik bir `DRAFT` Expense oluşturur - admin sonra düzenler/onaylar (Section 16.2). İdempotency DB'deki
+  `uq_expense_template_period` partial unique index + `existsBySourceTemplateIdAndGeneratedForPeriod` ön
+  kontrolüyle sağlanıyor; scheduler'ın kaçırılan/tekrarlanan çalışması hiçbir zaman bir dönemi iki kez
+  taslaklamıyor (gün sonu kapanış scheduler'ıyla aynı self-correcting felsefe).
+- **`StaffExpenseController`:** kategori CRUD, gider CRUD + submit/approve/reject, tekrarlayan şablon CRUD.
+- **`reporting` modülüne Section 17 endpoint'i:** `GET .../reports/operating-result` - `ReportingService.
+  getBranchReport`'un net satışından `ExpenseService.sumApprovedExpenses`'i (yalnızca `APPROVED` giderler)
+  çıkararak "Yönetimsel Net Sonuç" döner. Backend/frontend hiçbir yerde "net kâr" ifadesi kullanılmıyor -
+  Section 17'nin uyarısı (vergi/stok maliyeti/personel tahakkuku/amortisman modellenmiyor) `OperatingResult
+  Response`'un javadoc'unda ve staff-web kartındaki uyarı metninde açıkça belirtiliyor.
+- **staff-web:** yeni `/expenses` ekranı (kategori yönetimi, gider oluştur/gönder/onayla/reddet - rol bazlı
+  aksiyon görünürlüğü, tekrarlayan şablon listesi/oluşturma), `/reports/[branchId]`'ye "Yönetimsel Net Sonuç"
+  kartı. `StaffNav`'a BUSINESS_ADMIN + BRANCH_MANAGER için "Giderler" linki eklendi.
+
+**Teknik kararlar:**
+- `receiptImageUrl` mevcut `Product.imageUrl` deseniyle aynı: düz bir URL alanı, gerçek dosya upload/object
+  storage yok (kod tabanında hiçbir yerde böyle bir altyapı yok - kapsam dışı bırakıldı).
+- `created_by_staff_user_id` nullable - scheduler'ın ürettiği taslakların bir insan aktörü yok.
+- `ExpenseService` diğer modüllerin servisleri gibi `StaffContext`'i doğrudan alıyor (branch-scope + business-
+  level-only kuralları kendi içinde uyguluyor) - controller yalnızca `Permission` düzeyini çözüyor, tıpkı
+  `AnnouncementService`/`DailyCloseService` gibi.
+- `ModuleBoundaryTest`'e yeni bir case eklendi (`expense.repository` yalnızca `expense` modülü içinden
+  erişilebilir); `reporting`'in `ExpenseService`'e bağımlılığı bu kuralı ihlal etmiyor çünkü yalnızca public
+  facade'a erişiyor.
+
+**Backend test sayısı 103 → 109** (yeni: `ExpenseFlowIntegrationTest` 5 - DRAFT→SUBMIT→APPROVE ve sonrasında
+immutability, KITCHEN_STAFF'ın 403 alması, BRANCH_MANAGER'ın business-level gider oluşturamaması + başka
+şubeye erişememesi + onaylayamaması, recurring scheduler'ın bir dönem için tam olarak bir kez taslak
+üretmesi (idempotency), operating-result'ın net satıştan onaylı giderleri doğru çıkarması; `ModuleBoundaryTest`
+'e 1 yeni case).
+
+**Not:** Bu madde de canlı tarayıcı doğrulaması olmadan tamamlandı (bkz. proje hafızası - Chrome testi bu
+projede kapalı); doğrulama backend integration testleri + `npm run build`/`lint`/`tsc --noEmit` ile yapıldı.
