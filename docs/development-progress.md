@@ -343,3 +343,160 @@ kalıcı çoklu-instance) bu üçünü de kırar.
 **Backend test sayısı 62 → 66** (yeni: `PaymentTimeoutSchedulerIntegrationTest` 1, `RateLimitFilterTest` 2,
 `PickupToCompletionEndToEndTest` 1 — QR taramadan pickup board'a, oradan "teslim edildi" işaretlemesine kadar
 tüm zinciri tek testte kapsayan gerçek bir E2E).
+
+---
+
+## Gap-Analysis #1 — Kasa Kabul/Red Kapısı — ✅ COMPLETED
+
+`docs/gap-analysis.md`'nin CONFLICTING #1 maddesi (ödeme sonrası otomatik mutfağa düşme) kapatıldı. `OrderStatus`
+değişti: `PAID` kaldırıldı, `AWAITING_STORE_ACCEPTANCE` + `REJECTED_BY_STORE` eklendi (V12 migration - `status`
+kolonu VARCHAR(20)→VARCHAR(30), yeni `rejection_reason_code`/`rejection_note` kolonları). Ödeme webhook'u artık
+siparişi `AWAITING_STORE_ACCEPTANCE`'a düşürüyor (`OrderingService.markOrderAwaitingStoreAcceptance`), mutfağa
+gitmek için yeni `OrderControlController` (`/api/staff/branches/{branchId}/orders/{pending-acceptance,{id}/accept,
+{id}/reject}`) üzerinden kasa ACCEPT'i gerekiyor. REJECT, `RefundService.requestFullRefund` ile tam iadeyi tetikliyor
+- orkestrasyon bilinçli olarak controller katmanında (OrderingService içinde değil), Milestone 7'nin
+`ordering→refund→payment→ordering` döngü kaçınma kararıyla aynı gerekçeyle. Yeni `StaffRole.CASHIER` +
+`Permission.ORDER_VIEW/ORDER_ACCEPT/ORDER_REJECT` (BUSINESS_ADMIN/BRANCH_MANAGER da alır); CASHIER, BRANCH_MANAGER/
+KITCHEN_STAFF gibi explicit branch ataması gerektiriyor. `getKitchenQueue` değişmedi - IN_KITCHEN artık yalnızca
+ACCEPT üzerinden ulaşılabildiği için otomatik olarak "yalnızca kasa-kabullü siparişler" haline geldi.
+
+Mevcut 4 entegrasyon testi (Payment/Kitchen/Refund/E2E) ödeme-sonrası-otomatik-mutfak varsayımına göre yazılmıştı;
+hepsi kasa ACCEPT adımını (veya PaymentFlowIntegrationTest için yalnızca beklenen durumu
+`AWAITING_STORE_ACCEPTANCE`'a) güncellenerek düzeltildi. Yeni `OrderControlFlowIntegrationTest` (3 test): ACCEPT
+akışı, CASHIER/KITCHEN_STAFF permission sınırları, REJECT'in tam iadeyi otomatik tetiklediği ve iki kez
+reddedilemeyeceği. customer-web'in sipariş takip sayfasına `AWAITING_STORE_ACCEPTANCE`/`REJECTED_BY_STORE` için
+minimal etiket/mesaj eklendi (ham enum string göstermemek için) - "müşteri bildirim durumlarını genişletme"
+kapsamının geri kalanı (gap-analysis sıradaki madde) ayrı bir aşama.
+
+**Backend test sayısı 66 → 69** (yeni: `OrderControlFlowIntegrationTest` 3).
+
+---
+
+## Gap-Analysis #4 ve #6 — Branch Çalışma Saatleri + Müşteri Bildirim Durumları — ✅ COMPLETED
+
+**#4 (PARTIAL/CONFLICTING → çözüldü):** `Branch.openingTime/closingTime` tek çifti kaldırıldı, yerine yeni
+`BranchBusinessHours(businessId, branchId, dayOfWeek, openingTime, closingTime, closed)` tablosu geldi - haftanın
+her günü ayrı satır (V13 migration, mevcut şubelerin tek çifti varsa 7 güne otomatik kopyalandı, veri kaybı yok).
+Bir gün için satır yoksa o gün kısıtlamasız kalır (eski nullable-alan davranışıyla aynı varsayılan - hiç saat
+girmemiş şubeler bozulmadı). `closed=true` saatlerden bağımsız o günü tamamen kapatır.
+`orderingEnabled` zaten "geçici kapat/aç override" ihtiyacını karşılıyor - ikinci bir alan eklenmedi (Bölüm 26,
+gereksiz karmaşıklık). Ayrıca Bölüm 12.2'nin aynı madde grubundan `Branch.address` (opsiyonel) eklendi. Yeni
+`TenantService.setBranchBusinessHours` (haftayı tek seferde replace-all yazıyor) + `getBranchBusinessHours`, yeni
+`/api/staff/branches/{branchId}/business-hours` (GET/POST) ve `/address` (POST) uçları. `assertOrderingCurrentlyAllowed`
+artık günün `BranchBusinessHours` satırını okuyor (overnight-wrap mantığı aynen korundu).
+
+**#6 (PARTIAL → çözüldü):** `OrderTrackingResponse`'a `latestRefundStatus` eklendi (en son `Refund`'un durumu,
+yoksa null) - `OrderTrackingController` artık `RefundService`'e de bağımlı (yalnızca controller katmanında,
+`ordering`→`refund` döngüsü yaratmıyor, `OrderControlController`'la aynı gerekçe). customer-web'in takip sayfasına
+tüm `OrderStatus` değerleri için etiket (DRAFT/AWAITING_PAYMENT/PAYMENT_FAILED/CANCELLED dahil - artık hiçbir ham
+enum string görünmüyor) ve refund durumuna göre dinamik mesaj ("İadeniz işleniyor" / "tamamlandı" / "başarısız
+oldu, işletmeyle iletişime geçin") eklendi.
+
+Yeni testler: `BranchBusinessHoursFlowIntegrationTest` (5 - saatsiz şube kısıtlamasız, `closed=true` her zaman
+engeller, saat penceresi dışı/içi doğru davranıyor, staff kendi yazdığı saatleri geri okuyabiliyor) +
+`OrderControlFlowIntegrationTest`'e `latestRefundStatus` doğrulaması eklendi. customer-web/staff-web build+lint
+temiz.
+
+**Backend test sayısı 69 → 74** (yeni: `BranchBusinessHoursFlowIntegrationTest` 5).
+
+---
+
+## Gap-Analysis — Kasa Dashboard (staff-web) — ✅ COMPLETED
+
+Gap-analysis'in "Önerilen Geliştirme Sırası" #2 maddesi: yeni `staff-web` ekranı `/cashier/[branchId]` -
+`Gap-Analysis #1`'de eklenen `OrderControlController`'ı kullanıcı arayüzüne bağlıyor. Onay bekleyen
+(`AWAITING_STORE_ACCEPTANCE`) siparişleri kart olarak listeliyor, her sipariş için tekli "Kabul Et" (tüm sipariş) ve
+"Reddet" (açılır red-nedeni formu: `OUT_OF_STOCK`/`KITCHEN_BUSY`/`CLOSED`/`OTHER` + opsiyonel not) aksiyonları var.
+KDS/pickup board'la aynı desen: SSE'yi (`buildKitchenStreamUrl`, mevcut branch-kitchen kanalı) salt "bir şey
+değişti, yeniden çek" sinyali olarak kullanıyor - yeni SSE altyapısı gerekmedi, kanal zaten her durum geçişinde
+(`markOrderAwaitingStoreAcceptance`/`acceptOrder`/`rejectOrder`) event yayınlıyor. `StaffContext.role`/`StaffRole`
+tipine `CASHIER` eklendi; Mutfak/İadeler ekranlarının header'larına karşılıklı "Kasa" linki eklendi (üçü de artık
+birbirine bağlı).
+
+**Canlı doğrulama (Chrome + gerçek Docker Compose stack'i, `AWAITING_STORE_ACCEPTANCE` durumunda gerçek bir sipariş
+üzerinden):** Kabul Et → sipariş kasa listesinden düştü, mutfak panosunda `IN_KITCHEN`/`PENDING_REVIEW` olarak
+doğru şekilde belirdi. Reddet (KITCHEN_BUSY + not) → sipariş kasa listesinden düştü; DB doğrulaması `status=
+REJECTED_BY_STORE`, `rejection_reason_code`/`rejection_note` doğru kaydedilmiş, ve otomatik tam iade (`Refund.status
+=COMPLETED`, tutar sipariş toplamıyla birebir) oluşmuş. Bu doğrulama sırasında ayrı bir gerçek hata da bulundu ve
+düzeltildi (bkz. altında) - fonksiyonel kod hatası değil, canlı ortama özgü bir migration sıralama hatasıydı.
+
+**Bilinen not / bulunup düzeltilen gerçek hata (V12 migration, canlı Docker Compose'da):** `V12` dosyasında `UPDATE
+customer_order SET status='AWAITING_STORE_ACCEPTANCE' WHERE status='PAID'` ifadesi, eski `CHECK` kısıtı henüz
+düşürülmeden önce çalıştırılmıştı - taze Testcontainers DB'sinde (hiç `PAID` satırı yok) bu sessizce no-op kaldığı
+için testler yakalayamadı, ama kalıcı local dev Postgres'inde (önceki manuel test oturumlarından kalma bir `PAID`
+satırı vardı) hem eski kısıt UPDATE'i reddetti hem de (ilk düzeltme denemesinde) yeni kısıt henüz eklenmemişken satır
+zaten yanlış değere sahipti. Doğru sıra: kolonu genişlet → **eski kısıtı düşür** → veri taşı (`UPDATE`) → **yeni
+kısıtı ekle**. `flyway_schema_history`'de V12 hiç `success=true` olarak görünmediği için (transactional DDL, hatalı
+migration temiz rollback oluyor) aynı dosyayı yeni bir versiyon numarası açmadan düzeltmek güvenliydi. Bu, salt
+Testcontainers'a güvenmenin (her test çalıştırmasında sıfırdan, "temiz" bir DB) neden mevcut veriyle canlı doğrulamanın
+yerini tutamayacağının somut bir örneği - proje boyunca süregelen bir prensip (bkz. Milestone 6/8/9 canlı bulgular).
+
+Backend test sayısı değişmedi (74) - bu aşama salt staff-web frontend + mevcut backend uçlarının canlı doğrulaması,
+yeni backend davranışı yok. customer-web/staff-web build+lint zaten temizdi.
+
+---
+
+## Gap-Analysis — Product Alanları (allergens/estimatedPreparationMinutes/active) — ✅ COMPLETED
+
+Gap-analysis'in "Önerilen Geliştirme Sırası" #5 maddesi (Bölüm 3.2). `Product`'a üç yeni alan eklendi (V14
+migration): `active` (varsayılan `true`, mevcut ürünler bozulmadı), `estimated_preparation_minutes` (nullable
+Integer), ve `allergens` - kendi repository/entity'si olmayan bir `@ElementCollection` (`product_allergen` value
+tablosu), her zaman sahip `Product` satırı üzerinden okunuyor, modül-içi, ArchUnit sınırı gerekmiyor. `Allergen`
+enum'u AB'nin 14 zorunlu alerjen listesini kullanıyor (Bölüm 3.2: "yapılandırılmış enum/reference listesi, serbest
+metin olmamalı").
+
+`active=false`, BranchProduct opt-in'den **bağımsız, işletme seviyesinde bir kill-switch** - bir ürün pasife
+alındığında her şubenin menüsünden kayboluyor, o şubede hâlâ bir BranchProduct/AVAILABLE satırı olsa bile
+(`PublicMenuController`, opt-in filtresine `product.isActive()` eklendi). Aynı disiplin sepete ekleme akışında da
+var: `OrderingService.addItem` artık `product.isActive()` kontrolü yapıyor (Milestone 4'ün "backend-authoritative
+revalidation" ilkesiyle aynı - müşteri menüde göremese bile eski/önbelleklenmiş bir sayfadan sipariş denerse yine
+reddedilir). Yeni `MenuService.updateProductDetails` + staff-web'de `PATCH /api/staff/products/{id}` (yeni
+endpoint - önceden ürün için hiçbir update yolu yoktu, yalnızca create) bu üç alanı düzenliyor; `/menu` ekranına
+her ürün satırına "Pasif Yap/Aktif Yap" hızlı toggle'ı + "Düzenle" (hazırlık süresi input'u + 14 alerjen
+checkbox'ı) paneli eklendi. customer-web'in `ProductCard`'ına hazırlık süresi + "İçerir: ..." satırı eklendi
+(Bölüm 19: "product image/name/description/allergen/prep time/fiyat" kalite kriteri).
+
+**Canlı doğrulamada bulunup düzeltilen gerçek hata (aynı sınıf, Milestone 4'teki CORS bug'ıyla birebir aynı kök
+neden):** Yeni `PATCH` endpoint'i tarayıcıdan çağrıldığında CORS preflight (`OPTIONS`) 403 dönüyordu -
+`CorsConfig.allowedMethods` listesi hâlâ `GET/POST/PUT/DELETE`, `PATCH` hiç yoktu. MockMvc testleri gerçek CORS
+filtresinden geçmediği için (tarayıcı yok) bunu yakalayamadı - tam olarak Milestone 4'ün notunda belirtilen
+"yeni HTTP metodu eklenen her milestone'da gerçek tarayıcı doğrulaması atlanmamalı" uyarısının kendisi. Düzeltme:
+`allowedMethods`'a `PATCH` eklendi. Canlı doğrulama: staff-web'de bir ürünün hazırlık süresi/alerjenleri
+güncellendi (kaydedildi, satırda doğru göründü), `Pasif Yap` ile ürün customer-web menüsünden tamamen kayboldu
+(“Menü hazırlanıyor” boş-durum ekranı), `Aktif Yap` ile geri geldi.
+
+**Backend test sayısı 74 → 77** (yeni: `PublicMenuIntegrationTest` +1 - pasif ürün BranchProduct satırı olsa bile
+menüden düşüyor; `CartFlowIntegrationTest` +1 - pasif ürün AVAILABLE olsa bile sepete eklenemiyor;
+`StaffAccessFlowIntegrationTest` +1 - staff PATCH ile ürünü pasife alabiliyor ve değişiklik kalıcı oluyor).
+customer-web/staff-web build+lint temiz.
+
+---
+
+## Gap-Analysis #6 — Business/Branch Ayarları (currency/timezone + BusinessContact) — ✅ COMPLETED
+
+Gap-analysis'in "Önerilen Geliştirme Sırası" #6 maddesi (Bölüm 12.1/12.2/12.3). `Business`'a `defaultCurrency`/
+`defaultTimeZone` eklendi (V15 migration, varsayılan `TRY`/`Europe/Istanbul` - mevcut işletmeler bozulmadı);
+bunlar salt görüntüleme/rapor fallback'i, `Money`'nin tek-para-birimli tasarımına (Bölüm 5, onaylı karar)
+dokunmuyor, hiçbir yerde para hesaplamasına karışmıyor. `Branch`'e opsiyonel `timezone` override'ı eklendi (null
+ise tüketen taraf `Business.defaultTimeZone`'a düşer - henüz hiçbir tüketici yok, raporlama modülüyle birlikte
+gelecek). Yeni `BusinessContact` entity/repository/CRUD (Bölüm 12.3: name/phone/email/whatsappEnabled/
+dailyReportRecipient/monthlyReportRecipient/active) - şimdilik salt veri, hiçbir bildirim/rapor modülü henüz
+tüketmiyor (o roadmap maddeleriyle birlikte gelecek).
+
+Hem currency (ISO 4217, `java.util.Currency`) hem timezone (IANA, `java.time.ZoneId`) girişleri entity
+seviyesinde doğrulanıyor - geçersiz kod/kimlik 400 olarak reddediliyor. Yeni `Permission.BUSINESS_SETTINGS_MANAGE`
+(yalnızca `BUSINESS_ADMIN`'e atandı) tüm yeni uçları koruyor: `GET/POST /api/staff/business(/settings)`,
+`POST /api/staff/branches/{id}/timezone`, `GET/POST /api/staff/business/contacts`,
+`PUT /api/staff/business/contacts/{id}`. staff-web'de yeni `/business-settings` ekranı (nav'da "İşletme
+Ayarları") + şube detay sayfasına saat dilimi alanı eklendi.
+
+**Backend test sayısı 77 → 84** (yeni: `BusinessSettingsFlowIntegrationTest`, 7 - varsayılan ayarlar, güncelleme+
+geri okuma, geçersiz currency/timezone reddi, izinsiz erişim 403, şube saat dilimi set/temizle, geçersiz şube saat
+dilimi reddi, contact create/list/update). staff-web build+lint temiz.
+
+**Not (bu oturumun kuralı):** Bu madde canlı tarayıcı doğrulaması olmadan tamamlandı - kullanıcı bu oturumdan
+itibaren Chrome üzerinden test yapılmamasını istedi (bkz. proje hafızası). Doğrulama yalnızca backend integration
+testleri + `npm run build`/`lint` ile yapıldı; önceki milestone'larda birkaç kez gerçek tarayıcıda CORS/preflight
+gibi hataların testlerden kaçtığı not edilmişti (bkz. yukarıdaki Product Alanları notu) - bu sınıf bir regresyon
+bu PR'da mümkün (örn. yeni `PATCH`/`PUT` metodu yok, mevcut `CorsConfig.allowedMethods` zaten `PUT` içeriyor, ama
+gerçek tarayıcı doğrulaması yapılmadığı açıkça belirtilsin diye).
