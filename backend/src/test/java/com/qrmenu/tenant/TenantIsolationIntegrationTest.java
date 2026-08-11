@@ -142,8 +142,7 @@ class TenantIsolationIntegrationTest extends AbstractIntegrationTest {
     @Test
     void databaseRejectsTwoActiveQrTokensForTheSameTableEvenWhenTheServiceLayerIsBypassed() {
         Business business = businessRepository.save(new Business("Direct DB Business"));
-        Branch branch =
-                branchRepository.save(new Branch(business.getId(), "Branch", true, null, null, DeliveryModel.WAITER_DELIVERY));
+        Branch branch = branchRepository.save(new Branch(business.getId(), "Branch", true, null, DeliveryModel.WAITER_DELIVERY));
         RestaurantTable table = tableRepository.save(new RestaurantTable(business.getId(), branch.getId(), "Table 1"));
 
         qrTokenRepository.saveAndFlush(new TableQrToken(business.getId(), table.getId(), "direct-db-token-one"));

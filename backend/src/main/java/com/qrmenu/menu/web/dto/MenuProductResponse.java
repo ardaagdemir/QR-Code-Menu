@@ -1,6 +1,8 @@
 package com.qrmenu.menu.web.dto;
 
+import com.qrmenu.menu.Allergen;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 public record MenuProductResponse(
@@ -11,5 +13,7 @@ public record MenuProductResponse(
         long priceMinorUnits,
         int taxRatePercent,
         String availability,
+        Integer estimatedPreparationMinutes,
+        Set<Allergen> allergens,
         List<MenuOptionGroupResponse> optionGroups) {
 }

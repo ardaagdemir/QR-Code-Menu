@@ -62,6 +62,9 @@ class InternalMenuController {
                 request.basePriceMinorUnits(),
                 request.taxRatePercent(),
                 request.displayOrderOrDefault(),
+                request.activeOrDefault(),
+                request.estimatedPreparationMinutes(),
+                request.allergensOrEmpty(),
                 null);
         return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(product));
     }
@@ -113,7 +116,10 @@ class InternalMenuController {
                 product.getImageUrl(),
                 product.getBasePriceMinorUnits(),
                 product.getTaxRatePercent(),
-                product.getDisplayOrder());
+                product.getDisplayOrder(),
+                product.isActive(),
+                product.getEstimatedPreparationMinutes(),
+                product.getAllergens());
     }
 
     private OptionGroupAdminResponse toResponse(ProductOptionGroup group) {

@@ -18,12 +18,12 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Milestone 9: one true end-to-end test walking the full CUSTOMER_PICKUP path that
- * every other integration test only covers in isolated slices - QR check-in -> cart ->
- * mock payment -> kitchen accept/ready -> the order appearing on the branch's public
- * pickup board -> staff marking it complete -> the order leaving the pickup board and
- * the customer's own tracking view reflecting COMPLETED + the CUSTOMER_PICKUP delivery
- * model throughout.
+ * Milestone 9 (+ gap-analysis #1's cashier gate): one true end-to-end test walking the
+ * full CUSTOMER_PICKUP path that every other integration test only covers in isolated
+ * slices - QR check-in -> cart -> mock payment -> cashier ACCEPT -> kitchen accept/ready
+ * -> the order appearing on the branch's public pickup board -> staff marking it
+ * complete -> the order leaving the pickup board and the customer's own tracking view
+ * reflecting COMPLETED + the CUSTOMER_PICKUP delivery model throughout.
  */
 class PickupToCompletionEndToEndTest extends AbstractIntegrationTest {
 
@@ -69,7 +69,11 @@ class PickupToCompletionEndToEndTest extends AbstractIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"outcome\":\"SUCCEEDED\"}"))
                 .andExpect(status().isAccepted());
-        String orderId = pollUntilOrderStatus(visit, paymentId, "IN_KITCHEN");
+        String orderId = pollUntilOrderStatus(visit, paymentId, "AWAITING_STORE_ACCEPTANCE");
+
+        // Gap-analysis #1: the cashier must ACCEPT before the order reaches the kitchen.
+        mockMvc.perform(post("/api/staff/branches/{branchId}/orders/{orderId}/accept", branchId, orderId).cookie(staffMockCookie))
+                .andExpect(status().isOk());
 
         // Kitchen accepts the only item and marks it ready - order rolls up to READY.
         JsonNode queue = objectMapper.readTree(mockMvc.perform(get("/api/kitchen/branches/{branchId}/orders", branchId).cookie(staffMockCookie))

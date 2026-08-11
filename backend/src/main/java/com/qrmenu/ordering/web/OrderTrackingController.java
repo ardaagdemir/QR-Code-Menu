@@ -6,6 +6,8 @@ import com.qrmenu.ordering.OrderTrackingView;
 import com.qrmenu.ordering.OrderingService;
 import com.qrmenu.ordering.web.dto.OrderTrackingItemResponse;
 import com.qrmenu.ordering.web.dto.OrderTrackingResponse;
+import com.qrmenu.refund.RefundService;
+import com.qrmenu.refund.RefundView;
 import com.qrmenu.tenant.TenantService;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -28,12 +30,17 @@ public class OrderTrackingController {
     private final OrderingService orderingService;
     private final SseOrderStatusNotifier sseOrderStatusNotifier;
     private final TenantService tenantService;
+    private final RefundService refundService;
 
     public OrderTrackingController(
-            OrderingService orderingService, SseOrderStatusNotifier sseOrderStatusNotifier, TenantService tenantService) {
+            OrderingService orderingService,
+            SseOrderStatusNotifier sseOrderStatusNotifier,
+            TenantService tenantService,
+            RefundService refundService) {
         this.orderingService = orderingService;
         this.sseOrderStatusNotifier = sseOrderStatusNotifier;
         this.tenantService = tenantService;
+        this.refundService = refundService;
     }
 
     @GetMapping
@@ -50,12 +57,15 @@ public class OrderTrackingController {
     private OrderTrackingResponse toResponse(OrderTrackingView view) {
         List<OrderTrackingItemResponse> items = view.items().stream().map(OrderTrackingController::toItemResponse).toList();
         String deliveryModel = tenantService.getDeliveryModel(view.order().getBranchId()).name();
+        List<RefundView> refunds = refundService.getRefundsForOrder(view.order().getId());
+        String latestRefundStatus = refunds.isEmpty() ? null : refunds.get(refunds.size() - 1).status();
         return new OrderTrackingResponse(
                 view.order().getId(),
                 view.order().getOrderNumber(),
                 view.order().getStatus().name(),
                 view.order().getTotalMinorUnits(),
                 deliveryModel,
+                latestRefundStatus,
                 items);
     }
 

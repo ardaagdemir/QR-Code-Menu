@@ -1,5 +1,6 @@
 package com.qrmenu.ordering;
 
+import com.qrmenu.audit.AuditService;
 import com.qrmenu.common.web.ProductNotOrderableException;
 import com.qrmenu.common.web.ResourceNotFoundException;
 import com.qrmenu.customersession.CustomerSessionService;
@@ -56,6 +57,7 @@ public class OrderingService {
     private final OutboxEventWriter outboxEventWriter;
     private final OrderNumberGenerator orderNumberGenerator;
     private final OrderStatusNotifier orderStatusNotifier;
+    private final AuditService auditService;
 
     public OrderingService(
             CustomerSessionService customerSessionService,
@@ -66,7 +68,8 @@ public class OrderingService {
             OrderItemOptionRepository orderItemOptionRepository,
             OutboxEventWriter outboxEventWriter,
             OrderNumberGenerator orderNumberGenerator,
-            OrderStatusNotifier orderStatusNotifier) {
+            OrderStatusNotifier orderStatusNotifier,
+            AuditService auditService) {
         this.customerSessionService = customerSessionService;
         this.menuService = menuService;
         this.tenantService = tenantService;
@@ -76,6 +79,7 @@ public class OrderingService {
         this.outboxEventWriter = outboxEventWriter;
         this.orderNumberGenerator = orderNumberGenerator;
         this.orderStatusNotifier = orderStatusNotifier;
+        this.auditService = auditService;
     }
 
     @Transactional
@@ -83,6 +87,9 @@ public class OrderingService {
         TableVisit visit = customerSessionService.getOwnedTableVisit(tableVisitId, callerSessionId);
 
         Product product = menuService.getProductForBusiness(visit.getBusinessId(), request.productId());
+        if (!product.isActive()) {
+            throw new ProductNotOrderableException("Product is not orderable: " + product.getId());
+        }
         BranchProduct branchProduct = menuService
                 .getBranchProduct(visit.getBranchId(), product.getId())
                 .filter(bp -> bp.getAvailability() == BranchProductAvailability.AVAILABLE)
@@ -183,22 +190,21 @@ public class OrderingService {
     }
 
     /**
-     * Called by the payment module's webhook handling once a payment SUCCEEDED
-     * (Section 2, mock flow step 6: "Order PAID olur ve outbox event yazılır"). Also
-     * assigns the readable order number and moves straight to IN_KITCHEN, both
-     * synchronously in this same transaction (see CustomerOrder.markInKitchen Javadoc
-     * for why this doesn't go through the outbox poller). The status transition and
-     * the outbox write happen in the same transaction as the caller's
+     * Called by the payment module's webhook handling once a payment SUCCEEDED (Section
+     * 2, mock flow step 6). Gap-analysis #1: no longer moves straight to IN_KITCHEN -
+     * assigns the readable order number and lands the order in
+     * AWAITING_STORE_ACCEPTANCE, where it waits for an explicit cashier ACCEPT/REJECT
+     * (acceptOrder/rejectOrder below). The status transition and the outbox write
+     * happen in the same transaction as the caller's
      * (PaymentWebhookService.handleIncomingWebhook is itself @Transactional).
      */
     @Transactional
-    public void markOrderPaid(UUID orderId) {
+    public void markOrderAwaitingStoreAcceptance(UUID orderId) {
         CustomerOrder order =
                 orderRepository.findById(orderId).orElseThrow(() -> new ResourceNotFoundException("Order not found: " + orderId));
-        order.markPaid();
+        order.markAwaitingStoreAcceptance();
         int orderNumber = orderNumberGenerator.nextOrderNumber(order.getBranchId(), LocalDate.now(ZoneOffset.UTC));
         order.assignOrderNumber(orderNumber);
-        order.markInKitchen();
         orderRepository.save(order);
         outboxEventWriter.write(
                 "Order",
@@ -215,6 +221,51 @@ public class OrderingService {
                 orderRepository.findById(orderId).orElseThrow(() -> new ResourceNotFoundException("Order not found: " + orderId));
         order.markPaymentFailed();
         orderRepository.save(order);
+    }
+
+    /**
+     * Section 6: kasa ACCEPT - AWAITING_STORE_ACCEPTANCE -> IN_KITCHEN. Every KDS entry
+     * point (getKitchenQueue, below) only ever reads IN_KITCHEN orders, so this is the
+     * one and only door into the kitchen queue now.
+     */
+    @Transactional
+    public CustomerOrder acceptOrder(UUID branchId, UUID orderId, UUID actorStaffUserId) {
+        CustomerOrder order = requireOrderInBranch(branchId, orderId);
+        order.markInKitchen();
+        orderRepository.save(order);
+        auditService.record(order.getBusinessId(), actorStaffUserId, "Order", order.getId(), "ACCEPTED_BY_STORE", null);
+        notifyOrderStatusChanged(order);
+        return order;
+    }
+
+    /**
+     * Section 6: kasa REJECT - AWAITING_STORE_ACCEPTANCE -> REJECTED_BY_STORE. Does NOT
+     * itself issue the refund (see RefundService.requestFullRefund) - kept as two
+     * separate calls, orchestrated by the controller (OrderControlController), so
+     * ordering never has to depend on refund (which already depends on ordering -
+     * avoids the ordering->refund->payment->ordering cycle, same reasoning as the
+     * Milestone 7 refund-on-reject decision this supersedes) and so a refund failure is
+     * visible as its own state rather than silently rolling back the rejection.
+     */
+    @Transactional
+    public CustomerOrder rejectOrder(UUID branchId, UUID orderId, String reasonCode, String note, UUID actorStaffUserId) {
+        CustomerOrder order = requireOrderInBranch(branchId, orderId);
+        order.rejectByStore(reasonCode, note);
+        orderRepository.save(order);
+        auditService.record(
+                order.getBusinessId(), actorStaffUserId, "Order", order.getId(), "REJECTED_BY_STORE",
+                Map.of("reasonCode", reasonCode == null ? "" : reasonCode));
+        notifyOrderStatusChanged(order);
+        return order;
+    }
+
+    /** Section 10.1: kasa dashboard'un "yeni ödenmiş/onay bekleyen siparişler" listesi. */
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public List<KitchenQueueOrderView> getPendingStoreAcceptanceOrders(UUID branchId) {
+        tenantService.requireBusinessIdForBranch(branchId);
+        List<CustomerOrder> orders =
+                orderRepository.findAllByBranchIdAndStatusOrderByOrderNumberAsc(branchId, OrderStatus.AWAITING_STORE_ACCEPTANCE);
+        return buildKitchenQueueViews(orders);
     }
 
     /**

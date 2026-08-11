@@ -64,8 +64,10 @@ public class PublicMenuController {
         Map<UUID, List<ProductOption>> optionsByGroupId = menuService.getOptionsForGroups(optionGroupIds).stream()
                 .collect(Collectors.groupingBy(ProductOption::getOptionGroupId));
 
+        // active=false is a business-level kill switch (Section 3.2) - it hides a product
+        // from every branch's menu even if a BranchProduct opt-in row still exists there.
         Map<UUID, List<Product>> optedInProductsByCategoryId = products.stream()
-                .filter(product -> branchProductByProductId.containsKey(product.getId()))
+                .filter(product -> product.isActive() && branchProductByProductId.containsKey(product.getId()))
                 .collect(Collectors.groupingBy(Product::getCategoryId));
 
         List<MenuCategoryResponse> categoryResponses = categories.stream()
@@ -125,6 +127,8 @@ public class PublicMenuController {
                 effectivePrice,
                 product.getTaxRatePercent(),
                 branchProduct.getAvailability().name(),
+                product.getEstimatedPreparationMinutes(),
+                product.getAllergens(),
                 optionGroupResponses);
     }
 }

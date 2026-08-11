@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { formatPriceMinorUnits, type MenuProduct } from "@/lib/api";
+import { ALLERGEN_LABELS, formatPriceMinorUnits, type MenuProduct } from "@/lib/api";
 import Badge from "@/components/ui/Badge";
 import styles from "./ProductCard.module.css";
 
@@ -54,6 +54,15 @@ export default function ProductCard({ product, onSelect }: Props) {
             <span className={styles.price}>{formatPriceMinorUnits(product.priceMinorUnits)}</span>
           </div>
           {product.description ? <p className={styles.description}>{product.description}</p> : null}
+          {product.estimatedPreparationMinutes != null || product.allergens.length > 0 ? (
+            <p className={styles.meta}>
+              {product.estimatedPreparationMinutes != null ? `~${product.estimatedPreparationMinutes} dk` : ""}
+              {product.estimatedPreparationMinutes != null && product.allergens.length > 0 ? " · " : ""}
+              {product.allergens.length > 0
+                ? `İçerir: ${product.allergens.map((allergen) => ALLERGEN_LABELS[allergen] ?? allergen).join(", ")}`
+                : ""}
+            </p>
+          ) : null}
         </div>
       </button>
     </li>

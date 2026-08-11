@@ -3,6 +3,7 @@ package com.qrmenu.refund;
 import com.qrmenu.audit.AuditService;
 import com.qrmenu.ordering.CustomerOrder;
 import com.qrmenu.ordering.OrderItem;
+import com.qrmenu.ordering.OrderTrackingView;
 import com.qrmenu.ordering.OrderingService;
 import com.qrmenu.payment.PaymentProviderPort;
 import com.qrmenu.payment.PaymentService;
@@ -18,12 +19,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Public facade for the refund module (Section 4, staff-web screen #6: "tam/kısmi
- * iade başlatma"). Staff-initiated only in this milestone - see
- * docs/development-progress.md's Milestone 7 note for why automatic refund-on-kitchen-
- * rejection was deliberately not wired: it would require ordering to depend on refund,
- * which (via refund -> payment -> ordering) is a module dependency cycle. Manual
- * refund already fully covers rejected-item refunds; staff just has to initiate it.
+ * Public facade for the refund module (Section 4, staff-web screen #6: "tam/kısmi iade
+ * başlatma"). Every entry point here is still only ever called from a controller
+ * (never from ordering/OrderingService itself) - requestFullRefund is triggered by
+ * OrderControlController right after a cashier REJECT, not by ordering internally, for
+ * the same module-cycle-avoidance reason as the original Milestone 7 decision
+ * (ordering -> refund -> payment -> ordering).
  */
 @Service
 public class RefundService {
@@ -99,6 +100,23 @@ public class RefundService {
                 Map.of("orderId", order.getId().toString(), "totalAmountMinorUnits", totalAmount));
 
         return toView(refund, items);
+    }
+
+    /**
+     * Gap-analysis #1 (kasa red -> tam refund, Section 6/7): refunds every item at its
+     * full ordered quantity - the natural "full refund" for an order the store rejected
+     * before the kitchen ever saw it, so nothing has been partially accepted/prepared
+     * yet. Reuses requestRefund's existing pricing/invariant-check path rather than
+     * duplicating it - a full refund is just the specific case where every line's
+     * quantity equals what was ordered.
+     */
+    @Transactional
+    public RefundView requestFullRefund(UUID branchId, UUID orderId, UUID actorStaffUserId) {
+        OrderTrackingView tracking = orderingService.getOrderTrackingViewInBranch(branchId, orderId);
+        List<RefundLineRequest> lines = tracking.items().stream()
+                .map(item -> new RefundLineRequest(item.getId(), item.getOrderedQuantity()))
+                .toList();
+        return requestRefund(branchId, orderId, lines, actorStaffUserId);
     }
 
     @Transactional(readOnly = true)

@@ -1,5 +1,7 @@
 package com.qrmenu.menu.web.dto;
 
+import com.qrmenu.menu.Allergen;
+import java.util.Set;
 import java.util.UUID;
 
 public record ProductAdminResponse(
@@ -11,5 +13,8 @@ public record ProductAdminResponse(
         String imageUrl,
         long basePriceMinorUnits,
         int taxRatePercent,
-        int displayOrder) {
+        int displayOrder,
+        boolean active,
+        Integer estimatedPreparationMinutes,
+        Set<Allergen> allergens) {
 }

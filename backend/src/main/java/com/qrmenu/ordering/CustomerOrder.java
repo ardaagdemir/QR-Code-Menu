@@ -35,7 +35,7 @@ public class CustomerOrder {
     private UUID tableVisitId;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
+    @Column(nullable = false, length = 30)
     private OrderStatus status;
 
     @Column(name = "tracking_token_hash", nullable = false)
@@ -53,6 +53,13 @@ public class CustomerOrder {
 
     @Column(name = "last_activity_at", nullable = false)
     private Instant lastActivityAt;
+
+    /** Set only on REJECTED_BY_STORE (Section 6: "Red nedeni tutulmalıdır"). */
+    @Column(name = "rejection_reason_code")
+    private String rejectionReasonCode;
+
+    @Column(name = "rejection_note")
+    private String rejectionNote;
 
     protected CustomerOrder() {
         // JPA
@@ -92,11 +99,16 @@ public class CustomerOrder {
         this.lastActivityAt = Instant.now();
     }
 
-    public void markPaid() {
+    /**
+     * AWAITING_PAYMENT -> AWAITING_STORE_ACCEPTANCE (gap-analysis #1): a verified
+     * payment webhook no longer implies the kitchen queue - it only means the cashier
+     * now has a decision to make (product-requirements.md Section 6).
+     */
+    public void markAwaitingStoreAcceptance() {
         if (status != OrderStatus.AWAITING_PAYMENT) {
-            throw new IllegalStateException("Cannot mark paid an order in status " + status);
+            throw new IllegalStateException("Cannot mark awaiting-store-acceptance an order in status " + status);
         }
-        this.status = OrderStatus.PAID;
+        this.status = OrderStatus.AWAITING_STORE_ACCEPTANCE;
         this.lastActivityAt = Instant.now();
     }
 
@@ -116,19 +128,36 @@ public class CustomerOrder {
     }
 
     /**
-     * PAID -> IN_KITCHEN, "otomatik" (Section 6) - called synchronously right after
-     * markPaid() in the same transaction/method (OrderingService.markOrderPaid), NOT
-     * via the OrderPaid outbox event: the outbox poller's fixedDelay is 10s (Section 9,
-     * Milestone 5), which would add a real, user-visible lag before an order reaches
-     * the kitchen - unacceptable for a screen that's explicitly meant to be real-time
-     * (SSE). The OrderPaid outbox event is still written for any future durable/
-     * decoupled consumer (e.g. audit), it's just not what queues the kitchen.
+     * AWAITING_STORE_ACCEPTANCE -> IN_KITCHEN: gap-analysis #1 replaced the old
+     * "otomatik" PAID -> IN_KITCHEN transition with an explicit cashier ACCEPT
+     * (OrderingService.acceptOrder). No longer automatic, but still synchronous (not
+     * via the OrderPaid outbox event/poller) once the cashier does act - the KDS is
+     * still meant to be real-time. The OrderPaid outbox event is still written when
+     * payment succeeds, for any future durable/decoupled consumer (e.g. audit).
      */
     public void markInKitchen() {
-        if (status != OrderStatus.PAID) {
+        if (status != OrderStatus.AWAITING_STORE_ACCEPTANCE) {
             throw new IllegalStateException("Cannot move to IN_KITCHEN from status " + status);
         }
         this.status = OrderStatus.IN_KITCHEN;
+        this.lastActivityAt = Instant.now();
+    }
+
+    /**
+     * AWAITING_STORE_ACCEPTANCE -> REJECTED_BY_STORE (Section 6): the cashier's other
+     * option, always paired with a full refund (RefundService.requestFullRefund, called
+     * separately by the controller - see OrderControlController - so a refund failure
+     * surfaces as its own distinct state instead of silently undoing the rejection,
+     * per Section 6: "Refund başarısız olursa ... sipariş sessizce 'iptal edildi'
+     * sayılmaz").
+     */
+    public void rejectByStore(String reasonCode, String note) {
+        if (status != OrderStatus.AWAITING_STORE_ACCEPTANCE) {
+            throw new IllegalStateException("Cannot reject an order in status " + status);
+        }
+        this.status = OrderStatus.REJECTED_BY_STORE;
+        this.rejectionReasonCode = reasonCode;
+        this.rejectionNote = note;
         this.lastActivityAt = Instant.now();
     }
 
@@ -200,5 +229,13 @@ public class CustomerOrder {
 
     public Instant getLastActivityAt() {
         return lastActivityAt;
+    }
+
+    public String getRejectionReasonCode() {
+        return rejectionReasonCode;
+    }
+
+    public String getRejectionNote() {
+        return rejectionNote;
     }
 }

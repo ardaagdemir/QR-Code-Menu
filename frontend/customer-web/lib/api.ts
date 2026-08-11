@@ -26,6 +26,23 @@ export type MenuOptionGroup = {
   options: MenuOption[];
 };
 
+export const ALLERGEN_LABELS: Record<string, string> = {
+  GLUTEN: "Gluten",
+  CRUSTACEANS: "Kabuklu deniz ürünleri",
+  EGGS: "Yumurta",
+  FISH: "Balık",
+  PEANUTS: "Yer fıstığı",
+  SOYBEANS: "Soya",
+  MILK: "Süt",
+  TREE_NUTS: "Kuruyemiş",
+  CELERY: "Kereviz",
+  MUSTARD: "Hardal",
+  SESAME: "Susam",
+  SULPHITES: "Sülfit",
+  LUPIN: "Acı bakla",
+  MOLLUSCS: "Yumuşakçalar",
+};
+
 export type MenuProduct = {
   id: string;
   name: string;
@@ -34,6 +51,8 @@ export type MenuProduct = {
   priceMinorUnits: number;
   taxRatePercent: number;
   availability: "AVAILABLE" | "UNAVAILABLE";
+  estimatedPreparationMinutes: number | null;
+  allergens: string[];
   optionGroups: MenuOptionGroup[];
 };
 
@@ -230,6 +249,7 @@ export type OrderTracking = {
   status: string;
   totalMinorUnits: number;
   deliveryModel: "CUSTOMER_PICKUP" | "WAITER_DELIVERY";
+  latestRefundStatus: string | null;
   items: OrderTrackingItem[];
 };
 

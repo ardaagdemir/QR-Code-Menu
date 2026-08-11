@@ -148,4 +148,43 @@ class StaffAccessFlowIntegrationTest extends AbstractIntegrationTest {
             assertThat(entry.get("actorStaffUserId").asText()).isEqualTo(staffUserId);
         });
     }
+
+    @Test
+    void staffCanTogglePassiveOnAnExistingProductAndTheChangePersists() throws Exception {
+        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Product Toggle Business");
+        String adminCookie = StaffFixtures.bootstrapBusinessAdminAndLogin(
+                mockMvc, TEST_ADMIN_TOKEN, businessId, "product-toggle-admin@example.com");
+        MockCookie adminMockCookie = new MockCookie(StaffCookieSupport.COOKIE_NAME, adminCookie);
+        String categoryId =
+                TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Ana Yemekler");
+        String productId = TenantFixtures.createProduct(
+                mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Köfte", 12000, 10);
+
+        String response = mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .patch("/api/staff/products/{productId}", productId)
+                        .cookie(adminMockCookie)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"active\":false,\"estimatedPreparationMinutes\":20,\"allergens\":[\"GLUTEN\"]}"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        JsonNode updated = objectMapper.readTree(response);
+        assertThat(updated.get("active").asBoolean()).isFalse();
+        assertThat(updated.get("estimatedPreparationMinutes").asInt()).isEqualTo(20);
+        assertThat(updated.get("allergens")).hasSize(1);
+
+        JsonNode products = objectMapper.readTree(mockMvc.perform(get(
+                                "/api/staff/menu-categories/{categoryId}/products", categoryId)
+                        .cookie(adminMockCookie))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString());
+        assertThat(products).anySatisfy(product -> {
+            if (product.get("id").asText().equals(productId)) {
+                assertThat(product.get("active").asBoolean()).isFalse();
+            }
+        });
+    }
 }

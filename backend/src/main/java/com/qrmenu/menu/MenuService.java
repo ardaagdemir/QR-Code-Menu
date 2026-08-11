@@ -11,6 +11,7 @@ import com.qrmenu.tenant.TenantService;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -65,6 +66,9 @@ public class MenuService {
             long basePriceMinorUnits,
             int taxRatePercent,
             int displayOrder,
+            boolean active,
+            Integer estimatedPreparationMinutes,
+            Set<Allergen> allergens,
             UUID actorStaffUserId) {
         MenuCategory category = categoryRepository
                 .findByIdAndBusinessId(categoryId, businessId)
@@ -77,9 +81,31 @@ public class MenuService {
                 imageUrl,
                 basePriceMinorUnits,
                 taxRatePercent,
-                displayOrder));
+                displayOrder,
+                active,
+                estimatedPreparationMinutes,
+                allergens));
         auditService.record(businessId, actorStaffUserId, "Product", product.getId(), "CREATED", Map.of("name", name));
         return product;
+    }
+
+    /** Gap-analysis "Product alanları" - active/passive + prep time + allergens edit (staff-web menu screen). */
+    @Transactional
+    public Product updateProductDetails(
+            UUID businessId,
+            UUID productId,
+            boolean active,
+            Integer estimatedPreparationMinutes,
+            Set<Allergen> allergens,
+            UUID actorStaffUserId) {
+        Product product = productRepository
+                .findByIdAndBusinessId(productId, businessId)
+                .orElseThrow(() -> new ResourceNotFoundException("Product not found for business: " + productId));
+        product.updateDetails(active, estimatedPreparationMinutes, allergens);
+        Product saved = productRepository.save(product);
+        auditService.record(
+                businessId, actorStaffUserId, "Product", saved.getId(), "UPDATED", Map.of("active", String.valueOf(active)));
+        return saved;
     }
 
     @Transactional

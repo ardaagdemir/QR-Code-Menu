@@ -75,7 +75,7 @@ public class PaymentWebhookService {
         if (event.outcome() == WebhookOutcome.SUCCEEDED) {
             payment.markSucceeded();
             paymentRepository.save(payment);
-            orderingService.markOrderPaid(payment.getOrderId());
+            orderingService.markOrderAwaitingStoreAcceptance(payment.getOrderId());
         } else {
             payment.markFailed();
             paymentRepository.save(payment);

@@ -66,7 +66,7 @@ class PaymentFlowIntegrationTest extends AbstractIntegrationTest {
         triggerMockOutcome(visit, paymentId, "SUCCEEDED").andExpect(status().isAccepted());
 
         JsonNode finalStatus = pollPaymentStatus(visit, paymentId, "SUCCEEDED");
-        assertThat(finalStatus.get("orderStatus").asText()).isEqualTo("IN_KITCHEN");
+        assertThat(finalStatus.get("orderStatus").asText()).isEqualTo("AWAITING_STORE_ACCEPTANCE");
 
         List<OutboxEvent> outboxEvents = outboxEventRepository.findAll().stream()
                 .filter(event -> event.getAggregateId().equals(UUID.fromString(orderId)))
@@ -107,7 +107,7 @@ class PaymentFlowIntegrationTest extends AbstractIntegrationTest {
 
         triggerMockOutcome(visit, retryPaymentId, "SUCCEEDED").andExpect(status().isAccepted());
         JsonNode succeededStatus = pollPaymentStatus(visit, retryPaymentId, "SUCCEEDED");
-        assertThat(succeededStatus.get("orderStatus").asText()).isEqualTo("IN_KITCHEN");
+        assertThat(succeededStatus.get("orderStatus").asText()).isEqualTo("AWAITING_STORE_ACCEPTANCE");
     }
 
     @Test
@@ -154,7 +154,7 @@ class PaymentFlowIntegrationTest extends AbstractIntegrationTest {
                 .getResponse()
                 .getContentAsString());
         assertThat(statusAfterDuplicate.get("paymentStatus").asText()).isEqualTo("SUCCEEDED");
-        assertThat(statusAfterDuplicate.get("orderStatus").asText()).isEqualTo("IN_KITCHEN");
+        assertThat(statusAfterDuplicate.get("orderStatus").asText()).isEqualTo("AWAITING_STORE_ACCEPTANCE");
     }
 
     @Test

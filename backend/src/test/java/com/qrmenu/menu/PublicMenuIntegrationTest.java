@@ -8,6 +8,8 @@ import org.junit.jupiter.api.Test;
 import static com.qrmenu.support.AbstractIntegrationTest.TEST_ADMIN_TOKEN;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -97,6 +99,35 @@ class PublicMenuIntegrationTest extends AbstractIntegrationTest {
         assertThat(options).hasSize(1);
         assertThat(options.get(0).get("name").asText()).isEqualTo("Büyük");
         assertThat(options.get(0).get("priceDeltaMinorUnits").asLong()).isEqualTo(3000L);
+    }
+
+    @Test
+    void inactiveProductIsOmittedEvenWithABranchProductRow() throws Exception {
+        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Inactive Business");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
+        String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Ana Yemekler");
+
+        String response = mockMvc.perform(post("/internal/businesses/{businessId}/products", businessId)
+                        .header("X-Internal-Admin-Token", TEST_ADMIN_TOKEN)
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"categoryId\":\"" + categoryId + "\",\"name\":\"Pasif Ürün\","
+                                + "\"basePriceMinorUnits\":5000,\"taxRatePercent\":10,\"active\":false,"
+                                + "\"estimatedPreparationMinutes\":15,\"allergens\":[\"GLUTEN\",\"MILK\"]}"))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        JsonNode created = objectMapper.readTree(response);
+        assertThat(created.get("active").asBoolean()).isFalse();
+        assertThat(created.get("estimatedPreparationMinutes").asInt()).isEqualTo(15);
+        assertThat(created.get("allergens")).hasSize(2);
+        String productId = created.get("id").asText();
+
+        TenantFixtures.upsertBranchProduct(
+                mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, productId, "AVAILABLE", null);
+
+        MenuFetch menu = fetchMenu(branchId);
+        assertThat(menu.json.get("categories")).isEmpty();
     }
 
     @Test

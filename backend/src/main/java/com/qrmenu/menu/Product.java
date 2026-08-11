@@ -1,12 +1,20 @@
 package com.qrmenu.menu;
 
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -15,9 +23,12 @@ import java.util.UUID;
  * that's introduced in Milestone 4 alongside Order, not before it's actually needed
  * (Section 9/12, YAGNI).
  *
- * Deliberately no business-level "active"/discontinued flag - the doc only defines
- * availability at the Branch level via BranchProduct; inventing a second on/off switch
- * here isn't asked for.
+ * `active` (Section 3.2, gap-analysis "Product alanları") is a business-level kill
+ * switch distinct from the Branch-level BranchProduct.availability: an inactive product
+ * is hidden from every branch's public menu and un-orderable regardless of any
+ * BranchProduct opt-in row, whereas availability toggles per-branch stock. `allergens`
+ * is an ElementCollection (not its own repository/entity) - it's a value collection
+ * always read through the owning Product, same module, no cross-module access to guard.
  */
 @Entity
 @Table(name = "product")
@@ -52,6 +63,18 @@ public class Product {
     @Column(name = "display_order", nullable = false)
     private int displayOrder;
 
+    @Column(nullable = false)
+    private boolean active;
+
+    @Column(name = "estimated_preparation_minutes")
+    private Integer estimatedPreparationMinutes;
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "product_allergen", joinColumns = @JoinColumn(name = "product_id"))
+    @Enumerated(EnumType.STRING)
+    @Column(name = "allergen", nullable = false)
+    private Set<Allergen> allergens = new LinkedHashSet<>();
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -70,7 +93,10 @@ public class Product {
             String imageUrl,
             long basePriceMinorUnits,
             int taxRatePercent,
-            int displayOrder) {
+            int displayOrder,
+            boolean active,
+            Integer estimatedPreparationMinutes,
+            Set<Allergen> allergens) {
         this.businessId = businessId;
         this.categoryId = categoryId;
         this.name = name;
@@ -79,9 +105,20 @@ public class Product {
         this.basePriceMinorUnits = basePriceMinorUnits;
         this.taxRatePercent = taxRatePercent;
         this.displayOrder = displayOrder;
+        this.active = active;
+        this.estimatedPreparationMinutes = estimatedPreparationMinutes;
+        this.allergens = allergens == null ? new LinkedHashSet<>() : new LinkedHashSet<>(allergens);
         Instant now = Instant.now();
         this.createdAt = now;
         this.updatedAt = now;
+    }
+
+    /** Gap-analysis "Product alanları" - staff-web edit form for the fields not fixed at creation. */
+    public void updateDetails(boolean active, Integer estimatedPreparationMinutes, Set<Allergen> allergens) {
+        this.active = active;
+        this.estimatedPreparationMinutes = estimatedPreparationMinutes;
+        this.allergens = allergens == null ? new LinkedHashSet<>() : new LinkedHashSet<>(allergens);
+        this.updatedAt = Instant.now();
     }
 
     public UUID getId() {
@@ -118,6 +155,18 @@ public class Product {
 
     public int getDisplayOrder() {
         return displayOrder;
+    }
+
+    public boolean isActive() {
+        return active;
+    }
+
+    public Integer getEstimatedPreparationMinutes() {
+        return estimatedPreparationMinutes;
+    }
+
+    public Set<Allergen> getAllergens() {
+        return Set.copyOf(allergens);
     }
 
     public Instant getCreatedAt() {

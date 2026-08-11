@@ -15,6 +15,7 @@ import com.qrmenu.menu.web.dto.MenuCategoryAdminResponse;
 import com.qrmenu.menu.web.dto.OptionAdminResponse;
 import com.qrmenu.menu.web.dto.OptionGroupAdminResponse;
 import com.qrmenu.menu.web.dto.ProductAdminResponse;
+import com.qrmenu.menu.web.dto.UpdateProductDetailsRequest;
 import com.qrmenu.menu.web.dto.UpsertBranchProductRequest;
 import com.qrmenu.staffaccess.Permission;
 import com.qrmenu.staffaccess.StaffAuthService;
@@ -27,6 +28,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -115,8 +117,27 @@ public class StaffMenuController {
                 request.basePriceMinorUnits(),
                 request.taxRatePercent(),
                 request.displayOrderOrDefault(),
+                request.activeOrDefault(),
+                request.estimatedPreparationMinutes(),
+                request.allergensOrEmpty(),
                 context.staffUserId());
         return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(product));
+    }
+
+    @PatchMapping("/products/{productId}")
+    public ResponseEntity<ProductAdminResponse> updateProductDetails(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
+            @PathVariable UUID productId,
+            @Valid @RequestBody UpdateProductDetailsRequest request) {
+        StaffContext context = requireMenuManage(sessionCookie);
+        Product product = menuService.updateProductDetails(
+                context.businessId(),
+                productId,
+                request.active(),
+                request.estimatedPreparationMinutes(),
+                request.allergensOrEmpty(),
+                context.staffUserId());
+        return ResponseEntity.ok(toResponse(product));
     }
 
     @PostMapping("/products/{productId}/option-groups")
@@ -188,7 +209,10 @@ public class StaffMenuController {
                 product.getImageUrl(),
                 product.getBasePriceMinorUnits(),
                 product.getTaxRatePercent(),
-                product.getDisplayOrder());
+                product.getDisplayOrder(),
+                product.isActive(),
+                product.getEstimatedPreparationMinutes(),
+                product.getAllergens());
     }
 
     private OptionGroupAdminResponse toResponse(ProductOptionGroup group) {

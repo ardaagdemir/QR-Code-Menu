@@ -23,6 +23,12 @@
   text-decoration: underline;
 }
 
+.headerActions {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4);
+}
+
 .searchRow {
   display: flex;
   gap: var(--space-3);

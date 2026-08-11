@@ -118,9 +118,14 @@ export default function RefundsPage() {
       <main className={styles.page}>
         <div className={styles.header}>
           <h1 className={styles.title}>İade İşlemleri</h1>
-          <Link href={`/kitchen/${branchId}`} className={styles.backLink}>
-            Mutfağa dön
-          </Link>
+          <div className={styles.headerActions}>
+            <Link href={`/cashier/${branchId}`} className={styles.backLink}>
+              Kasa
+            </Link>
+            <Link href={`/kitchen/${branchId}`} className={styles.backLink}>
+              Mutfağa dön
+            </Link>
+          </div>
         </div>
 
         <form className={styles.searchRow} onSubmit={handleSearch}>

@@ -158,6 +158,9 @@ export default function KitchenBoardPage() {
         <div className={styles.header}>
           <h1 className={styles.title}>Mutfak</h1>
           <div className={styles.headerActions}>
+            <Link href={`/cashier/${branchId}`} className={styles.refundsLink}>
+              Kasa
+            </Link>
             <Link href={`/refunds/${branchId}`} className={styles.refundsLink}>
               İade İşlemleri
             </Link>

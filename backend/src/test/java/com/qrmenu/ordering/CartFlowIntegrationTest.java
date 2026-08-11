@@ -144,6 +144,36 @@ class CartFlowIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void addingAnInactiveProductIsRejectedWithConflictEvenIfAvailableAtTheBranch() throws Exception {
+        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Inactive Product Business");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
+        String tableId = TenantFixtures.createTable(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, "Masa 1");
+        String qrToken = TenantFixtures.createQrToken(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, tableId);
+        String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Kategori");
+        String response = mockMvc.perform(post("/internal/businesses/{businessId}/products", businessId)
+                        .header("X-Internal-Admin-Token", TEST_ADMIN_TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"categoryId\":\"" + categoryId
+                                + "\",\"name\":\"Pasif Ürün\",\"basePriceMinorUnits\":5000,\"taxRatePercent\":10,"
+                                + "\"active\":false}"))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String productId = objectMapper.readTree(response).get("id").asText();
+        // AVAILABLE at the branch, but active=false is the business-level kill switch (Section 3.2).
+        TenantFixtures.upsertBranchProduct(
+                mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, productId, "AVAILABLE", null);
+        CheckedInVisit visit = TenantFixtures.checkIn(mockMvc, objectMapper, qrToken);
+
+        mockMvc.perform(withCookie(
+                                post("/api/table-visits/{tableVisitId}/cart/items", visit.tableVisitId()), visit)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"productId\":\"" + productId + "\",\"quantity\":1}"))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
     void addingAProductWithoutTheMandatorySingleOptionSelectionIsRejected() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Missing Option Business");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");

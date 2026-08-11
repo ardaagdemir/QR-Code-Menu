@@ -1,14 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
+  ALLERGENS,
   createMenuCategory,
   createProduct,
   listBranches,
   listBranchProducts,
   listMenuCategories,
   listProductsForCategory,
+  updateProductDetails,
   upsertBranchProduct,
+  type Allergen,
   type Branch,
   type BranchProductAdmin,
   type MenuCategoryAdmin,
@@ -18,6 +21,23 @@ import StaffNav from "@/components/layout/StaffNav";
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import styles from "@/styles/admin.module.css";
+
+const ALLERGEN_LABELS: Record<Allergen, string> = {
+  GLUTEN: "Gluten",
+  CRUSTACEANS: "Kabuklu deniz ürünleri",
+  EGGS: "Yumurta",
+  FISH: "Balık",
+  PEANUTS: "Yer fıstığı",
+  SOYBEANS: "Soya",
+  MILK: "Süt",
+  TREE_NUTS: "Kuruyemiş",
+  CELERY: "Kereviz",
+  MUSTARD: "Hardal",
+  SESAME: "Susam",
+  SULPHITES: "Sülfit",
+  LUPIN: "Acı bakla",
+  MOLLUSCS: "Yumuşakçalar",
+};
 
 /**
  * Section 4, staff-web admin screen: menu management (Permission.MENU_MANAGE) plus
@@ -39,6 +59,9 @@ export default function MenuPage() {
 
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [editingProductId, setEditingProductId] = useState<string | null>(null);
+  const prepTimeRef = useRef<Record<string, string>>({});
+  const allergensRef = useRef<Record<string, Set<Allergen>>>({});
 
   useEffect(() => {
     Promise.all([listMenuCategories(), listBranches()])
@@ -148,6 +171,61 @@ export default function MenuPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function startEditingProduct(product: ProductAdmin) {
+    prepTimeRef.current[product.id] = product.estimatedPreparationMinutes?.toString() ?? "";
+    allergensRef.current[product.id] = new Set(product.allergens);
+    setEditingProductId(product.id);
+  }
+
+  async function handleTogglePassive(product: ProductAdmin) {
+    setBusy(true);
+    setError(null);
+    try {
+      const updated = await updateProductDetails(
+        product.id,
+        !product.active,
+        product.estimatedPreparationMinutes,
+        product.allergens,
+      );
+      setProducts((current) => current.map((p) => (p.id === updated.id ? updated : p)));
+    } catch {
+      setError("Ürün durumu güncellenemedi.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSaveProductDetails(product: ProductAdmin) {
+    const prepTimeInput = prepTimeRef.current[product.id] ?? "";
+    const prepTime = prepTimeInput.trim() === "" ? null : Number(prepTimeInput);
+    if (prepTime !== null && (!Number.isInteger(prepTime) || prepTime < 0)) {
+      setError("Geçerli bir hazırlık süresi girin.");
+      return;
+    }
+    const allergens = Array.from(allergensRef.current[product.id] ?? new Set<Allergen>());
+    setBusy(true);
+    setError(null);
+    try {
+      const updated = await updateProductDetails(product.id, product.active, prepTime, allergens);
+      setProducts((current) => current.map((p) => (p.id === updated.id ? updated : p)));
+      setEditingProductId(null);
+    } catch {
+      setError("Ürün detayları güncellenemedi.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function toggleAllergen(productId: string, allergen: Allergen) {
+    const current = allergensRef.current[productId] ?? new Set<Allergen>();
+    if (current.has(allergen)) {
+      current.delete(allergen);
+    } else {
+      current.add(allergen);
+    }
+    allergensRef.current[productId] = new Set(current);
   }
 
   return (
@@ -273,22 +351,80 @@ export default function MenuPage() {
                 products.map((product) => {
                   const branchProduct = branchProducts.find((bp) => bp.productId === product.id);
                   const isAvailable = branchProduct?.availability === "AVAILABLE";
+                  const isEditing = editingProductId === product.id;
                   return (
-                    <div key={product.id} className={styles.row}>
-                      <div className={styles.rowMain}>
-                        <span className={styles.rowTitle}>{product.name}</span>
-                        <span className={styles.rowMeta}>
-                          {(product.basePriceMinorUnits / 100).toFixed(2)} ₺ · KDV %{product.taxRatePercent}
-                        </span>
-                      </div>
-                      <div className={styles.rowActions}>
-                        <Badge tone={isAvailable ? "neutral" : "danger"}>{isAvailable ? "Şubede satışta" : "Şubede yok"}</Badge>
-                        {selectedBranchId ? (
-                          <Button size="md" variant="secondary" disabled={busy} onClick={() => handleToggleAvailability(product)}>
-                            {isAvailable ? "Kaldır" : "Şubeye Ekle"}
+                    <div key={product.id}>
+                      <div className={styles.row}>
+                        <div className={styles.rowMain}>
+                          <span className={styles.rowTitle}>{product.name}</span>
+                          <span className={styles.rowMeta}>
+                            {(product.basePriceMinorUnits / 100).toFixed(2)} ₺ · KDV %{product.taxRatePercent}
+                            {product.estimatedPreparationMinutes != null
+                              ? ` · ~${product.estimatedPreparationMinutes} dk`
+                              : ""}
+                            {product.allergens.length > 0
+                              ? ` · ${product.allergens.map((a) => ALLERGEN_LABELS[a]).join(", ")}`
+                              : ""}
+                          </span>
+                        </div>
+                        <div className={styles.rowActions}>
+                          {!product.active ? <Badge tone="danger">Pasif</Badge> : null}
+                          <Badge tone={isAvailable ? "neutral" : "danger"}>{isAvailable ? "Şubede satışta" : "Şubede yok"}</Badge>
+                          {selectedBranchId ? (
+                            <Button size="md" variant="secondary" disabled={busy} onClick={() => handleToggleAvailability(product)}>
+                              {isAvailable ? "Kaldır" : "Şubeye Ekle"}
+                            </Button>
+                          ) : null}
+                          <Button size="md" variant="secondary" disabled={busy} onClick={() => handleTogglePassive(product)}>
+                            {product.active ? "Pasif Yap" : "Aktif Yap"}
                           </Button>
-                        ) : null}
+                          <Button
+                            size="md"
+                            variant="ghost"
+                            disabled={busy}
+                            onClick={() => (isEditing ? setEditingProductId(null) : startEditingProduct(product))}
+                          >
+                            {isEditing ? "Vazgeç" : "Düzenle"}
+                          </Button>
+                        </div>
                       </div>
+
+                      {isEditing ? (
+                        <div className={styles.row}>
+                          <div className={styles.field}>
+                            <label className={styles.label} htmlFor={`prep-time-${product.id}`}>
+                              Hazırlık süresi (dk)
+                            </label>
+                            <input
+                              id={`prep-time-${product.id}`}
+                              className={styles.input}
+                              inputMode="numeric"
+                              defaultValue={product.estimatedPreparationMinutes ?? ""}
+                              onChange={(event) => {
+                                prepTimeRef.current[product.id] = event.target.value;
+                              }}
+                            />
+                          </div>
+                          <div className={styles.field}>
+                            <span className={styles.label}>Alerjenler</span>
+                            <div className={styles.rowActions}>
+                              {ALLERGENS.map((allergen) => (
+                                <label key={allergen} className={styles.rowMeta}>
+                                  <input
+                                    type="checkbox"
+                                    defaultChecked={product.allergens.includes(allergen)}
+                                    onChange={() => toggleAllergen(product.id, allergen)}
+                                  />{" "}
+                                  {ALLERGEN_LABELS[allergen]}
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                          <Button size="md" disabled={busy} onClick={() => handleSaveProductDetails(product)}>
+                            Kaydet
+                          </Button>
+                        </div>
+                      ) : null}
                     </div>
                   );
                 })

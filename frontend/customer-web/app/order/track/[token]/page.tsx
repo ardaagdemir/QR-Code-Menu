@@ -10,9 +10,23 @@ import Skeleton from "@/components/ui/Skeleton";
 import styles from "./page.module.css";
 
 const ORDER_STATUS_LABELS: Record<string, string> = {
+  DRAFT: "Sepet hazırlanıyor",
+  AWAITING_PAYMENT: "Ödeme bekleniyor",
+  PAYMENT_FAILED: "Ödeme başarısız - tekrar deneyebilirsiniz",
+  AWAITING_STORE_ACCEPTANCE: "İşletme onayı bekleniyor",
+  REJECTED_BY_STORE: "İşletme siparişi reddetti",
   IN_KITCHEN: "Hazırlanıyor",
   READY: "Hazır",
   COMPLETED: "Tamamlandı",
+  CANCELLED: "İptal edildi",
+};
+
+/** Gap-analysis #6 (Section 9): "refund başlatıldı / tamamlandı / başarısız" durumları. */
+const REFUND_STATUS_MESSAGES: Record<string, string> = {
+  REQUESTED: "İadeniz alındı, işleme konuyor.",
+  PROCESSING: "İadeniz işleniyor.",
+  COMPLETED: "İadeniz tamamlandı.",
+  FAILED: "İade işlemi başarısız oldu - lütfen işletmeyle iletişime geçin.",
 };
 
 const DELIVERY_MODEL_MESSAGES: Record<string, Record<string, string>> = {
@@ -124,6 +138,11 @@ export default function OrderTrackingPage() {
             {DELIVERY_MODEL_MESSAGES[tracking.deliveryModel]?.[tracking.status] ??
               DELIVERY_MODEL_MESSAGES[tracking.deliveryModel]?.default}
           </p>
+        ) : null}
+        {tracking.latestRefundStatus ? (
+          <p className={styles.deliveryNote}>{REFUND_STATUS_MESSAGES[tracking.latestRefundStatus] ?? tracking.latestRefundStatus}</p>
+        ) : tracking.status === "REJECTED_BY_STORE" ? (
+          <p className={styles.deliveryNote}>Ödemeniz iade edilecek.</p>
         ) : null}
       </div>
 

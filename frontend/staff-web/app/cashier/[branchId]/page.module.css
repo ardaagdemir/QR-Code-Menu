@@ -1,0 +1,115 @@
+.page {
+  min-height: 100%;
+  padding: var(--space-5);
+  max-width: var(--container-width-desktop);
+  margin: 0 auto;
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: var(--space-6);
+}
+
+.title {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+}
+
+.connectionStatus {
+  font-size: var(--font-size-xs);
+  color: var(--color-fg-muted);
+}
+
+.headerActions {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4);
+}
+
+.navLink {
+  font-size: var(--font-size-sm);
+  color: var(--color-fg);
+  text-decoration: underline;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--space-4);
+}
+
+.card {
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-sm);
+}
+
+.cardHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.orderNumber {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+}
+
+.orderTotal {
+  font-size: var(--font-size-sm);
+  color: var(--color-fg-muted);
+}
+
+.item {
+  padding: var(--space-2) 0;
+  font-size: var(--font-size-sm);
+}
+
+.itemOptions {
+  font-size: var(--font-size-xs);
+  color: var(--color-fg-muted);
+}
+
+.cardActions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.rejectForm {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.select,
+.noteInput {
+  min-height: var(--tap-target-min);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
+  color: var(--color-fg);
+  font-size: var(--font-size-sm);
+}
+
+.empty {
+  font-size: var(--font-size-sm);
+  color: var(--color-fg-muted);
+}
+
+.error {
+  font-size: var(--font-size-sm);
+  color: var(--color-danger);
+  margin-bottom: var(--space-4);
+}

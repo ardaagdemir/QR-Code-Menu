@@ -10,6 +10,7 @@ import styles from "@/styles/admin.module.css";
 const ROLE_LABELS: Record<string, string> = {
   BUSINESS_ADMIN: "İşletme Yöneticisi",
   BRANCH_MANAGER: "Şube Sorumlusu",
+  CASHIER: "Kasa",
   KITCHEN_STAFF: "Mutfak Personeli",
 };
 
@@ -142,6 +143,7 @@ export default function StaffPage() {
               <select id="staff-role" className={styles.select} value={role} onChange={(event) => setRole(event.target.value as StaffRole)}>
                 <option value="BUSINESS_ADMIN">İşletme Yöneticisi</option>
                 <option value="BRANCH_MANAGER">Şube Sorumlusu</option>
+                <option value="CASHIER">Kasa</option>
                 <option value="KITCHEN_STAFF">Mutfak Personeli</option>
               </select>
             </div>

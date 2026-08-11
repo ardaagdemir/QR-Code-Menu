@@ -160,6 +160,9 @@ export default function BranchesPage() {
                   <Button size="md" variant="ghost" disabled={togglingId === branch.id} onClick={() => handleToggleDeliveryModel(branch)}>
                     {branch.deliveryModel === "CUSTOMER_PICKUP" ? "Garson servisine geç" : "Pickup'a geç"}
                   </Button>
+                  <Link href={`/cashier/${branch.id}`} className={styles.backLink}>
+                    Kasa
+                  </Link>
                   <Link href={`/kitchen/${branch.id}`} className={styles.backLink}>
                     Mutfak
                   </Link>
