@@ -570,3 +570,68 @@ export async function updateBusinessContact(
     body: JSON.stringify(input),
   });
 }
+
+// ---------------------------------------------------------------------------
+// Gap-analysis #7: bulk menu assignment, staff announcements, chain comparison
+// ---------------------------------------------------------------------------
+
+export type BranchAssignmentTarget = "ALL_BRANCHES" | "SELECTED_BRANCHES";
+
+export async function bulkAssignProductToBranches(
+  productId: string,
+  target: BranchAssignmentTarget,
+  branchIds: string[],
+): Promise<BranchProductAdmin[]> {
+  return apiFetch(`/api/staff/products/${encodeURIComponent(productId)}/branch-assignments`, {
+    method: "POST",
+    body: JSON.stringify({ target, branchIds }),
+  });
+}
+
+export type StaffAnnouncement = {
+  id: string;
+  businessId: string;
+  title: string;
+  message: string;
+  target: BranchAssignmentTarget;
+  branchIds: string[];
+  createdBy: string;
+  createdAt: string;
+  expiresAt: string | null;
+};
+
+export async function listAnnouncements(): Promise<StaffAnnouncement[]> {
+  return apiFetch("/api/staff/announcements");
+}
+
+export async function listActiveAnnouncements(): Promise<StaffAnnouncement[]> {
+  return apiFetch("/api/staff/announcements/active");
+}
+
+export async function createAnnouncement(
+  title: string,
+  message: string,
+  target: BranchAssignmentTarget,
+  branchIds: string[],
+  expiresAt: string | null,
+): Promise<StaffAnnouncement> {
+  return apiFetch("/api/staff/announcements", {
+    method: "POST",
+    body: JSON.stringify({ title, message, target, branchIds, expiresAt }),
+  });
+}
+
+export async function endAnnouncement(announcementId: string): Promise<StaffAnnouncement> {
+  return apiFetch(`/api/staff/announcements/${encodeURIComponent(announcementId)}/end`, { method: "POST" });
+}
+
+export type BranchComparisonRow = {
+  branchId: string;
+  branchName: string;
+  orderCount: number;
+  tableVisitCount: number;
+};
+
+export async function getBranchComparison(): Promise<BranchComparisonRow[]> {
+  return apiFetch("/api/staff/branches/comparison");
+}

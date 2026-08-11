@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ALLERGENS,
+  bulkAssignProductToBranches,
   createMenuCategory,
   createProduct,
   listBranches,
@@ -13,6 +14,7 @@ import {
   upsertBranchProduct,
   type Allergen,
   type Branch,
+  type BranchAssignmentTarget,
   type BranchProductAdmin,
   type MenuCategoryAdmin,
   type ProductAdmin,
@@ -62,6 +64,10 @@ export default function MenuPage() {
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const prepTimeRef = useRef<Record<string, string>>({});
   const allergensRef = useRef<Record<string, Set<Allergen>>>({});
+
+  const [assigningProductId, setAssigningProductId] = useState<string | null>(null);
+  const assignTargetRef = useRef<Record<string, BranchAssignmentTarget>>({});
+  const assignBranchIdsRef = useRef<Record<string, Set<string>>>({});
 
   useEffect(() => {
     Promise.all([listMenuCategories(), listBranches()])
@@ -213,6 +219,48 @@ export default function MenuPage() {
       setEditingProductId(null);
     } catch {
       setError("Ürün detayları güncellenemedi.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function startAssigningBranches(product: ProductAdmin) {
+    assignTargetRef.current[product.id] = "ALL_BRANCHES";
+    assignBranchIdsRef.current[product.id] = new Set();
+    setAssigningProductId(product.id);
+  }
+
+  function toggleAssignBranch(productId: string, branchId: string) {
+    const current = assignBranchIdsRef.current[productId] ?? new Set<string>();
+    if (current.has(branchId)) {
+      current.delete(branchId);
+    } else {
+      current.add(branchId);
+    }
+    assignBranchIdsRef.current[productId] = new Set(current);
+  }
+
+  async function handleBulkAssign(product: ProductAdmin) {
+    const target = assignTargetRef.current[product.id] ?? "ALL_BRANCHES";
+    const branchIds = Array.from(assignBranchIdsRef.current[product.id] ?? new Set<string>());
+    if (target === "SELECTED_BRANCHES" && branchIds.length === 0) {
+      setError("Seçili şubeler için en az bir şube seçin.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const updated = await bulkAssignProductToBranches(product.id, target, branchIds);
+      if (selectedBranchId && updated.some((bp) => bp.branchId === selectedBranchId)) {
+        setBranchProducts((current) => {
+          const rest = current.filter((bp) => bp.productId !== product.id);
+          const forSelectedBranch = updated.find((bp) => bp.branchId === selectedBranchId);
+          return forSelectedBranch ? [...rest, forSelectedBranch] : rest;
+        });
+      }
+      setAssigningProductId(null);
+    } catch {
+      setError("Şubelere atama yapılamadı.");
     } finally {
       setBusy(false);
     }
@@ -386,8 +434,68 @@ export default function MenuPage() {
                           >
                             {isEditing ? "Vazgeç" : "Düzenle"}
                           </Button>
+                          <Button
+                            size="md"
+                            variant="ghost"
+                            disabled={busy}
+                            onClick={() =>
+                              assigningProductId === product.id
+                                ? setAssigningProductId(null)
+                                : startAssigningBranches(product)
+                            }
+                          >
+                            {assigningProductId === product.id ? "Vazgeç" : "Şubelere Ata"}
+                          </Button>
                         </div>
                       </div>
+
+                      {assigningProductId === product.id ? (
+                        <div className={styles.row}>
+                          <div className={styles.field}>
+                            <span className={styles.label}>Hedef</span>
+                            <div className={styles.rowActions}>
+                              <label className={styles.rowMeta}>
+                                <input
+                                  type="radio"
+                                  name={`assign-target-${product.id}`}
+                                  defaultChecked
+                                  onChange={() => {
+                                    assignTargetRef.current[product.id] = "ALL_BRANCHES";
+                                  }}
+                                />{" "}
+                                Tüm şubelere ata
+                              </label>
+                              <label className={styles.rowMeta}>
+                                <input
+                                  type="radio"
+                                  name={`assign-target-${product.id}`}
+                                  onChange={() => {
+                                    assignTargetRef.current[product.id] = "SELECTED_BRANCHES";
+                                  }}
+                                />{" "}
+                                Seçili şubelere ata
+                              </label>
+                            </div>
+                          </div>
+                          <div className={styles.field}>
+                            <span className={styles.label}>Şubeler</span>
+                            <div className={styles.rowActions}>
+                              {branches.map((branch) => (
+                                <label key={branch.id} className={styles.rowMeta}>
+                                  <input
+                                    type="checkbox"
+                                    onChange={() => toggleAssignBranch(product.id, branch.id)}
+                                  />{" "}
+                                  {branch.name}
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                          <Button size="md" disabled={busy} onClick={() => handleBulkAssign(product)}>
+                            Ata
+                          </Button>
+                        </div>
+                      ) : null}
 
                       {isEditing ? (
                         <div className={styles.row}>

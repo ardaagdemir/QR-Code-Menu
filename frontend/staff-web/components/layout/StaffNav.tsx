@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { logout, me, type StaffContext } from "@/lib/api";
+import AnnouncementBanner from "./AnnouncementBanner";
 import styles from "./StaffNav.module.css";
 
 const ROLE_LABELS: Record<string, string> = {
@@ -58,40 +59,49 @@ export default function StaffNav() {
   }
 
   return (
-    <nav className={styles.nav}>
-      <div className={styles.links}>
-        {isAdmin ? (
-          <>
-            <Link href="/branches" className={linkClass("/branches")}>
-              Şubeler
-            </Link>
-            <Link href="/menu" className={linkClass("/menu")}>
-              Menü
-            </Link>
-            <Link href="/staff" className={linkClass("/staff")}>
-              Personel
-            </Link>
-            <Link href="/audit" className={linkClass("/audit")}>
-              Denetim Kaydı
-            </Link>
-            <Link href="/business-settings" className={linkClass("/business-settings")}>
-              İşletme Ayarları
-            </Link>
-          </>
-        ) : null}
-      </div>
-      <div className={styles.right}>
-        {context ? (
-          <span className={styles.identity}>
-            {context.email}
-            <br />
-            {ROLE_LABELS[context.role] ?? context.role}
-          </span>
-        ) : null}
-        <button type="button" className={styles.logout} onClick={handleLogout}>
-          Çıkış Yap
-        </button>
-      </div>
-    </nav>
+    <>
+      <nav className={styles.nav}>
+        <div className={styles.links}>
+          {isAdmin ? (
+            <>
+              <Link href="/branches" className={linkClass("/branches")}>
+                Şubeler
+              </Link>
+              <Link href="/menu" className={linkClass("/menu")}>
+                Menü
+              </Link>
+              <Link href="/staff" className={linkClass("/staff")}>
+                Personel
+              </Link>
+              <Link href="/audit" className={linkClass("/audit")}>
+                Denetim Kaydı
+              </Link>
+              <Link href="/business-settings" className={linkClass("/business-settings")}>
+                İşletme Ayarları
+              </Link>
+              <Link href="/announcements" className={linkClass("/announcements")}>
+                Duyurular
+              </Link>
+              <Link href="/chain-comparison" className={linkClass("/chain-comparison")}>
+                Şube Karşılaştırma
+              </Link>
+            </>
+          ) : null}
+        </div>
+        <div className={styles.right}>
+          {context ? (
+            <span className={styles.identity}>
+              {context.email}
+              <br />
+              {ROLE_LABELS[context.role] ?? context.role}
+            </span>
+          ) : null}
+          <button type="button" className={styles.logout} onClick={handleLogout}>
+            Çıkış Yap
+          </button>
+        </div>
+      </nav>
+      {context ? <AnnouncementBanner /> : null}
+    </>
   );
 }
