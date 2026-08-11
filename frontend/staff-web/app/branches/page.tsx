@@ -169,6 +169,9 @@ export default function BranchesPage() {
                   <Link href={`/refunds/${branch.id}`} className={styles.backLink}>
                     İadeler
                   </Link>
+                  <Link href={`/reports/${branch.id}`} className={styles.backLink}>
+                    Raporlar
+                  </Link>
                   {branch.deliveryModel === "CUSTOMER_PICKUP" ? (
                     <Link href={`/pickup/${branch.id}`} className={styles.backLink} target="_blank">
                       Pickup Board

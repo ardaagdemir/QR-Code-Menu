@@ -635,3 +635,65 @@ export type BranchComparisonRow = {
 export async function getBranchComparison(): Promise<BranchComparisonRow[]> {
   return apiFetch("/api/staff/branches/comparison");
 }
+
+// ---------------------------------------------------------------------------
+// Gap-analysis #8: sales reporting (Section 13) - branch report + chain view
+// ---------------------------------------------------------------------------
+
+export type ProductSalesRow = {
+  productId: string;
+  productName: string;
+  quantitySold: number;
+  revenueMinorUnits: number;
+};
+
+export type CategorySalesRow = {
+  categoryId: string;
+  categoryName: string;
+  revenueMinorUnits: number;
+};
+
+export type HourlySalesRow = {
+  hourOfDay: number;
+  orderCount: number;
+  revenueMinorUnits: number;
+};
+
+export type BranchSalesReport = {
+  branchId: string;
+  branchName: string;
+  from: string;
+  to: string;
+  grossSalesMinorUnits: number;
+  netSalesMinorUnits: number;
+  refundTotalMinorUnits: number;
+  orderCount: number;
+  acceptedOrderCount: number;
+  rejectedOrderCount: number;
+  averageOrderValueMinorUnits: number;
+  tableVisitCount: number;
+  productBreakdown: ProductSalesRow[];
+  categoryBreakdown: CategorySalesRow[];
+  hourlyDistribution: HourlySalesRow[];
+};
+
+export type ChainSalesReport = {
+  businessId: string;
+  from: string;
+  to: string;
+  totalGrossSalesMinorUnits: number;
+  totalNetSalesMinorUnits: number;
+  totalRefundMinorUnits: number;
+  totalOrderCount: number;
+  branches: BranchSalesReport[];
+};
+
+export async function getBranchSalesReport(branchId: string, from: string, to: string): Promise<BranchSalesReport> {
+  return apiFetch(
+    `/api/staff/branches/${encodeURIComponent(branchId)}/reports?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+  );
+}
+
+export async function getChainSalesReport(from: string, to: string): Promise<ChainSalesReport> {
+  return apiFetch(`/api/staff/reports/chain?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+}

@@ -85,6 +85,9 @@ export default function StaffNav() {
               <Link href="/chain-comparison" className={linkClass("/chain-comparison")}>
                 Şube Karşılaştırma
               </Link>
+              <Link href="/reports" className={linkClass("/reports")}>
+                Satış Raporları
+              </Link>
             </>
           ) : null}
         </div>
