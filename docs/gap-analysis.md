@@ -60,7 +60,8 @@ log, pickup board, `DeliveryModel`, rate limiting, payment timeout scheduler.
    Gap-Analysis #8.)
 9. ✅ **Gün sonu snapshot + Excel export**. (Bkz. development-progress.md, Gap-Analysis #9.)
 10. ✅ **Gider yönetimi** (expense + recurring). (Bkz. development-progress.md, Gap-Analysis #10.)
-11. **Sahibine otomatik bildirim** (email adapter önce, WhatsApp sonra — blocker değil).
+11. ✅ **Sahibine otomatik bildirim** (email adapter — WhatsApp blocker olmadığı için ertelendi). (Bkz.
+    development-progress.md, Gap-Analysis #11.)
 12. **Security hardening / RLS yeniden değerlendirme** — kapanışta.
 
 Bu sıralama, dokümanın kendi M6→M13 planıyla ve Bölüm 25'teki "önce CONFLICTING düzelt, sonra sırayla eksikleri
