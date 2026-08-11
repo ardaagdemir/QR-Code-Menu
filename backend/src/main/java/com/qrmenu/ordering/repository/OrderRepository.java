@@ -27,4 +27,8 @@ public interface OrderRepository extends JpaRepository<CustomerOrder, UUID> {
 
     /** Gap-analysis #7 chain comparison: real orders only, abandoned DRAFT/CANCELLED carts excluded. */
     long countByBranchIdAndCreatedAtAfterAndStatusNotIn(UUID branchId, Instant since, List<OrderStatus> excludedStatuses);
+
+    /** Gap-analysis #8 reporting: paid orders (successful payment) for a branch within a selectable date range. */
+    List<CustomerOrder> findAllByBranchIdAndCreatedAtBetweenAndStatusIn(
+            UUID branchId, Instant from, Instant to, List<OrderStatus> statuses);
 }

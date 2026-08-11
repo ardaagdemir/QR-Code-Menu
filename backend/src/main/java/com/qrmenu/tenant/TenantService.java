@@ -128,6 +128,14 @@ public class TenantService {
         return branchRepository.findAllByBusinessIdOrderByNameAsc(businessId);
     }
 
+    /** Gap-analysis #8 reporting: a single branch (name/timezone) scoped to its business. */
+    @Transactional(readOnly = true)
+    public Branch getBranch(UUID businessId, UUID branchId) {
+        return branchRepository
+                .findByIdAndBusinessId(branchId, businessId)
+                .orElseThrow(() -> new ResourceNotFoundException("Branch not found for business: " + branchId));
+    }
+
     @Transactional(readOnly = true)
     public List<RestaurantTable> listTables(UUID businessId, UUID branchId) {
         branchRepository

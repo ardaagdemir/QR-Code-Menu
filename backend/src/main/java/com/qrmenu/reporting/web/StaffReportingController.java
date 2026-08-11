@@ -1,0 +1,103 @@
+package com.qrmenu.reporting.web;
+
+import com.qrmenu.reporting.BranchSalesReportView;
+import com.qrmenu.reporting.CategorySalesView;
+import com.qrmenu.reporting.ChainSalesReportView;
+import com.qrmenu.reporting.HourlySalesView;
+import com.qrmenu.reporting.ProductSalesView;
+import com.qrmenu.reporting.ReportingService;
+import com.qrmenu.reporting.web.dto.BranchSalesReportResponse;
+import com.qrmenu.reporting.web.dto.CategorySalesResponse;
+import com.qrmenu.reporting.web.dto.ChainSalesReportResponse;
+import com.qrmenu.reporting.web.dto.HourlySalesResponse;
+import com.qrmenu.reporting.web.dto.ProductSalesResponse;
+import com.qrmenu.staffaccess.Permission;
+import com.qrmenu.staffaccess.StaffAuthService;
+import com.qrmenu.staffaccess.StaffContext;
+import com.qrmenu.staffaccess.StaffCookieSupport;
+import java.time.LocalDate;
+import java.util.UUID;
+import org.springframework.web.bind.annotation.CookieValue;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+/** Gap-analysis #8 (product-requirements.md Section 13): branch and chain-wide sales reports. */
+@RestController
+public class StaffReportingController {
+
+    private final ReportingService reportingService;
+    private final StaffAuthService staffAuthService;
+
+    public StaffReportingController(ReportingService reportingService, StaffAuthService staffAuthService) {
+        this.reportingService = reportingService;
+        this.staffAuthService = staffAuthService;
+    }
+
+    /** Section 13.1: Kasa/yönetim panelinde temel metrikler - CASHIER/BRANCH_MANAGER/BUSINESS_ADMIN, kendi şubeleri. */
+    @GetMapping("/api/staff/branches/{branchId}/reports")
+    public BranchSalesReportResponse branchReport(
+            @PathVariable UUID branchId,
+            @RequestParam LocalDate from,
+            @RequestParam LocalDate to,
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie) {
+        StaffContext context = staffAuthService.resolveStaffContextForBranch(
+                StaffCookieSupport.parseSessionId(sessionCookie), Permission.REPORT_VIEW, branchId);
+        return toResponse(reportingService.getBranchReport(context.businessId(), branchId, from, to));
+    }
+
+    /** Section 13.2: BUSINESS_ADMIN'in zincir görünümü - tüm şubeler için karşılaştırmalı ciro/refund/sipariş. */
+    @GetMapping("/api/staff/reports/chain")
+    public ChainSalesReportResponse chainReport(
+            @RequestParam LocalDate from,
+            @RequestParam LocalDate to,
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie) {
+        StaffContext context = staffAuthService.resolveStaffContext(
+                StaffCookieSupport.parseSessionId(sessionCookie), Permission.REPORT_CHAIN_VIEW);
+        return toResponse(reportingService.getChainReport(context.businessId(), from, to));
+    }
+
+    private static BranchSalesReportResponse toResponse(BranchSalesReportView view) {
+        return new BranchSalesReportResponse(
+                view.branchId(),
+                view.branchName(),
+                view.from(),
+                view.to(),
+                view.grossSalesMinorUnits(),
+                view.netSalesMinorUnits(),
+                view.refundTotalMinorUnits(),
+                view.orderCount(),
+                view.acceptedOrderCount(),
+                view.rejectedOrderCount(),
+                view.averageOrderValueMinorUnits(),
+                view.tableVisitCount(),
+                view.productBreakdown().stream().map(StaffReportingController::toResponse).toList(),
+                view.categoryBreakdown().stream().map(StaffReportingController::toResponse).toList(),
+                view.hourlyDistribution().stream().map(StaffReportingController::toResponse).toList());
+    }
+
+    private static ChainSalesReportResponse toResponse(ChainSalesReportView view) {
+        return new ChainSalesReportResponse(
+                view.businessId(),
+                view.from(),
+                view.to(),
+                view.totalGrossSalesMinorUnits(),
+                view.totalNetSalesMinorUnits(),
+                view.totalRefundMinorUnits(),
+                view.totalOrderCount(),
+                view.branches().stream().map(StaffReportingController::toResponse).toList());
+    }
+
+    private static ProductSalesResponse toResponse(ProductSalesView view) {
+        return new ProductSalesResponse(view.productId(), view.productName(), view.quantitySold(), view.revenueMinorUnits());
+    }
+
+    private static CategorySalesResponse toResponse(CategorySalesView view) {
+        return new CategorySalesResponse(view.categoryId(), view.categoryName(), view.revenueMinorUnits());
+    }
+
+    private static HourlySalesResponse toResponse(HourlySalesView view) {
+        return new HourlySalesResponse(view.hourOfDay(), view.orderCount(), view.revenueMinorUnits());
+    }
+}

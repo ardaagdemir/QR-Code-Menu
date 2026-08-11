@@ -49,6 +49,23 @@ public class OrderingService {
     private static final List<OrderItemStatus> UNDECIDED_OR_PREPARING_STATUSES =
             List.of(OrderItemStatus.PENDING_REVIEW, OrderItemStatus.PREPARING);
 
+    /**
+     * Gap-analysis #8 reporting (Section 13.4: "Payment + immutable Order/OrderItem
+     * snapshots"): every order that reached a status only reachable after a successful
+     * payment webhook - including REJECTED_BY_STORE, whose paid amount still counts
+     * toward gross sales and is offset by the cashier-triggered full refund, same
+     * "gross sales, then subtract refund" split as Section 13.1's brüt/net satış pair.
+     * DRAFT/AWAITING_PAYMENT/PAYMENT_FAILED/CANCELLED never took a payment, so they're
+     * excluded rather than passed in by the caller - same "status logic stays inside
+     * OrderingService" discipline as countOrdersSince.
+     */
+    private static final List<OrderStatus> PAID_ORDER_STATUSES = List.of(
+            OrderStatus.AWAITING_STORE_ACCEPTANCE,
+            OrderStatus.IN_KITCHEN,
+            OrderStatus.READY,
+            OrderStatus.COMPLETED,
+            OrderStatus.REJECTED_BY_STORE);
+
     private final CustomerSessionService customerSessionService;
     private final MenuService menuService;
     private final TenantService tenantService;
@@ -527,6 +544,19 @@ public class OrderingService {
     public long countOrdersSince(UUID branchId, Instant since) {
         return orderRepository.countByBranchIdAndCreatedAtAfterAndStatusNotIn(
                 branchId, since, List.of(OrderStatus.DRAFT, OrderStatus.CANCELLED));
+    }
+
+    /** Gap-analysis #8 reporting: paid orders + items for a branch within a selectable date range. */
+    @Transactional(readOnly = true)
+    public List<ReportOrderView> findOrdersForReport(UUID branchId, Instant from, Instant to) {
+        List<CustomerOrder> orders =
+                orderRepository.findAllByBranchIdAndCreatedAtBetweenAndStatusIn(branchId, from, to, PAID_ORDER_STATUSES);
+        List<UUID> orderIds = orders.stream().map(CustomerOrder::getId).toList();
+        Map<UUID, List<OrderItem>> itemsByOrderId = orderItemRepository.findAllByOrderIdIn(orderIds).stream()
+                .collect(Collectors.groupingBy(OrderItem::getOrderId));
+        return orders.stream()
+                .map(order -> new ReportOrderView(order, itemsByOrderId.getOrDefault(order.getId(), List.of())))
+                .toList();
     }
 
     private void recalculateOrderTotal(CustomerOrder order) {

@@ -13,4 +13,7 @@ public interface TableVisitRepository extends JpaRepository<TableVisit, UUID> {
 
     /** Gap-analysis #7 chain comparison: table-visit volume per branch since a fixed cutoff. */
     long countByBranchIdAndStartedAtAfter(UUID branchId, Instant since);
+
+    /** Gap-analysis #8 reporting: table-visit volume per branch within a selectable date range. */
+    long countByBranchIdAndStartedAtBetween(UUID branchId, Instant from, Instant to);
 }

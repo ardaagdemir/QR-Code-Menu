@@ -214,6 +214,12 @@ public class MenuService {
         return branchProductRepository.findAllByBranchIdAndProductIdIn(branchId, productIds);
     }
 
+    /** Gap-analysis #8 reporting: resolves each sold OrderItem.productId to its current category for the category breakdown. */
+    @Transactional(readOnly = true)
+    public List<Product> getProductsByIds(List<UUID> productIds) {
+        return productRepository.findAllById(productIds);
+    }
+
     @Transactional(readOnly = true)
     public List<ProductOptionGroup> getOptionGroupsForProducts(List<UUID> productIds) {
         return optionGroupRepository.findAllByProductIdInOrderByDisplayOrderAsc(productIds);

@@ -119,6 +119,15 @@ public class RefundService {
         return requestRefund(branchId, orderId, lines, actorStaffUserId);
     }
 
+    /** Gap-analysis #8 reporting: total completed refund amount for a set of orders (Section 13.4, refund toplamı). */
+    @Transactional(readOnly = true)
+    public long sumCompletedRefundAmount(List<UUID> orderIds) {
+        if (orderIds.isEmpty()) {
+            return 0L;
+        }
+        return refundRepository.sumTotalAmountMinorUnitsByOrderIdInAndStatus(orderIds, RefundStatus.COMPLETED);
+    }
+
     @Transactional(readOnly = true)
     public List<RefundView> getRefundsForOrder(UUID orderId) {
         List<Refund> refunds = refundRepository.findAllByOrderIdOrderByCreatedAtAsc(orderId);

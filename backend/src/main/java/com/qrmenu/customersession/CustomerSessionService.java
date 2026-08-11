@@ -82,4 +82,10 @@ public class CustomerSessionService {
     public long countTableVisitsSince(UUID branchId, Instant since) {
         return tableVisitRepository.countByBranchIdAndStartedAtAfter(branchId, since);
     }
+
+    /** Gap-analysis #8 reporting: table-visit volume per branch within a selectable date range. */
+    @Transactional(readOnly = true)
+    public long countTableVisitsBetween(UUID branchId, Instant from, Instant to) {
+        return tableVisitRepository.countByBranchIdAndStartedAtBetween(branchId, from, to);
+    }
 }
