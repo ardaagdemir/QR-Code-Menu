@@ -161,4 +161,17 @@ class ModuleBoundaryTest {
 
         rule.check(importedClasses);
     }
+
+    @Test
+    void expenseRepositoriesAreOnlyUsedWithinTheExpenseModule() {
+        ArchRule rule = noClasses()
+                .that()
+                .resideOutsideOfPackage("com.qrmenu.expense..")
+                .should()
+                .dependOnClassesThat()
+                .resideInAPackage("com.qrmenu.expense.repository..")
+                .because("cross-module access must go through ExpenseService, not its repositories");
+
+        rule.check(importedClasses);
+    }
 }

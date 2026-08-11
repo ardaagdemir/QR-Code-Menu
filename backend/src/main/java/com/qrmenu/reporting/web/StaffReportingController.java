@@ -5,11 +5,13 @@ import com.qrmenu.reporting.CategorySalesView;
 import com.qrmenu.reporting.ChainSalesReportView;
 import com.qrmenu.reporting.HourlySalesView;
 import com.qrmenu.reporting.ProductSalesView;
+import com.qrmenu.expense.ExpenseService;
 import com.qrmenu.reporting.ReportingService;
 import com.qrmenu.reporting.web.dto.BranchSalesReportResponse;
 import com.qrmenu.reporting.web.dto.CategorySalesResponse;
 import com.qrmenu.reporting.web.dto.ChainSalesReportResponse;
 import com.qrmenu.reporting.web.dto.HourlySalesResponse;
+import com.qrmenu.reporting.web.dto.OperatingResultResponse;
 import com.qrmenu.reporting.web.dto.ProductSalesResponse;
 import com.qrmenu.staffaccess.Permission;
 import com.qrmenu.staffaccess.StaffAuthService;
@@ -28,10 +30,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class StaffReportingController {
 
     private final ReportingService reportingService;
+    private final ExpenseService expenseService;
     private final StaffAuthService staffAuthService;
 
-    public StaffReportingController(ReportingService reportingService, StaffAuthService staffAuthService) {
+    public StaffReportingController(
+            ReportingService reportingService, ExpenseService expenseService, StaffAuthService staffAuthService) {
         this.reportingService = reportingService;
+        this.expenseService = expenseService;
         this.staffAuthService = staffAuthService;
     }
 
@@ -45,6 +50,29 @@ public class StaffReportingController {
         StaffContext context = staffAuthService.resolveStaffContextForBranch(
                 StaffCookieSupport.parseSessionId(sessionCookie), Permission.REPORT_VIEW, branchId);
         return toResponse(reportingService.getBranchReport(context.businessId(), branchId, from, to));
+    }
+
+    /** Section 17: brüt/net satış + onaylı giderler = "Yönetimsel Net Sonuç" - kâr olarak sunulmaz (bkz. OperatingResultResponse javadoc). */
+    @GetMapping("/api/staff/branches/{branchId}/reports/operating-result")
+    public OperatingResultResponse operatingResult(
+            @PathVariable UUID branchId,
+            @RequestParam LocalDate from,
+            @RequestParam LocalDate to,
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie) {
+        StaffContext context = staffAuthService.resolveStaffContextForBranch(
+                StaffCookieSupport.parseSessionId(sessionCookie), Permission.REPORT_VIEW, branchId);
+        BranchSalesReportView report = reportingService.getBranchReport(context.businessId(), branchId, from, to);
+        long approvedExpenses = expenseService.sumApprovedExpenses(context.businessId(), branchId, from, to);
+        return new OperatingResultResponse(
+                branchId,
+                report.branchName(),
+                from,
+                to,
+                report.grossSalesMinorUnits(),
+                report.refundTotalMinorUnits(),
+                report.netSalesMinorUnits(),
+                approvedExpenses,
+                report.netSalesMinorUnits() - approvedExpenses);
     }
 
     /** Section 13.2: BUSINESS_ADMIN'in zincir görünümü - tüm şubeler için karşılaştırmalı ciro/refund/sipariş. */
