@@ -600,3 +600,52 @@ kendi şubesini görüp diğerini görememesi, KITCHEN_STAFF'ın REPORT_VIEW'i o
 
 **Not:** Bu madde de canlı tarayıcı doğrulaması olmadan tamamlandı (bkz. proje hafızası - Chrome testi bu
 projede kapalı); doğrulama backend integration testleri + `npm run build`/`lint` ile yapıldı.
+
+## Gap-Analysis #9 — Gün Sonu Kapanış Raporu + Excel Export — ✅ COMPLETED
+
+Gap-analysis'in "Önerilen Geliştirme Sırası" #9 maddesi (product-requirements.md Section 14). Kapsam Bölüm 14
+(daily close snapshot + Excel) ile sınırlandırıldı - Bölüm 15 (sahibine otomatik bildirim, gap-analysis #11)
+ve Bölüm 16 (gider yönetimi, gap-analysis #10) bu maddenin dışında bırakıldı.
+
+**Ana özellikler:**
+- **Yeni `com.qrmenu.dailyclose` modülü** (reporting/chain'in aksine kendi persistence'ı var):
+  `DailyBranchCloseReport` bir branch+businessDate için tek satır (unique constraint), `ReportingService.
+  getBranchReport` (gap-analysis #8) `from=to=businessDate` ile beslenerek gross/net/refund/orderCount/
+  acceptedOrderCount/rejectedOrderCount/averageOrderValue/tableVisitCount hesaplıyor - iki modül asla farklı
+  matematik kullanmıyor. `guestCount` alanı yok (#8'deki aynı gerekçe - veri kaynağı henüz yok).
+- **PREVIEW/FINAL yaşam döngüsü:** `DailyCloseService.generatePreview` her çağrıda güncellenebilir (FINAL
+  yoksa); `generateFinal` **immutable** - satır zaten FINAL ise yeniden hesaplamadan aynı satırı döner. Section
+  14.3'ün "Excel source of truth değil, DB'den yeniden üretilebilir" ilkesiyle uyumlu: bir FINAL satır bir kez
+  raporlandıktan sonra hiçbir zaman değişmiyor.
+- **`DailyCloseScheduler`** (`@Scheduled`, 5 dakikada bir): her branch için o günkü `BranchBusinessHours.
+  closingTime`'ına göre `closingTime-10dk`'da PREVIEW, `closingTime+5dk`'da FINAL üretiyor (Section 14.2).
+  Eşikler `>=` ile kontrol ediliyor (dar bir pencere eşleşmesi değil) - kaçırılan bir poll döngüsü bir sonraki
+  turda yakalanıyor. Saat tanımsız/kapalı günler atlanıyor - böyle bir şube manuel endpoint'le kapatılabiliyor.
+  Sistem geneli şube taraması için `TenantService.listAllBranches()` eklendi (scheduler tek bir business'a
+  değil tüm business'lara bakıyor).
+- **Manuel endpoint'ler:** `GET .../daily-close` (liste), `POST .../daily-close/final` (elle FINAL tetikleme -
+  ör. business hours yanlış girilmişse). Ayrı bir permission açılmadı, mevcut `REPORT_VIEW` yeniden kullanıldı.
+- **Excel export (Apache POI, `poi-ooxml` 5.3.0):** `GET .../daily-close/excel` (branch) ve `GET /api/staff/
+  daily-close/excel` (zincir, `REPORT_CHAIN_VIEW`) - her istekte DB'deki `DailyBranchCloseReport` satırlarından
+  **anlık** üretiliyor, kalıcı dosya/object storage yok (henüz tüketen bir bildirim adaptörü olmadığından
+  gereksiz karmaşıklık eklenmedi; spec'in "gerektiğinde DB'den yeniden üretilebilir" notuyla zaten uyumlu).
+- **staff-web:** `/reports/[branchId]` sayfasına "Gün Sonu Kapanışları" bölümü (PREVIEW/FINAL rozetli liste,
+  "Excel indir" ve bugün henüz FINAL değilse "Bugünü kapat" aksiyonları). `Badge` bileşenine yeni `success`
+  tone'u eklendi (FINAL rozeti için) - `--color-success`/`--color-success-bg` token'ları `globals.css`'e
+  eklendi.
+
+**Teknik kararlar:**
+- `dailyclose` kendi repository'sine sahip olduğu için `ModuleBoundaryTest`'e yeni bir case eklendi (tenant/
+  ordering ile aynı desen - #7/#8'in "reporting/chain'in kendi repository'si yok" muafiyeti burada geçerli
+  değil).
+- Zone çözümleme (`branch.getTimezone() ?? UTC`) `ReportingService.resolveZone`'un birebir aynısı ama ayrı bir
+  paylaşılan yardımcı çıkarılmadı - tek satırlık mantığı iki modül arasında paylaşmak, modül sınırını (private
+  metoda erişim) ihlal etmeden mümkün değildi; kopyalamak gereksiz bir cross-module bağımlılıktan daha ucuz.
+
+**Backend test sayısı 98 → 103** (yeni: `DailyCloseFlowIntegrationTest` 4 - manuel FINAL'in sipariş verisinden
+doğru hesaplanması + FINAL'den sonra yeni siparişin sayıyı değiştirmemesi (immutability), KITCHEN_STAFF'ın
+REPORT_VIEW'i olmadığı için 403 alması, Excel export'un POI ile geri okunabilir olması, scheduler'ın preview-
+lead/final-grace eşiklerine uyması; `ModuleBoundaryTest`'e 1 yeni case).
+
+**Not:** Bu madde de canlı tarayıcı doğrulaması olmadan tamamlandı (bkz. proje hafızası - Chrome testi bu
+projede kapalı); doğrulama backend integration testleri + `npm run build`/`lint`/`tsc --noEmit` ile yapıldı.
