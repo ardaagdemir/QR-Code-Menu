@@ -1,0 +1,44 @@
+spring:
+  application:
+    name: qrmenu-backend
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://postgres:5432/qrmenu}
+    username: ${SPRING_DATASOURCE_USERNAME:qrmenu}
+    password: ${SPRING_DATASOURCE_PASSWORD:qrmenu}
+  flyway:
+    locations: classpath:db/migration
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+
+# Shared-secret guard for the /internal/** bootstrap API (PLATFORM_ADMIN, no dedicated
+# UI in v1 - see docs/product-requirements.md Section 3/9). Empty by default so a
+# misconfigured deployment fails closed instead of silently accepting any request.
+internal:
+  admin:
+    token: ${INTERNAL_ADMIN_TOKEN:}
+
+# customer-web's and staff-web's origins, allowed (with credentials) to call /api/** -
+# see com.qrmenu.common.web.CorsConfig.
+app:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:3002}
+
+# PaymentProviderPort adapter selection (Section 2) - "mock" is the only adapter today.
+# The webhook secret is empty by default so a misconfigured deployment fails closed
+# (MockPaymentProviderAdapter.verifyWebhookSignature rejects every signature when
+# blank), same discipline as internal.admin.token above.
+payment:
+  provider: ${PAYMENT_PROVIDER:mock}
+  mock:
+    webhook-secret: ${PAYMENT_MOCK_WEBHOOK_SECRET:}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never

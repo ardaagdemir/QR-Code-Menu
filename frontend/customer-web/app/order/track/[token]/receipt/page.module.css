@@ -1,0 +1,127 @@
+.page {
+  min-height: 100%;
+  max-width: 420px;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-4);
+}
+
+.centeredState {
+  min-height: 60vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.notLegalNotice {
+  text-align: center;
+  font-size: var(--font-size-xs);
+  color: var(--color-fg-muted);
+  margin-bottom: var(--space-4);
+}
+
+.header {
+  text-align: center;
+  padding-bottom: var(--space-4);
+  border-bottom: 1px dashed var(--color-border-strong);
+}
+
+.businessName {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+}
+
+.branchName {
+  margin-top: var(--space-1);
+  font-size: var(--font-size-sm);
+  color: var(--color-fg-muted);
+}
+
+.meta {
+  margin-top: var(--space-3);
+  font-size: var(--font-size-xs);
+  color: var(--color-fg-muted);
+}
+
+.itemTable {
+  width: 100%;
+  margin-top: var(--space-5);
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+.itemTable th {
+  text-align: left;
+  font-size: var(--font-size-xs);
+  color: var(--color-fg-muted);
+  font-weight: var(--font-weight-regular);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.itemTable td {
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.numeric {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.summary {
+  margin-top: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+}
+
+.summaryRow {
+  display: flex;
+  justify-content: space-between;
+}
+
+.summaryTotal {
+  font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-base);
+  padding-top: var(--space-2);
+  border-top: 1px dashed var(--color-border-strong);
+}
+
+.refundRow {
+  color: var(--color-danger);
+}
+
+.refundsSection {
+  margin-top: var(--space-6);
+  padding-top: var(--space-4);
+  border-top: 1px dashed var(--color-border-strong);
+}
+
+.refundsTitle {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  margin-bottom: var(--space-3);
+}
+
+.refundEntry {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--font-size-xs);
+  color: var(--color-fg-muted);
+  padding: var(--space-1) 0;
+}
+
+.printButton {
+  width: 100%;
+  margin-top: var(--space-6);
+}
+
+@media print {
+  .printButton {
+    display: none;
+  }
+  .notLegalNotice {
+    margin-top: var(--space-2);
+  }
+}

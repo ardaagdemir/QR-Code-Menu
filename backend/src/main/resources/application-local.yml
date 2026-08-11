@@ -1,0 +1,26 @@
+# Activate with: ./mvnw spring-boot:run -Dspring-boot.run.profiles=local
+# For running the backend directly on the host (outside Docker) against the
+# PostgreSQL container started by infra/docker-compose.yml (port-mapped to localhost:5433
+# to avoid clashing with a locally installed PostgreSQL on the default 5432 port).
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5433/qrmenu
+    username: qrmenu
+    password: qrmenu
+
+management:
+  endpoint:
+    health:
+      show-details: always
+
+internal:
+  admin:
+    token: ${INTERNAL_ADMIN_TOKEN:dev-internal-admin-token-change-me}
+
+payment:
+  mock:
+    webhook-secret: ${PAYMENT_MOCK_WEBHOOK_SECRET:dev-payment-mock-webhook-secret-change-me}
+
+logging:
+  level:
+    org.flywaydb: DEBUG

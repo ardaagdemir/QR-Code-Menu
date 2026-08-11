@@ -1,0 +1,5 @@
+.skeleton {
+  display: block;
+  background: var(--color-skeleton);
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}

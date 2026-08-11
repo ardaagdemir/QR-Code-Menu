@@ -1,0 +1,91 @@
+.image {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-4);
+}
+
+.title {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+}
+
+.description {
+  margin-top: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-fg-muted);
+}
+
+.group {
+  margin-top: var(--space-5);
+}
+
+.groupLegend {
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-sm);
+  margin-bottom: var(--space-2);
+}
+
+.groupHint {
+  font-weight: var(--font-weight-regular);
+  color: var(--color-fg-muted);
+}
+
+.optionRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--tap-target-min);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.optionInput {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  accent-color: var(--color-primary);
+}
+
+.optionName {
+  flex: 1;
+}
+
+.optionDelta {
+  color: var(--color-fg-muted);
+  font-size: var(--font-size-sm);
+}
+
+.quantityRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: var(--space-6);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+
+.quantityLabel {
+  font-weight: var(--font-weight-semibold);
+}
+
+.error {
+  margin-top: var(--space-4);
+  font-size: var(--font-size-sm);
+  color: var(--color-danger);
+}
+
+.actions {
+  display: flex;
+  gap: var(--space-3);
+  margin-top: var(--space-6);
+}
+
+.confirmButton {
+  flex: 1.4;
+}
+
+.actions > :first-child {
+  flex: 1;
+}

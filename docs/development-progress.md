@@ -1,0 +1,345 @@
+# Geliştirme İlerleme Durumu
+
+Bu dosya, `docs/milestone-1-report.md` … `milestone-4-report.md` dosyalarının yerine geçen özet bir durum
+kaydıdır. Amaç geçmişin ayrıntılı raporunu tutmak değil, yeni bir Claude oturumunun projenin mevcut durumunu
+hızlıca kavramasıdır. Tam gereksinimler/kararlar için [`product-requirements.md`](product-requirements.md)
+(özellikle Bölüm 9 — milestone planı) tek otoritedir; buradaki notlar yalnızca "ne yapıldı, neden, nelere
+dikkat" özetidir.
+
+**Genel durum:** Backend `com.qrmenu` modüler monolit (Spring Boot 3.5.3, Java 21, Maven, PostgreSQL 16, Flyway
+V1–V11). İki frontend uygulaması var: `customer-web` (Next.js 16, `app/t/[token]`, `app/order/track/[token]`) ve
+`staff-web` (Next.js 16, port 3002 — gerçek StaffUser login + admin ekranları + pickup board, Milestone 8/9). 10
+modül var: `tenant`, `customersession`, `menu`, `ordering`, `payment`, `kitchen`, `notification`, `refund`,
+`staffaccess`, `audit` (+ modül-olmayan `shared`/`shared.outbox`). Tüm milestone'lar (1-9) tamamlandı. Git deposu
+hâlâ **başlatılmadı** — hiçbir commit yok.
+
+---
+
+## Milestone 1 — Foundation — ✅ COMPLETED
+
+**Ana özellikler:** Maven/Spring Boot iskeleti, PostgreSQL + Flyway + Testcontainers bağlantısı, Actuator health
+endpoint, customer-web Next.js iskeleti, Docker Compose (postgres/backend/customer-web).
+
+**Teknik kararlar:** Host'ta yerel Postgres ile çakışmayı önlemek için Compose'da host portu 5433 (konteyner-içi
+hâlâ 5432); Actuator yeterli, özel health controller yok; `application.yml`/`application-local.yml` ayrımı
+(default = Docker Compose servis adı, local = host'tan `localhost:5433`); Milestone 1'de `shared/`
+(Money/DomainEvent/Outbox) kasıtlı olarak yok.
+
+**Bilinen notlar:** Sistemin varsayılan `mvn`'i JDK 24 kullanıyor — derleme/test için `JAVA_HOME`'un JDK 21'e
+işaret etmesi gerekiyor.
+
+---
+
+## Milestone 2 — Business/Branch/Table/QR + AnonymousCustomerSession/TableVisit — ✅ COMPLETED
+
+**Ana özellikler:** `tenant` modülü (Business/Branch/RestaurantTable/TableQrToken), `customersession` modülü
+(AnonymousCustomerSession/TableVisit); internal/PLATFORM_ADMIN bootstrap API (`X-Internal-Admin-Token` guard,
+`/internal/businesses/**`); public `POST /api/qr/{token}/visit` — QR doğrulama → TableVisit başlatma/devam
+ettirme + `qrmenu_session` cookie'si; `ModuleBoundaryTest` (ArchUnit) ile modüller arası repository erişim yasağı.
+
+**Teknik kararlar:** `business_id` her tenant tablosunda **doğrudan** sütun (join değil); QR token **plaintext**
+saklanıyor (yalnızca yeni TableVisit başlatabildiği için blast radius düşük — hash yalnızca `orderTrackingToken`
+için, Milestone 4); TableQrToken'da tek `ACTIVE` kısıtı partial unique index ile; TableVisit TTL 6 saat (RECOMMENDED
+aralığın üst sınırı); internal API koruması tam Spring Security değil, tek bir `OncePerRequestFilter` + paylaşılan
+token; `archunit-junit5`'in `@AnalyzeClasses`/`@ArchTest` modeli Maven Surefire'da hiç çalışmadı (sessizce 0 test) —
+ArchUnit düz kütüphane olarak normal `@Test` içinden kullanılıyor.
+
+**Bilinen notlar:** `internal.admin.token` prod'da değiştirilmeli, `.env.example`'daki değer yalnızca local dev.
+`Branch.openingTime`/`closingTime`/`orderingEnabled` alanları var ama **hâlâ hiçbir yerde uygulanmıyor**.
+
+---
+
+## Milestone 3 — Business-level Ürün Kataloğu + Branch-level BranchProduct — ✅ COMPLETED
+
+**Ana özellikler:** `menu` modülü (MenuCategory/Product/ProductOptionGroup/ProductOption/BranchProduct); internal
+CRUD API'leri; public `GET /api/branches/{branchId}/menu` (opt-in birleştirilmiş menü); customer-web
+`app/t/[token]` sayfası (QR karşılama + banner + menü görüntüleme); `CorsConfig` (`/api/**` için credentialed CORS,
+`GET/POST/PUT`).
+
+**Teknik kararlar:** `BranchProduct` **opt-in** — kayıt yoksa ürün menüde hiç görünmüyor (yalnızca "Tükendi" değil,
+tamamen yok); boş kategoriler yanıttan düşürülüyor; `taxRatePercent` her üründe zorunlu (sessiz varsayılan yok);
+Money **henüz eklenmedi** (Milestone 4'e bırakıldı); menü yönetimi de aynı internal/PLATFORM_ADMIN deseniyle
+(gerçek BUSINESS_ADMIN ekranı Milestone 8).
+
+**Bilinen notlar:** Sepete ekleme/opsiyon seçimi interaktivitesi o an yoktu (Milestone 4'te eklendi).
+`Branch.orderingEnabled`/çalışma saatleri hâlâ uygulanmıyor.
+
+---
+
+## Milestone 4 — DRAFT Order/Sepet + Backend Fiyat Doğrulaması — ✅ COMPLETED
+
+**Ana özellikler:** `ordering` modülü (CustomerOrder/OrderItem/OrderItemOption); `com.qrmenu.shared.Money` value
+object (ilk kullanımı); sepet API'leri — `GET/POST/DELETE /api/table-visits/{tableVisitId}/cart[/items[/{id}]]`
+(cookie ile TableVisit sahipliği doğrulanır); backend-authoritative Product+BranchProduct+opsiyon revalidasyonu;
+`orderTrackingToken` üretimi + SHA-256 hash (Order oluşturulduğu anda, ham değer yalnızca bir kez döner); 2 saatlik
+DRAFT TTL temizlik job'ı (`@Scheduled`); customer-web'de opsiyon seçim modalı + sepet çubuğu.
+
+**Teknik kararlar:** `OrderStatus` şimdilik yalnızca `DRAFT`/`CANCELLED` (state machine'in geri kalanı henüz
+ulaşılamayan durumlar için eklenmedi); Money JPA-mapped değil, yalnızca hesaplama noktasında kullanılıyor (entity'ler
+hâlâ düz `long` kuruş); her "sepete ekle" çağrısı yeni bir `OrderItem` satırı (birleştirme/merge yok); Branch
+ordering-enabled/çalışma saati kontrolü **bilinçli olarak eklenmedi** — doküman bu kontrolün otoriter halini
+ödeme öncesine (Milestone 5) koyuyor; `GET /order/track/{token}` okuma endpoint'i bilinçli olarak eklenmedi
+(Milestone 6).
+
+**Bilinen notlar:** Gerçek tarayıcı testinde CORS `allowedMethods` listesinde `DELETE` unutulmuştu (403) —
+MockMvc testleri bunu yakalayamadı, düzeltildi. Bu, yeni HTTP metodu eklenen her milestone'da gerçek tarayıcı
+doğrulamasının atlanmaması gerektiğini gösteriyor. `OrderStatus`'a `AWAITING_PAYMENT` vb. eklenmesi ve DRAFT'ın
+o noktadan sonra değiştirilemez olması Milestone 5'in işi.
+
+---
+
+## Frontend UX/UI Quality Baseline (Milestone 5 öncesi gate) — ✅ COMPLETED
+
+**Ana özellikler:** `product-requirements.md` Bölüm 14 (yeni) eklendi. Backend: `Product.imageUrl` (opsiyonel,
+V6 migration, mevcut migration'lara dokunulmadı). Frontend: `app/globals.css`'te tek bir design token katmanı
+(renk/spacing/radius/tipografi/gölge/z-index/44px dokunma hedefi); `components/ui/` altında paylaşılan
+primitive'ler (`Button`, `Badge`, `Skeleton`, `EmptyState`, `ErrorState`, `QuantityStepper`, `BottomSheet`);
+`/t/[token]` sayfası tek devasa component'ten `VisitHeader`/`CategoryNav`/`MenuSection`/`ProductCard`/
+`ProductOptionsSheet` (eski `ProductModal`)/`CartDrawer` (eski `CartBar`)/`MenuSkeleton`'a bölündü; sticky
+header+kategori nav (IntersectionObserver ile scroll-spy), skeleton/empty/error+retry state'leri, `role="dialog"`/
+`aria-modal`/Escape ile kapanan bottom sheet'ler, ürün görseli yüklenemezse placeholder'a düşen `onError` fallback.
+
+**Teknik kararlar:** Ağır bir UI framework'ü eklenmedi (Tailwind/MUI vb.) — sade CSS custom properties + CSS
+modules yeterli görüldü; `Product.imageUrl` düz `<img>` ile gösteriliyor (`next/image` değil — media/CDN altyapı
+karmaşıklığı istenmedi), CLS `.media`'daki sabit `aspect-ratio` ile önleniyor; sepet drawer'a ödeme/checkout CTA'sı
+**eklenmedi** (Milestone 5'e başlamamak için bilinçli sınır).
+
+**Bilinen notlar:** `staff-web` (Milestone 6/8) bu token/component yaklaşımını yeniden kullanacak şekilde
+planlanmalı, sıfırdan farklı bir tasarım dili kurulmamalı. Bu ortamda gerçek dar/geniş tarayıcı viewport'u
+`resize_window` ile tutarsız davrandığından (yeni sekmelerde ~500px'e sabitleniyor), masaüstü/geniş breakpoint
+doğrulaması bir iframe enjeksiyon tekniğiyle yapıldı — gerçek bir cihazda/normal masaüstü Chrome'da ayrıca
+gözden geçirilmesi faydalı olur.
+
+---
+
+## Milestone 5 — Mock Ödeme Sağlayıcısı, Webhook, Idempotency, Transactional Outbox — ✅ COMPLETED
+
+**Ana özellikler:** Yeni `payment` modülü (`PaymentProviderPort` + `MockPaymentProviderAdapter`: `CREATED →
+PROCESSING → [ayrı, async webhook dispatch] → SUCCEEDED|FAILED`, HMAC-SHA256 imza doğrulama, `(provider,
+event_id)` unique constraint ile idempotency); `CustomerOrder` state machine'ine `AWAITING_PAYMENT`/`PAID`/
+`PAYMENT_FAILED` eklendi (`markAwaitingPayment`/`markPaid`/`markPaymentFailed`, `PAYMENT_FAILED →
+AWAITING_PAYMENT` retry dahil); `TenantService.assertOrderingCurrentlyAllowed` ile Branch ordering-enabled/çalışma
+saati kontrolünün otoriter hali, ödeme başlamadan hemen önce eklendi; `shared/outbox` altyapısı (`OutboxEvent` +
+`OutboxEventWriter` + `@Scheduled` `OutboxPollerScheduler`, in-process `ApplicationEventPublisher` ile yayınlıyor)
+— Order PAID olduğunda `OrderPaid` event'i aynı transaction'da yazılıyor. API: `POST
+/api/table-visits/{id}/payments` (intent oluştur), `GET .../payments/{id}` (durum sorgusu), `POST
+.../payments/{id}/mock-outcome` (yalnızca `payment.provider=mock` iken var — dev "hosted ödeme ekranı" tetikleyici,
+`@ConditionalOnProperty`), `POST /api/payments/webhook/mock` (gerçek sağlayıcı webhook'unun şekli — ham body +
+`X-Mock-Signature` header). customer-web: `CartDrawer`'a "Ödemeye Geç" CTA'sı + yeni `PaymentSheet` (mock ödeme
+ekranı, başarı/başarısız simülasyonu, `getPaymentStatus` polling ile sonucu bekleme, başarısızlıkta "Tekrar Dene").
+
+**Teknik kararlar:** Mock simulate → webhook dispatch, gerçek bir HTTP self-call değil — `MockPaymentSimulationDispatcher`
+(`@Async`) doğrudan `PaymentWebhookService.handleIncomingWebhook`'u çağırıyor; hem `/api/payments/webhook/mock`
+hem mock dispatch AYNI kod yolundan geçiyor (Bölüm 1.3 gereksinimi). Webhook idempotency insert'i
+`PaymentWebhookIdempotencyGuard` ile ayrı bir `REQUIRES_NEW` transaction'da yapılıyor — aksi halde bir constraint
+violation, aynı transaction'ı Hibernate seviyesinde rollback-only işaretleyip çağıran kodun `UnexpectedRollbackException`
+almasına yol açıyordu (canlıda bulunup düzeltildi). `Payment`/`OrderStatus` enum'larına yalnızca bu milestone'da
+gerçekten ulaşılabilen değerler eklendi (`EXPIRED`/`CANCELLED`/`IN_KITCHEN` vb. eklenmedi — kod yolu yok).
+`shared/outbox` bilinçli olarak bir "modül" değil (ArchUnit sınırı yok, Money ile aynı muamele) — her modül
+doğrudan enjekte edip kullanabiliyor. `docker-compose.yml`/`.env(.example)`'a `PAYMENT_MOCK_WEBHOOK_SECRET`
+(zorunlu, default yok) eklendi.
+
+**Bilinen notlar:** Gerçek Chrome doğrulamasında bir React Strict Mode bug'ı bulundu ve düzeltildi:
+`PaymentSheet`'in polling-iptal ref'i yalnızca cleanup'ta `true` set ediliyordu, `next dev`'in
+mount→cleanup→mount double-invoke'unda kalıcı olarak `true` takılı kalıp component gerçekten mount'luyken bile
+polling'i sessizce öldürüyordu — düzeltme: effect'in setup fazında da `false`'a resetleniyor. Refund (Milestone 7)
+kapsamında `PaymentProviderPort.refund` şimdilik `UnsupportedOperationException` atıyor. Ödeme timeout/reconciliation
+job'ı (Bölüm 1.3'teki risk) bu milestone'un bilinçli kapsamı dışında bırakıldı — dokümanda M5'e atanmamıştı.
+
+---
+
+## Milestone 6 — Kitchen Display, Kısmi Adet Kabul/Red, SSE — ✅ COMPLETED
+
+**Ana özellikler:** Yeni `kitchen` modülü (KDS sorgu/komut API'leri, `/api/kitchen/branches/{branchId}/...`) ve yeni
+`notification` modülü (`OrderStatusNotifier` kanal-agnostik arayüzü + `SseOrderStatusNotifier` — in-process SSE
+pub/sub, hem tek bir siparişi izleyen müşteriye hem bir şubenin tüm mutfak kuyruğunu izleyen KDS'e aynı update'i
+yayınlıyor). `OrderItem`e `status` (`PENDING_REVIEW→PREPARING|REJECTED→READY→SERVED`) eklendi; `CustomerOrder`e
+`orderNumber` (şube+gün bazlı, atomik `INSERT ... ON CONFLICT DO UPDATE ... RETURNING` ile üretiliyor —
+`OrderNumberGenerator`) ve `IN_KITCHEN`/`READY` durumları eklendi. Ödeme başarılı olduğunda (`OrderingService.
+markOrderPaid`) sipariş numarası atanıp **senkron olarak** `PAID→IN_KITCHEN`'a geçiyor (outbox'un 10s poll
+gecikmesini beklemeden — M5'te yazılan `OrderPaid` outbox event'i dursa da KDS'i beslemek için kullanılmıyor).
+`GET /api/order-tracking/{token}` + `.../stream` (read-only, cookie'siz, Bölüm 5) eklendi. customer-web'de yeni
+`/order/track/[token]` sayfası (SSE ile canlı durum) ve `PaymentSheet`'in başarı ekranında sipariş no + paylaşılabilir
+takip linki. **Yepyeni `frontend/staff-web` uygulaması** (Next.js, customer-web'in token/component yaklaşımı
+kopyalanarak) — basit giriş ekranı (Şube ID + erişim anahtarı, `localStorage`'da saklanıyor) + KDS board
+(`/kitchen/[branchId]`, canlı sipariş kartları, adet bazlı kabul/red + hazır/teslim edildi aksiyonları).
+`docker-compose.yml`'e `staff-web` servisi (port 3002) ve `STAFF_ACCESS_TOKEN`/`CORS_ALLOWED_ORIGINS` eklendi.
+
+**Teknik kararlar:** KDS erişimi "basit/geçici" bir paylaşılan-secret filtresiyle korunuyor
+(`StaffAccessAuthFilter`, `X-Staff-Access-Token` header veya `staffToken` query param — `EventSource` header
+gönderemediği için); gerçek `StaffUser` auth Milestone 8'de. Order-seviyesi `REJECTED` durumu bilinçli olarak DB'de
+ayrı bir status değeri olarak **tutulmuyor** — dokümanın "rollup, persisted state değil" notuna göre tam red edilen
+bir sipariş de `READY`'ye düşüyor, detay `OrderItem` seviyesinde. `CustomerOrder.markInKitchen()`'ın outbox yerine
+senkron çağrılması bilinçli bir tasarım kararı: outbox poller'ın 10s `fixedDelay`'i canlı bir mutfak ekranı için
+kabul edilemez bir gecikme olurdu.
+
+**Bilinen notlar (canlı Chrome doğrulamasında bulunup düzeltilen 3 gerçek hata):**
+1. **CORS preflight 403:** `StaffAccessAuthFilter`, tarayıcının `OPTIONS` preflight isteğini de token kontrolüne
+   tabi tutuyordu — preflight istekleri hiçbir zaman özel header taşımaz, bu da staff-web'den gelen HER isteği
+   CORS seviyesinde kırıyordu. Düzeltme: filtre artık `OPTIONS` metodunu kontrolsüz geçiriyor.
+2. **Torn read (tutarsız anlık görüntü):** `OrderingService.getOrderTrackingView` ve `getKitchenQueue`, bir
+   siparişi ve kalemlerini ayrı `SELECT`'lerle okuyordu; varsayılan READ COMMITTED izolasyonunda, bu iki sorgu
+   arasına başka bir mutfak işleminin commit'i girebiliyor ve müşteri takip sayfasında sipariş durumu `IN_KITCHEN`
+   iken kalem durumu `READY` gibi tutarsız bir karışım dönebiliyordu. Düzeltme: her iki metot da
+   `@Transactional(isolation = Isolation.REPEATABLE_READ)` ile tek bir tutarlı snapshot okuyor.
+3. **Senkronize olmayan SSE yazımı:** İki mutfak aksiyonu (`decide` + `ready`) arka arkaya, boşluksuz geldiğinde,
+   iki farklı HTTP thread'i **aynı** `SseEmitter`'a eşzamanlı `send()` çağrısı yapabiliyordu (`SseEmitter.send`
+   eşzamanlı çağrılar için thread-safe değil) — bu, ikinci event'in sessizce kaybolmasına/stream'in bozulmasına yol
+   açıyordu (müşteri takip sayfası ilk durumda kilitli kalıyordu). Düzeltme: `SseOrderStatusNotifier.sendToAll`
+   artık her emitter'a yazarken `synchronized (emitter)` kullanıyor.
+
+Üçü de yalnızca gerçek Chrome + gerçek eşzamanlı istek testleriyle ortaya çıktı; entegrasyon testleri (MockMvc,
+tek thread) bu sınıf hataları yakalayamıyor.
+
+---
+
+## Milestone 7 — Tam/Kısmi İade, Makbuz — ✅ COMPLETED
+
+**Kapsam kararı:** M7'nin dokümandaki maddesi ("Refund + RefundItem, çoklu kısmi iade + toplam tutar sınırı,
+sağlayıcı iade entegrasyonu (mock), makbuz") **personel-başlatmalı** iade akışı olarak uygulandı. OrderItem state
+diyagramındaki "red edilince otomatik RefundItem oluşturulur" notu bilinçli olarak uygulanmadı — bunu yapmak
+`ordering → refund → payment → ordering` şeklinde bir modüller-arası döngü gerektiriyordu (refund zaten
+payment+ordering'e bağımlı; ordering'in de refund'a bağımlı olması döngü oluşturur). Personel, red edilen kalemi
+manuel iade akışından zaten iade edebiliyor (arayüz reddedilen adedi otomatik öneriyor) — bu, dokümanın "kısmi red
++ kısmi iade yeterli güvenlik ağı" ilkesini hâlâ karşılıyor, sadece "otomatik" değil "personel onaylı".
+
+**Ana özellikler:** Yeni `refund` modülü — `Refund` (`REQUESTED→PROCESSING→COMPLETED`, mock sağlayıcı hiç
+başarısız olmadığından `FAILED` eklenmedi) + `RefundItem` (`orderItemId`, `refundedQuantity`,
+`refundAmountMinorUnits`). `Payment`e `totalRefundedAmountMinorUnits` + `applyRefund()` eklendi — tek iade
+kuralı: `toplam iade ≤ ödenen tutar`, aynı transaction'da kontrol+güncelleme. Miktar her zaman `OrderItem`'ın
+snapshot birim fiyatından backend'de hesaplanıyor (personel tutar girmiyor, yalnızca adet). Personel API'leri
+(`/api/kitchen/branches/{branchId}/orders/search?orderNumber=N`, `POST .../{orderId}/refunds`, `GET
+.../{orderId}/refunds`) mevcut `StaffAccessAuthFilter`'ın `/api/kitchen/*` kapsamını paylaşıyor (URL öneki
+paylaşımı salt pragmatik — Servlet path-pattern'i tek wildcard'a izin verdiği için, iadelerin "mutfak" konusu
+olduğu anlamına gelmiyor). Yeni printable makbuz: `GET /api/order-tracking/{token}/receipt` (public, token'lı,
+`refund` modülünde barındırılıyor — aynı döngü-önleme mantığıyla). customer-web: takip sayfasına "Makbuzu
+Görüntüle" linki + yeni `/order/track/[token]/receipt` sayfası (işletme/şube adı, kalemler, ödenen/iade
+edilen/net tutar, iade geçmişi, `window.print()` ile yazdırma, `@media print` ile buton gizleme). staff-web: yeni
+`/refunds/[branchId]` sayfası (sipariş no ile arama, kalem bazlı iade adedi girişi, geçmiş iadeler), KDS
+ekranından link.
+
+**Teknik kararlar:** Mock sağlayıcının `refund()` çağrısı, ödeme akışının aksine **senkron ve her zaman başarılı**
+— M5'teki "gerçekçi mock" zorunluluğu özellikle ödemenin SUCCEEDED anı için geçerliydi (idempotency/imza kod
+yolunun test edilmemesi riski); iade onayında eşdeğer bir risk yok, ayrı bir async webhook akışı kurulmadı.
+Manuel iade doğrulaması yalnızca dokümanın tek zorunlu kuralını (`toplam iade ≤ ödenen tutar`) uyguluyor — bir
+kalemin birden fazla iadede toplamda kaç kez/adet iade edildiğini ayrıca takip eden genel bir "tüketim" mekanizması
+bilinçli olarak kurulmadı (dokümanda belirtilmiyor, aşırı mühendislik olurdu).
+
+**Bilinen notlar (canlı doğrulamada bulunup düzeltilen hata):** staff-web'in iade adedi input'ları
+`defaultValue` (React'te kontrolsüz) ile öneri adedini gösteriyordu, ama gönderim state'i (`quantityInputsRef`)
+yalnızca `onChange` ile güncelleniyordu — kullanıcı önerilen değeri hiç değiştirmeden "İade Başlat"a basınca ref
+boş kalıp "en az bir kalem girin" hatası veriyordu, oysa ekranda adet görünüyordu. Düzeltme: sipariş arandığında
+ref, ekranda gösterilen aynı öneri değerleriyle elle başlatılıyor. Receipt'te KDV/vergi kırılımı yok (fiyatlar
+zaten KDV dahil gösteriliyor - Bölüm 5); bu yasal bir fatura olmadığından (Bölüm 7/12) kasıtlı bir sadeleştirme.
+
+---
+
+## Milestone 8 — StaffUser Auth, Roller/Permission, Admin Ekranları, Audit — ✅ COMPLETED
+
+**Ana özellikler:** Yeni `staffaccess` modülü — gerçek `StaffUser` (email+bcrypt şifre), `StaffSession`
+(cookie-tabanlı, `qrmenu_staff_session`, TTL 6 saat, M6'daki paylaşılan `X-Staff-Access-Token`'ın tam yerine
+geçti), `StaffUserBranch` (BRANCH_MANAGER/KITCHEN_STAFF için çoklu-şube scoping), `StaffRole` enum
+(PLATFORM_ADMIN/BUSINESS_ADMIN/BRANCH_MANAGER/KITCHEN_STAFF) → `Set<Permission>` eşlemesi (rol-adı kontrolü
+değil, permission kontrolü). Yeni `audit` modülü (leaf, hiçbir modüle bağımlı değil) — `AuditService.record(...)`
+her mutasyonun sonunda çağrılıyor. `KitchenController`/`RefundController` gerçek auth'a bağlandı
+(`Permission.KITCHEN_DECIDE`/`REFUND_ISSUE`, branch-scoped). Yeni `/api/staff/**` admin uçları: Branch/Table/QR
+yönetimi (`TenantService`'e `listBranches/listTables/setOrderingEnabled` eklendi, QR revoke + ordering-toggle
+audit'e yazıyor), Menü yönetimi (`MenuService`'in tüm mutasyon metotları artık `actorStaffUserId` alıp audit
+kaydı yazıyor), Personel/Rol yönetimi, Audit log görünümü. staff-web tamamen yeniden yazıldı: gerçek e-posta/şifre
+giriş sayfası, `StaffNav` (role'e göre admin linkleri), `/branches`, `/branches/[branchId]`, `/menu`, `/staff`,
+`/audit` yeni admin ekranları; KDS + iade ekranları artık `credentials:'include'`/`EventSource
+{withCredentials:true}` ile cookie tabanlı.
+
+**Kapsam kararı:** `spring-boot-starter-security` kullanılmadı (yalnızca `spring-security-crypto` →
+`BCryptPasswordEncoder`) — M6'dan beri süregelen "açık cookie oku + servise sor" deseniyle tutarlı, framework
+auto-config'inin SPA'nın kendine özgü ihtiyaçlarıyla (her controller'da branch-scope kontrolü gibi) çakışmasını
+önlemek için. `/api/kitchen/**` altındaki KDS/refund URL'leri, onları oraya taşıyan asıl neden (tek path-wildcard
+sınırı, M6) artık geçerli olmasa da değiştirilmedi — çalışan, test edilmiş bir URL'yi kozmetik nedenle değiştirmek
+gereksiz churn olurdu.
+
+**Teknik kararlar:** `ModuleBoundaryTest`'e `staffaccess`/`audit` için repository-erişim kuralları eklendi (8
+kural, hepsi geçiyor). Testler artık gerçek `StaffUser` bootstrap+login akışını kullanıyor (`StaffFixtures` —
+`/internal/.../staff-users` + `POST /api/staff/auth/login`, dönen `Set-Cookie`'den session id çıkarılıyor) —
+`AbstractIntegrationTest`'teki artık ölü `staff.access.token`/`TEST_STAFF_ACCESS_TOKEN` temizlendi. Backend test
+sayısı 54 → 62 (yeni: `StaffAccessFlowIntegrationTest` 5, `ModuleBoundaryTest` +2, `Kitchen`/`RefundFlow`
+testleri gerçek login'e taşındı).
+
+**Bilinen notlar (canlı Docker Compose + Chrome doğrulamasında bulunup düzeltilen gerçek hata):** KDS/mutfak
+takip SSE bağlantıları (`SseOrderStatusNotifier`), ilk abonelikten sonra hiçbir sipariş olayı olmazsa süresiz
+"bağlanıyor" durumunda kalıyordu — Tomcat, `SseEmitter`'ın async response'unu ilk gerçek `send()` çağrısına kadar
+hiç flush etmiyordu, bu yüzden ne `curl` ne de tarayıcının `EventSource`'u hiçbir byte/`open` eventi görmüyordu
+(bu, M8'in kendi değişikliği değil, M6'dan beri var olan gizli bir hataydı — müşteri tarafı order-tracking
+stream'i de aynı şekilde etkileniyordu, ancak önceki canlı testler her zaman abone olur olmaz bir sipariş olayı
+tetiklediği için fark edilmemişti). Düzeltme: `SseOrderStatusNotifier.register` artık abone olur olmaz boş bir
+SSE yorum satırı (`: connected`) gönderip response'u hemen flush ediyor.
+
+---
+
+## Milestone 9 — Pickup Board, Teslimat Modelleri, Security Hardening — ✅ COMPLETED
+
+**Ana özellikler:** `Branch.deliveryModel` (`CUSTOMER_PICKUP`/`WAITER_DELIVERY`, varsayılan `WAITER_DELIVERY` —
+mevcut tüm şubelerin zımni davranışı, migration geriye dönük hiçbir şubeyi bozmuyor), staff-web'de oluşturma
+formunda + `/branches` ekranında sonradan değiştirilebilir. `OrderStatus.COMPLETED` (Bölüm 6: "READY ->
+COMPLETED: teslim edildi / alındı") ilk kez eklendi — `POST /api/kitchen/branches/{branchId}/orders/{orderId}/complete`
+(yeni `Permission.ORDER_COMPLETE`, BUSINESS_ADMIN+BRANCH_MANAGER), staff-web'in iade/sipariş arama ekranına
+"Teslim Edildi / Alındı" butonu olarak eklendi. Yeni public/kimliksiz `GET /api/branches/{branchId}/pickup-board`
++ `.../stream` (SSE) — yalnızca CUSTOMER_PICKUP şubenin READY siparişlerinin numaralarını döner (fiyat/ürün detayı
+yok), staff-web'de kiosk-modu `/pickup/[branchId]` ekranı (StaffNav yok, login gerektirmez — public menü
+endpoint'iyle aynı güven modeli). Müşteri tarafı `/order/track/{token}` artık `deliveryModel` alanını da
+döndürüyor ve müşteriye "hazır olduğunda pickup ekranında görünecek" / "masanıza getirilecek" gibi bağlama uygun
+bir mesaj gösteriyor.
+
+**Hata senaryoları (Bölüm 9'un açıkça istediği "webhook timeout/retry"):** Ödeme başarısız + webhook idempotency/
+retry senaryoları zaten Milestone 5'te test edilmişti (`PaymentFlowIntegrationTest`), bu milestone'da dokunulmadı.
+Eksik olan tek şey `PaymentStatus.PROCESSING -> EXPIRED` (Bölüm 6) geçişiydi: hiç webhook almayan bir ödeme
+(gerçek sağlayıcı kesintisi, ya da mock akışta müşterinin sekmeyi kapatıp `/mock-outcome`'u hiç çağırmaması)
+süresiz PROCESSING'de kalıp o TableVisit'i kilitli bırakıyordu. Yeni `PaymentTimeoutScheduler`
+(`OrderCleanupScheduler` ile aynı "backdate + scheduled metodu doğrudan çağır" test deseni), 15 dakika sonra
+PROCESSING'i EXPIRE edip siparişi PAYMENT_FAILED'e (yeniden denenebilir) döndürüyor — tam olarak FAILED
+webhook'unun tepkisiyle aynı. `PaymentWebhookService`'in "zaten terminal durumda" güvenlik ağına EXPIRED de
+eklendi (geç gelen bir webhook artık PROCESSING-only state guard'ına çarpıp 500 vermek yerine sessizce no-op).
+
+**Yeni: `RateLimitFilter` (Bölüm 7 MVP kapsamının "session/masa bazlı rate limiting" maddesi, M1-M8 boyunca hiç
+uygulanmamış bir kalemdi — M9'un "security hardening" görevi kapsamında kapatıldı).** In-memory, tek katmanlı
+sabit-pencere sayaç (Redis yok, Bölüm 12: "yatay ölçekleme v1 dışı" ile aynı tek-instance varsayımı,
+`SseOrderStatusNotifier` gibi). Üç anahtar katmanı, öncelik sırasıyla: (1) session cookie
+(`qrmenu_session`/`qrmenu_staff_session`) — limit 120/dk, tek bir sekmenin bunu aşması organik kullanım değildir;
+(2) QR check-in path'inden çıkarılan masa token'ı — limit 30/dk, dokümanın tam olarak "masa bazlı" dediği şey;
+(3) IP adresi — limit 300/dk, kasıtlı olarak cömert, çünkü bir restoranın paylaşılan WiFi/NAT'ı altında onlarca
+*farklı* meşru müşteri aynı IP'yi paylaşabilir (yalnızca gerçekten tek-kaynaklı bir saldırıyı yakalamak için var,
+yoğun bir öğle servisini cezalandırmak için değil). `/internal/**`, `/actuator/**`, SSE `*/stream` uçları ve CORS
+preflight (`OPTIONS`) muaf.
+
+**RLS yeniden değerlendirmesi (Bölüm 9, Milestone 9'un açık maddesi) — karar: hâlâ ertelensin.** Section 2'nin
+"her repository sorgusu business_id'yi açıkça WHERE koşuluna ekler" disiplini + `TenantIsolationIntegrationTest`/
+`MenuIsolationIntegrationTest`'in kapsadığı çapraz-tenant erişim testleri, tek-instance/tek-deploy MVP için yeterli
+savunma derinliği sağlıyor. Gerçek Postgres RLS eklemek: (a) her connection için bir session GUC'u
+(`app.current_business_id` gibi) set etmeyi gerektirir - HikariCP'nin connection pooling'i ile bunu doğru
+sıfırlamak (bir connection tekrar havuza dönmeden önce) başlı başına bir kaynak; (b) Hibernate'in ürettiği
+sorgularla RLS policy'lerinin etkileşimini (özellikle `IN`/join sorguları) ayrıca doğrulamak gerekir; (c) bugüne
+kadar hiçbir çapraz-tenant sızıntısı ne testlerde ne canlı doğrulamada bulunmadı. Bu iş, gerçek bir çoklu-kiracılı
+production dağıtımı (paylaşılan DB, güvenilmeyen operatör erişimi) somutlaştığında yeniden değerlendirilmeli;
+bugünkü tek-işletme/tek-deploy kullanım şekli için ek karmaşıklığı haklı çıkarmıyor (Bölüm 12 ruhuyla tutarlı).
+
+**Güvenlik gözden geçirme (bulgular):** ✅ Şifreler bcrypt (`BCryptPasswordEncoder`); ✅ tüm session cookie'leri
+HttpOnly+Secure+SameSite=Lax; ✅ CORS açık origin listesi + `allowCredentials(true)`, wildcard yok; ✅ tek native
+SQL sorgusu (`OrderNumberGenerator`) tamamen parametreli, string concatenation yok; ✅ `/internal/**` bootstrap
+API'si CORS'a hiç maruz değil (tarayıcıdan çağrılamaz); ✅ `/actuator` yalnızca health+info expose ediyor (env/beans
+yok); ✅ üç Docker image'ı da non-root user ile çalışıyor; ✅ sırlar (`INTERNAL_ADMIN_TOKEN`,
+`PAYMENT_MOCK_WEBHOOK_SECRET`) prod'da boş varsayılanla "fail closed", yalnızca `application-local.yml`'de dev
+değerleri var, `infra/.env` gitignore'da. ⚠️ **Bilinen, kasıtlı olarak ertelenen açık:** `Secure` cookie bayrağı
+prod'da gerçek TLS/HTTPS termination gerektirir - reverse proxy olmadan bir dağıtım cookie'lerin hiç set
+edilmediğini (login sessiz şekilde çalışmaz) görür; bu deploy hazırlığı notuna taşındı, kod değişikliği değil.
+
+**Deploy hazırlığı notları (kod değişikliği gerektirmeyen, operasyonel):** Prod dağıtımı önünde bir TLS-terminating
+reverse proxy (nginx/Caddy/Cloud LB) şart - yukarıdaki Secure-cookie bağımlılığı yüzünden. `INTERNAL_ADMIN_TOKEN`
+ve `PAYMENT_MOCK_WEBHOOK_SECRET` prod'da `infra/.env`'deki dev değerleriyle **asla** dağıtılmamalı - her ortam
+için ayrı, rastgele üretilmiş değerler gerekir. Flyway migration'ları (`V1`-`V11`) her ortamda otomatik
+uygulanıyor (`spring.flyway` varsayılanları) - prod'a ilk deploy'da bunun manuel/CI adımı olarak doğrulanması
+önerilir. Tek-instance varsayımı (SSE pub/sub, rate limiter, scheduler'lar hepsi in-memory) yatay ölçeklenemez -
+Bölüm 12'nin bilinçli v1 sınırı, birden fazla backend instance'ı çalıştırmak (örn. blue-green deploy'un ötesinde
+kalıcı çoklu-instance) bu üçünü de kırar.
+
+**Backend test sayısı 62 → 66** (yeni: `PaymentTimeoutSchedulerIntegrationTest` 1, `RateLimitFilterTest` 2,
+`PickupToCompletionEndToEndTest` 1 — QR taramadan pickup board'a, oradan "teslim edildi" işaretlemesine kadar
+tüm zinciri tek testte kapsayan gerçek bir E2E).

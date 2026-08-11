@@ -1,0 +1,57 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-qrmenu}
+      POSTGRES_USER: ${POSTGRES_USER:-qrmenu}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-qrmenu}
+    ports:
+      # Host-side 5433 avoids clashing with a locally installed PostgreSQL on the
+      # default 5432 port. Container-to-container traffic (backend -> postgres)
+      # still uses the standard 5432 internally, unaffected by this mapping.
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-qrmenu} -d ${POSTGRES_DB:-qrmenu}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ../backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-qrmenu}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-qrmenu}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-qrmenu}
+      # Shared secret guarding the /internal/** PLATFORM_ADMIN bootstrap API (Milestone 2).
+      INTERNAL_ADMIN_TOKEN: ${INTERNAL_ADMIN_TOKEN:?set INTERNAL_ADMIN_TOKEN in infra/.env}
+      # HMAC secret the mock payment provider signs/verifies webhook bodies with (Milestone 5).
+      PAYMENT_MOCK_WEBHOOK_SECRET: ${PAYMENT_MOCK_WEBHOOK_SECRET:?set PAYMENT_MOCK_WEBHOOK_SECRET in infra/.env}
+      # Browser-facing origins allowed to call /api/** (customer-web, staff-web).
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:3002}
+    ports:
+      - "8080:8080"
+
+  customer-web:
+    build:
+      context: ../frontend/customer-web
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+
+  staff-web:
+    build:
+      context: ../frontend/staff-web
+    depends_on:
+      - backend
+    ports:
+      - "3002:3002"
+
+volumes:
+  postgres_data:

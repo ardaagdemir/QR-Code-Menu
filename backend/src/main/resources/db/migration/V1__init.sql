@@ -1,0 +1,3 @@
+-- Milestone 1 (Foundation): intentionally empty bootstrap migration.
+-- Verifies the Flyway <-> PostgreSQL connection end-to-end.
+-- Domain tables (Business, Branch, Table, ...) start in Milestone 2.

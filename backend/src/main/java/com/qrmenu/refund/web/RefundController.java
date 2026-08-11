@@ -1,0 +1,137 @@
+package com.qrmenu.refund.web;
+
+import com.qrmenu.ordering.OrderItem;
+import com.qrmenu.ordering.OrderTrackingView;
+import com.qrmenu.ordering.OrderingService;
+import com.qrmenu.refund.RefundService;
+import com.qrmenu.refund.RefundService.RefundLineRequest;
+import com.qrmenu.refund.RefundView;
+import com.qrmenu.refund.web.dto.CreateRefundRequest;
+import com.qrmenu.refund.web.dto.RefundItemResponse;
+import com.qrmenu.refund.web.dto.RefundResponse;
+import com.qrmenu.refund.web.dto.StaffOrderItemResponse;
+import com.qrmenu.refund.web.dto.StaffOrderLookupResponse;
+import com.qrmenu.staffaccess.Permission;
+import com.qrmenu.staffaccess.StaffAuthService;
+import com.qrmenu.staffaccess.StaffContext;
+import com.qrmenu.staffaccess.StaffCookieSupport;
+import jakarta.validation.Valid;
+import java.util.List;
+import java.util.UUID;
+import org.springframework.web.bind.annotation.CookieValue;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+/**
+ * Staff-facing refund API (Section 4, screen #6: "tam/kısmi iade başlatma"). Stayed
+ * nested under /api/kitchen/** even after Milestone 8 dropped the shared-prefix filter
+ * that originally motivated it (StaffAccessAuthFilter, Milestone 6) - renaming a
+ * working, already-tested URL for cosmetic reasons alone isn't worth the churn.
+ * Permission.REFUND_ISSUE, scoped to this branchId, replaces the old shared secret.
+ */
+@RestController
+@RequestMapping("/api/kitchen/branches/{branchId}/orders")
+public class RefundController {
+
+    private final OrderingService orderingService;
+    private final RefundService refundService;
+    private final StaffAuthService staffAuthService;
+
+    public RefundController(OrderingService orderingService, RefundService refundService, StaffAuthService staffAuthService) {
+        this.orderingService = orderingService;
+        this.refundService = refundService;
+        this.staffAuthService = staffAuthService;
+    }
+
+    /** Order lookup by its readable order number - what staff would actually have on hand to start a refund. */
+    @GetMapping("/search")
+    public StaffOrderLookupResponse search(
+            @PathVariable UUID branchId,
+            @RequestParam int orderNumber,
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie) {
+        requireRefundAccess(sessionCookie, branchId);
+        OrderTrackingView tracking = orderingService.getOrderByNumber(branchId, orderNumber);
+        return toLookupResponse(tracking);
+    }
+
+    @PostMapping("/{orderId}/refunds")
+    public RefundResponse createRefund(
+            @PathVariable UUID branchId,
+            @PathVariable UUID orderId,
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
+            @Valid @RequestBody CreateRefundRequest request) {
+        StaffContext context = requireRefundAccess(sessionCookie, branchId);
+        List<RefundLineRequest> lines =
+                request.items().stream().map(item -> new RefundLineRequest(item.orderItemId(), item.quantity())).toList();
+        return toResponse(refundService.requestRefund(branchId, orderId, lines, context.staffUserId()));
+    }
+
+    @GetMapping("/{orderId}/refunds")
+    public List<RefundResponse> listRefunds(
+            @PathVariable UUID branchId,
+            @PathVariable UUID orderId,
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie) {
+        requireRefundAccess(sessionCookie, branchId);
+        orderingService.getOrderInBranch(branchId, orderId);
+        return refundService.getRefundsForOrder(orderId).stream().map(RefundController::toResponse).toList();
+    }
+
+    /**
+     * Section 4, screen #6: "teslim işlemi" - staff confirms a READY order was delivered
+     * (WAITER_DELIVERY) or picked up (CUSTOMER_PICKUP). Permission.ORDER_COMPLETE,
+     * branch-scoped like every other action here.
+     */
+    @PostMapping("/{orderId}/complete")
+    public StaffOrderLookupResponse completeOrder(
+            @PathVariable UUID branchId,
+            @PathVariable UUID orderId,
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie) {
+        staffAuthService.resolveStaffContextForBranch(
+                StaffCookieSupport.parseSessionId(sessionCookie), Permission.ORDER_COMPLETE, branchId);
+        orderingService.completeOrder(branchId, orderId);
+        return toLookupResponse(orderingService.getOrderTrackingViewInBranch(branchId, orderId));
+    }
+
+    private StaffContext requireRefundAccess(String sessionCookie, UUID branchId) {
+        return staffAuthService.resolveStaffContextForBranch(
+                StaffCookieSupport.parseSessionId(sessionCookie), Permission.REFUND_ISSUE, branchId);
+    }
+
+    private StaffOrderLookupResponse toLookupResponse(OrderTrackingView tracking) {
+        List<StaffOrderItemResponse> items =
+                tracking.items().stream().map(RefundController::toItemResponse).toList();
+        List<RefundResponse> refunds =
+                refundService.getRefundsForOrder(tracking.order().getId()).stream().map(RefundController::toResponse).toList();
+        return new StaffOrderLookupResponse(
+                tracking.order().getId(),
+                tracking.order().getOrderNumber(),
+                tracking.order().getStatus().name(),
+                tracking.order().getTotalMinorUnits(),
+                items,
+                refunds);
+    }
+
+    private static StaffOrderItemResponse toItemResponse(OrderItem item) {
+        return new StaffOrderItemResponse(
+                item.getId(),
+                item.getProductNameSnapshot(),
+                item.getOrderedQuantity(),
+                item.getAcceptedQuantity(),
+                item.getRejectedQuantity(),
+                item.getStatus().name(),
+                item.getUnitPriceMinorUnits(),
+                item.getLineTotalMinorUnits());
+    }
+
+    private static RefundResponse toResponse(RefundView view) {
+        List<RefundItemResponse> items = view.items().stream()
+                .map(item -> new RefundItemResponse(item.orderItemId(), item.refundedQuantity(), item.refundAmountMinorUnits()))
+                .toList();
+        return new RefundResponse(view.refundId(), view.orderId(), view.status(), view.totalAmountMinorUnits(), view.createdAt(), items);
+    }
+}

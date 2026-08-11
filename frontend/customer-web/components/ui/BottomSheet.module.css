@@ -1,0 +1,36 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--color-overlay);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: var(--z-overlay);
+}
+
+@media (min-width: 640px) {
+  .overlay {
+    align-items: center;
+    padding: var(--space-6);
+  }
+}
+
+.sheet {
+  background: var(--color-surface-raised);
+  color: var(--color-fg);
+  width: 100%;
+  max-width: var(--container-width);
+  max-height: 88dvh;
+  overflow-y: auto;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  box-shadow: var(--shadow-lg);
+  z-index: var(--z-sheet);
+  padding: var(--space-6) var(--space-5) calc(var(--space-5) + env(safe-area-inset-bottom));
+}
+
+@media (min-width: 640px) {
+  .sheet {
+    border-radius: var(--radius-lg);
+    max-height: 85dvh;
+  }
+}

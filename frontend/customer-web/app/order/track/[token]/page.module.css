@@ -1,0 +1,83 @@
+.page {
+  min-height: 100%;
+  max-width: var(--container-width);
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-4);
+}
+
+.centeredState {
+  min-height: 60vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.header {
+  text-align: center;
+}
+
+.orderNumber {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+}
+
+.statusBadge {
+  margin-top: var(--space-3);
+  display: flex;
+  justify-content: center;
+}
+
+.total {
+  margin-top: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-fg-muted);
+  text-align: center;
+}
+
+.deliveryNote {
+  margin-top: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-fg-muted);
+  text-align: center;
+}
+
+.itemList {
+  margin-top: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.item {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.itemName {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.itemStatus {
+  font-size: var(--font-size-xs);
+  color: var(--color-fg-muted);
+}
+
+.skeletonBlock {
+  margin-top: var(--space-4);
+}
+
+.receiptLink {
+  display: block;
+  margin-top: var(--space-6);
+  text-align: center;
+  font-size: var(--font-size-sm);
+  color: var(--color-fg);
+  text-decoration: underline;
+  min-height: var(--tap-target-min);
+  line-height: var(--tap-target-min);
+}

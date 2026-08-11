@@ -1,0 +1,77 @@
+.title {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+}
+
+.amount {
+  margin-top: var(--space-2);
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+}
+
+.hint {
+  margin-top: var(--space-4);
+  font-size: var(--font-size-sm);
+  color: var(--color-fg-muted);
+}
+
+.actions {
+  display: flex;
+  gap: var(--space-3);
+  margin-top: var(--space-6);
+}
+
+.successButton {
+  flex: 1.4;
+}
+
+.actions > :first-child {
+  flex: 1;
+}
+
+.failLink {
+  display: block;
+  width: 100%;
+  text-align: center;
+  margin-top: var(--space-4);
+  min-height: var(--tap-target-min);
+  background: none;
+  border: none;
+  color: var(--color-fg-muted);
+  font-size: var(--font-size-xs);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.status {
+  margin-top: var(--space-6);
+  text-align: center;
+  font-size: var(--font-size-sm);
+  color: var(--color-fg-muted);
+}
+
+.statusSuccess {
+  margin-top: var(--space-6);
+  font-size: var(--font-size-sm);
+  color: var(--color-fg);
+}
+
+.orderNumber {
+  margin-top: var(--space-2);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+}
+
+.trackingLink {
+  display: block;
+  margin-top: var(--space-3);
+  font-size: var(--font-size-sm);
+  color: var(--color-fg);
+  text-decoration: underline;
+}
+
+.statusFailure {
+  margin-top: var(--space-6);
+  font-size: var(--font-size-sm);
+  color: var(--color-danger);
+}
