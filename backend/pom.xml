@@ -43,6 +43,13 @@
       <scope>runtime</scope>
     </dependency>
 
+    <!-- Gap-analysis #9: gün sonu kapanış raporu .xlsx export'u -->
+    <dependency>
+      <groupId>org.apache.poi</groupId>
+      <artifactId>poi-ooxml</artifactId>
+      <version>5.3.0</version>
+    </dependency>
+
     <!-- Bean validation for request DTOs (@Valid) -->
     <dependency>
       <groupId>org.springframework.boot</groupId>

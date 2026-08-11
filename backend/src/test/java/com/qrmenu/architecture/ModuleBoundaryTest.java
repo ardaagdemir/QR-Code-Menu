@@ -148,4 +148,17 @@ class ModuleBoundaryTest {
 
         rule.check(importedClasses);
     }
+
+    @Test
+    void dailyCloseRepositoriesAreOnlyUsedWithinTheDailyCloseModule() {
+        ArchRule rule = noClasses()
+                .that()
+                .resideOutsideOfPackage("com.qrmenu.dailyclose..")
+                .should()
+                .dependOnClassesThat()
+                .resideInAPackage("com.qrmenu.dailyclose.repository..")
+                .because("cross-module access must go through DailyCloseService, not its repositories");
+
+        rule.check(importedClasses);
+    }
 }

@@ -128,6 +128,12 @@ public class TenantService {
         return branchRepository.findAllByBusinessIdOrderByNameAsc(businessId);
     }
 
+    /** Gap-analysis #9: system-wide branch scan for the daily-close scheduler (all businesses, not one). */
+    @Transactional(readOnly = true)
+    public List<Branch> listAllBranches() {
+        return branchRepository.findAll();
+    }
+
     /** Gap-analysis #8 reporting: a single branch (name/timezone) scoped to its business. */
     @Transactional(readOnly = true)
     public Branch getBranch(UUID businessId, UUID branchId) {
