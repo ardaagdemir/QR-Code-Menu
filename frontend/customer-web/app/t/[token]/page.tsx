@@ -31,6 +31,7 @@ import styles from "./page.module.css";
 type LoadState =
   | { status: "loading" }
   | { status: "error"; message: string }
+  | { status: "expired" }
   | { status: "ready"; visit: TableVisit; menu: Menu };
 
 function loadErrorMessage(error: unknown): string {
@@ -38,6 +39,17 @@ function loadErrorMessage(error: unknown): string {
     return "Bu QR kod geçersiz ya da artık aktif değil. Lütfen masadaki QR kodu tekrar okutun.";
   }
   return "Menü yüklenirken bir sorun oluştu. İnternet bağlantınızı kontrol edip tekrar deneyin.";
+}
+
+// Once the page is loaded, a 404 on a cart/checkout call means the caller's view of the
+// visit/cart is stale and unrecoverable in place - either the TableVisit itself closed
+// underneath the user (TTL, Gap-Analysis #13) or the draft order/product it referenced is
+// gone. ApiError only carries the HTTP status (no machine-readable reason code), so the two
+// causes can't be told apart client-side without a backend change - but the recovery is the
+// same for both (reload -> re-check-in), so this is routed to one full-page state (Bölüm
+// 19.2: "expired session/cart" durum ekranı) worded to hold for either cause.
+function isStaleVisitError(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 404;
 }
 
 function cartActionErrorMessage(error: unknown): string {
@@ -53,13 +65,10 @@ function cartActionErrorMessage(error: unknown): string {
 }
 
 function checkoutErrorMessage(error: unknown): string {
-  if (error instanceof ApiError) {
-    if (error.status === 409) {
-      return "Bu şube şu anda sipariş kabul etmiyor (kapalı ya da çalışma saatleri dışında).";
-    }
-    if (error.status === 404) {
-      return "Ödemeye geçilecek bir sepet bulunamadı.";
-    }
+  // 404 (no payable cart / stale visit) is handled separately via isStaleVisitError before
+  // this is called - it never reaches here.
+  if (error instanceof ApiError && error.status === 409) {
+    return "Bu şube şu anda sipariş kabul etmiyor (kapalı ya da çalışma saatleri dışında).";
   }
   return "Ödeme başlatılırken bir sorun oluştu. Lütfen tekrar deneyin.";
 }
@@ -166,6 +175,20 @@ export default function TableVisitPage() {
     );
   }
 
+  if (state.status === "expired") {
+    return (
+      <main className={styles.page}>
+        <div className={styles.centeredState}>
+          <ErrorState
+            title="Devam edilemiyor"
+            message="Masa oturumunuz veya sepetiniz güncel görünmüyor. Devam etmek için menü yeniden yüklenecek."
+            onRetry={retry}
+          />
+        </div>
+      </main>
+    );
+  }
+
   const { visit, menu } = state;
 
   function scrollToCategory(categoryId: string) {
@@ -191,6 +214,10 @@ export default function TableVisitPage() {
       }
       setActiveProduct(null);
     } catch (error) {
+      if (isStaleVisitError(error)) {
+        setState({ status: "expired" });
+        return;
+      }
       setCartActionError(cartActionErrorMessage(error));
     } finally {
       setSubmittingCart(false);
@@ -202,8 +229,12 @@ export default function TableVisitPage() {
     try {
       const updatedCart = await removeCartItem(visit.tableVisitId, orderItemId);
       setCart(updatedCart);
-    } catch {
-      // Best-effort: the item stays visible in the drawer, the user can retry.
+    } catch (error) {
+      if (isStaleVisitError(error)) {
+        setState({ status: "expired" });
+        return;
+      }
+      // Best-effort otherwise: the item stays visible in the drawer, the user can retry.
     } finally {
       setRemovingItemId(null);
     }
@@ -216,6 +247,10 @@ export default function TableVisitPage() {
       const intent = await createPaymentIntent(visit.tableVisitId);
       setPaymentIntent(intent);
     } catch (error) {
+      if (isStaleVisitError(error)) {
+        setState({ status: "expired" });
+        return;
+      }
       setCheckoutError(checkoutErrorMessage(error));
     } finally {
       setCheckoutSubmitting(false);
