@@ -861,3 +861,27 @@ Gap-Analysis #12 tamamlandı: RLS için DB-seviyesi politika eklenmedi (bilinçl
 korundu), ama reassessment sürecinde gerçek bir cross-tenant IDOR bulunup düzeltildi
 (yukarıya bkz.). Diğer M13 alt maddeleri (rate limiting, upload security) zaten
 var/N-A olduğundan yeniden ele alınmadı.
+
+---
+
+## Gap-Analysis #13 — Session/TableVisit TTL — ✅ COMPLETED
+
+`docs/gap-analysis.md`'nin bölüm 2'sindeki "Session/TableVisit TTL" PARTIAL maddesi (bölüm 3'ün 1-12
+önceliklendirme sırasına hiç girmemişti — dosyayı yeniden tarayan bir gap-analizi sırasında fark edildi):
+`AnonymousCustomerSession`/`TableVisit` `lastActivityAt` tutuyordu ama hiçbir scheduled job süresi dolan bir
+`TableVisit`'i kapatmıyordu. `CustomerSessionService.checkIn()` zaten TTL'i (`VISIT_TTL`, 6 saat) geçmiş bir
+visit'i *yeniden kullanmıyordu* (yeni visit başlatıyordu), ama `getOwnedTableVisit` (cart/ordering'in ownership
+kapısı) hiç TTL kontrolü yapmıyordu — eski bir session cookie + eski bir `tableVisitId` ile süresiz olarak sepete
+ekleme/sipariş işlemi yapılabiliyordu.
+
+V20 migration: `table_visit`'e nullable `closed_at TIMESTAMPTZ` eklendi (+ `WHERE closed_at IS NULL` partial
+index, açık-visit taramasını hızlandırmak için). `TableVisit.close()`/`isClosed()` eklendi. Yeni
+`TableVisitCleanupScheduler` (`OrderCleanupScheduler` ile aynı desende, 15 dk periyot), `last_activity_at`'i
+`VISIT_TTL`'i aşan ve henüz kapanmamış her visit'i `closed_at` ile işaretliyor.
+`CustomerSessionService.getOwnedTableVisit`, ownership-mismatch ile aynı gerekçeyle (var olduğunu doğrulamamak
+için 403 değil 404) artık `visit.isClosed()`'i de reddediyor.
+
+Yeni `TableVisitCleanupSchedulerIntegrationTest` (2): stale visit kapanıyor/fresh visit dokunulmadan kalıyor
+(scheduler doğrudan çağrılıp `last_activity_at` SQL ile geriye tarihleniyor, `OrderCleanupSchedulerIntegrationTest`
+ile aynı desen), kapanmış bir visit üzerinden cart endpoint'ine istek 404 dönüyor. Tam backend suite yeşil
+(119 test, ilgisiz bir flaky `RateLimitFilterTest` testi izole çalıştırmada geçti - tekrar denemede geçti).

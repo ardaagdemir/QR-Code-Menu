@@ -40,6 +40,9 @@ public class TableVisit {
     @Column(name = "last_activity_at", nullable = false)
     private Instant lastActivityAt;
 
+    @Column(name = "closed_at")
+    private Instant closedAt;
+
     protected TableVisit() {
         // JPA
     }
@@ -56,6 +59,15 @@ public class TableVisit {
 
     public void touch() {
         this.lastActivityAt = Instant.now();
+    }
+
+    /** Gap-analysis #13: marks a TTL-stale visit closed so it can no longer be acted on. */
+    public void close() {
+        this.closedAt = Instant.now();
+    }
+
+    public boolean isClosed() {
+        return closedAt != null;
     }
 
     public UUID getId() {
@@ -84,5 +96,9 @@ public class TableVisit {
 
     public Instant getLastActivityAt() {
         return lastActivityAt;
+    }
+
+    public Instant getClosedAt() {
+        return closedAt;
     }
 }

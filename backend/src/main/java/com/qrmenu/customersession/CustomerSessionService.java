@@ -71,7 +71,9 @@ public class CustomerSessionService {
         TableVisit visit = tableVisitRepository
                 .findById(tableVisitId)
                 .orElseThrow(() -> new ResourceNotFoundException("Table visit not found: " + tableVisitId));
-        if (callerSessionId == null || !visit.getAnonymousCustomerSessionId().equals(callerSessionId)) {
+        if (callerSessionId == null
+                || !visit.getAnonymousCustomerSessionId().equals(callerSessionId)
+                || visit.isClosed()) {
             throw new ResourceNotFoundException("Table visit not found: " + tableVisitId);
         }
         return visit;

@@ -3,6 +3,10 @@
 > Bu dosya, güncellenen `docs/product-requirements.md` (kasa onay kapısı, raporlama, gün sonu/Excel, gider
 > yönetimi, zincir yönetimi vb. eklenen revizyon) ile mevcut kod tabanının karşılaştırmasıdır. Kod/migration
 > değişikliği içermez, yalnızca durum tespitidir.
+>
+> **Not (2026-08-12):** Aşağıdaki bölüm 1/2 tabloları dosyanın ilk yazıldığı andaki durumu (tespit anı)
+> yansıtır ve bilinçli olarak güncellenmemiştir — güncel durum için bölüm 3'teki ✅ işaretlerine ve
+> `development-progress.md`'ye bakın. Bölüm 3'teki 1-13 arası maddelerin tamamı artık ✅ COMPLETED.
 
 ## 1. En Kritik CONFLICTING / PARTIAL Noktalar
 
@@ -28,7 +32,7 @@
 | **Gün sonu + Excel** | ❌ MISSING | `DailyBranchCloseReport`, PREVIEW/FINAL akışı, `.xlsx` export — hiçbiri yok. |
 | **Sahibine bildirim** | ❌ MISSING | `OwnerNotificationPort`, email/WhatsApp adapter — yok (spec bunu blocker saymıyor, opsiyonel). |
 | **Gider yönetimi** | ❌ MISSING | `expense` modülü, kategori, recurring template, onay akışı — hiçbiri yok. |
-| **Session/TableVisit TTL** | 🟡 PARTIAL | `AnonymousCustomerSession`/`TableVisit` var, `lastActivityAt` tutuluyor ama **hiçbir scheduled job TableVisit'i süresi dolunca kapatmıyor** (yalnızca DRAFT order 2 saatte cancel oluyor). |
+| **Session/TableVisit TTL** | ✅ (2026-08-12) | ~~`AnonymousCustomerSession`/`TableVisit` var, `lastActivityAt` tutuluyor ama hiçbir scheduled job TableVisit'i süresi dolunca kapatmıyor (yalnızca DRAFT order 2 saatte cancel oluyor).~~ `TableVisitCleanupScheduler` eklendi (Gap-Analysis #13). |
 | **Frontend — customer-web** | 🟡 PARTIAL | Mobil-first temel, sepet, ödeme, tracking, receipt çalışıyor. Eksik: allergen/prep-time gösterimi (veri yok), **"işletme onayı bekleniyor" durumu**, refund durumu ekranı, kabul/red mesajları. |
 | **Frontend — staff-web** | 🟡 PARTIAL | Login, KDS, refund, branch/table/QR, menü, personel, audit, pickup board var. Eksik: kasa dashboard, raporlama ekranı, Excel indirme, gider ekranı, business hours/contact yönetimi, staff announcement. |
 
@@ -39,18 +43,21 @@ log, pickup board, `DeliveryModel`, rate limiting, payment timeout scheduler.
 
 ## 3. Önerilen Geliştirme Sırası (mevcut kodu koruyarak)
 
-1. **Kasa kabul/red kapısı (çekirdek, önce bu)** — `OrderStatus`'a `AWAITING_STORE_ACCEPTANCE`/`REJECTED_BY_STORE`
+1. ✅ **Kasa kabul/red kapısı (çekirdek, önce bu)** — `OrderStatus`'a `AWAITING_STORE_ACCEPTANCE`/`REJECTED_BY_STORE`
    ekle; `markOrderPaid()`'den `markInKitchen()` çağrısını çıkar. Yeni `Permission.ORDER_ACCEPT/ORDER_REJECT/
    ORDER_VIEW` + `StaffRole.CASHIER`. Accept/Reject uç noktaları (muhtemelen `ordering` altında ince bir
    alt-paket, ayrı modül değil — dokümanın kendi önerisiyle uyumlu). Reject → refund orkestrasyonu
    **controller/application katmanında** yapılmalı (ordering'in refund'a bağımlı olmaması için), döngü riski
-   böylece çözülür.
-2. **Kasa dashboard (staff-web)** — yeni ekran, mevcut KDS/refund sayfa desenini tekrar kullanarak.
-3. **Mutfak kuyruğu filtresini güncelle** — yalnızca kasa-kabullü siparişleri göster.
-4. **Müşteri bildirim durumlarını genişlet** — tracking response'a ara durumları ekle (mevcut SSE altyapısı
-   korunur, yalnızca state/response genişler).
-5. **Product alanları** — `allergens`, `estimatedPreparationMinutes`, `active` (yeni migration + DTO'lar, mevcut
-   alanlara ek).
+   böylece çözülür. (Bkz. development-progress.md, Gap-Analysis #1.)
+2. ✅ **Kasa dashboard (staff-web)** — yeni ekran, mevcut KDS/refund sayfa desenini tekrar kullanarak. (Bkz.
+   development-progress.md, "Gap-Analysis — Kasa Dashboard".)
+3. ✅ **Mutfak kuyruğu filtresini güncelle** — yalnızca kasa-kabullü siparişleri göster. (`getKitchenQueue`
+   değişmeden otomatik sağlandı — IN_KITCHEN'a artık yalnızca kasa ACCEPT'i üzerinden ulaşılabiliyor; bkz.
+   Gap-Analysis #1 notu.)
+4. ✅ **Müşteri bildirim durumlarını genişlet** — tracking response'a ara durumları ekle (mevcut SSE altyapısı
+   korunur, yalnızca state/response genişler). (Bkz. development-progress.md, Gap-Analysis #4 ve #6.)
+5. ✅ **Product alanları** — `allergens`, `estimatedPreparationMinutes`, `active` (yeni migration + DTO'lar, mevcut
+   alanlara ek). (Bkz. development-progress.md, "Gap-Analysis — Product Alanları".)
 6. ✅ **Branch/Business ayarları** — `BranchBusinessHours`, `address`, `timezone`, geçici kapatma;
    `Business.defaultCurrency/defaultTimeZone`, `BusinessContact`. (Bkz. development-progress.md,
    Gap-Analysis #6.)
@@ -64,6 +71,12 @@ log, pickup board, `DeliveryModel`, rate limiting, payment timeout scheduler.
     development-progress.md, Gap-Analysis #11.)
 12. ✅ **Security hardening / RLS yeniden değerlendirme** — kapanışta. (Bkz. development-progress.md,
     Gap-Analysis #12.)
+13. ✅ **Session/TableVisit TTL** — bölüm 2'de PARTIAL olarak tespit edilip önceliklendirme sırasına hiç
+    girmemişti (asıl eksik kalan madde buydu). `TableVisitCleanupScheduler` eklendi: `last_activity_at`,
+    `CustomerSessionService.VISIT_TTL`'i (6 saat) aşan her açık `TableVisit`'i `closed_at` ile kapatıyor;
+    `getOwnedTableVisit` artık kapalı bir visit'i 404 olarak davranıyor (aynı ownership-mismatch deseniyle) —
+    eski bir session cookie'siyle süresi dolmuş bir visit üzerinden sepete/sipariş akışına süresiz erişim
+    engellendi. (Bkz. development-progress.md, Gap-Analysis #13.)
 
 Bu sıralama, dokümanın kendi M6→M13 planıyla ve Bölüm 25'teki "önce CONFLICTING düzelt, sonra sırayla eksikleri
 tamamla" kuralıyla birebir uyumlu.
