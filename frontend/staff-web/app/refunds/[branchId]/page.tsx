@@ -5,7 +5,12 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { ApiError, completeOrder, createRefund, formatPriceMinorUnits, searchOrderByNumber, type StaffOrderLookup } from "@/lib/api";
 import AppShell from "@/components/layout/AppShell";
+import PageHeader from "@/components/ui/PageHeader";
 import Button from "@/components/ui/Button";
+import Input from "@/components/ui/Input";
+import ErrorState from "@/components/ui/ErrorState";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { useToast } from "@/components/ui/ToastProvider";
 import styles from "./page.module.css";
 
 /**
@@ -20,26 +25,26 @@ export default function RefundsPage() {
   const params = useParams<{ branchId: string }>();
   const branchId = params.branchId;
   const router = useRouter();
+  const { showToast } = useToast();
 
   const [orderNumberInput, setOrderNumberInput] = useState("");
   const [order, setOrder] = useState<StaffOrderLookup | null>(null);
   const [searching, setSearching] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [completing, setCompleting] = useState(false);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [confirmingRefundQuantity, setConfirmingRefundQuantity] = useState<number | null>(null);
   const quantityInputsRef = useRef<Record<string, number>>({});
 
   async function handleSearch(event: React.FormEvent) {
     event.preventDefault();
     const orderNumber = Number(orderNumberInput);
     if (!Number.isInteger(orderNumber) || orderNumber <= 0) {
-      setError("Geçerli bir sipariş numarası girin.");
+      setSearchError("Geçerli bir sipariş numarası girin.");
       return;
     }
     setSearching(true);
-    setError(null);
-    setSuccessMessage(null);
+    setSearchError(null);
     try {
       const found = await searchOrderByNumber(branchId, orderNumber);
       setOrder(found);
@@ -58,7 +63,7 @@ export default function RefundsPage() {
         router.replace("/");
         return;
       }
-      setError(err instanceof ApiError && err.status === 404 ? "Bu numarada bir sipariş bulunamadı." : "Sipariş aranırken bir sorun oluştu.");
+      setSearchError(err instanceof ApiError && err.status === 404 ? "Bu numarada bir sipariş bulunamadı." : "Sipariş aranırken bir sorun oluştu.");
     } finally {
       setSearching(false);
     }
@@ -72,15 +77,13 @@ export default function RefundsPage() {
       .filter(([, quantity]) => quantity > 0)
       .map(([orderItemId, quantity]) => ({ orderItemId, quantity }));
     if (items.length === 0) {
-      setError("Lütfen en az bir kalem için iade adedi girin.");
+      showToast("Lütfen en az bir kalem için iade adedi girin.", "error");
       return;
     }
     setSubmitting(true);
-    setError(null);
-    setSuccessMessage(null);
     try {
       const refund = await createRefund(branchId, order.orderId, items);
-      setSuccessMessage(`İade tamamlandı: ${formatPriceMinorUnits(refund.totalAmountMinorUnits)}`);
+      showToast(`İade tamamlandı: ${formatPriceMinorUnits(refund.totalAmountMinorUnits)}`, "success");
       const refreshed = await searchOrderByNumber(branchId, order.orderNumber ?? 0);
       setOrder(refreshed);
       // Reset every input to 0 (not the rejectedQuantity default) - that quantity may
@@ -88,10 +91,20 @@ export default function RefundsPage() {
       // accidental duplicate refund attempt.
       quantityInputsRef.current = Object.fromEntries(refreshed.items.map((item) => [item.id, 0]));
     } catch {
-      setError("İade işlenemedi (tutar, kalan iade edilebilir tutarı aşıyor olabilir).");
+      showToast("İade işlenemedi (tutar, kalan iade edilebilir tutarı aşıyor olabilir).", "error");
     } finally {
       setSubmitting(false);
+      setConfirmingRefundQuantity(null);
     }
+  }
+
+  function handleRequestRefund() {
+    const items = Object.entries(quantityInputsRef.current).filter(([, quantity]) => quantity > 0);
+    if (items.length === 0) {
+      showToast("Lütfen en az bir kalem için iade adedi girin.", "error");
+      return;
+    }
+    setConfirmingRefundQuantity(items.reduce((sum, [, quantity]) => sum + quantity, 0));
   }
 
   async function handleComplete() {
@@ -99,14 +112,12 @@ export default function RefundsPage() {
       return;
     }
     setCompleting(true);
-    setError(null);
-    setSuccessMessage(null);
     try {
       const updated = await completeOrder(branchId, order.orderId);
       setOrder(updated);
-      setSuccessMessage("Sipariş tamamlandı olarak işaretlendi.");
+      showToast("Sipariş tamamlandı olarak işaretlendi.", "success");
     } catch {
-      setError("Sipariş tamamlanamadı.");
+      showToast("Sipariş tamamlanamadı.", "error");
     } finally {
       setCompleting(false);
     }
@@ -115,22 +126,24 @@ export default function RefundsPage() {
   return (
     <AppShell>
       <main className={styles.page}>
-        <div className={styles.header}>
-          <h1 className={styles.title}>İade İşlemleri</h1>
-          <div className={styles.headerActions}>
-            <Link href={`/cashier/${branchId}`} className={styles.backLink}>
-              Kasa
-            </Link>
-            <Link href={`/kitchen/${branchId}`} className={styles.backLink}>
-              Mutfağa dön
-            </Link>
-          </div>
-        </div>
+        <PageHeader
+          title="İade İşlemleri"
+          actions={
+            <div className={styles.headerActions}>
+              <Link href={`/cashier/${branchId}`} className={styles.backLink}>
+                Kasa
+              </Link>
+              <Link href={`/kitchen/${branchId}`} className={styles.backLink}>
+                Mutfağa dön
+              </Link>
+            </div>
+          }
+        />
 
         <form className={styles.searchRow} onSubmit={handleSearch}>
-          <input
-            className={styles.input}
+          <Input
             placeholder="Sipariş No"
+            aria-label="Sipariş numarası"
             inputMode="numeric"
             value={orderNumberInput}
             onChange={(event) => setOrderNumberInput(event.target.value)}
@@ -140,8 +153,7 @@ export default function RefundsPage() {
           </Button>
         </form>
 
-        {error ? <p className={styles.error}>{error}</p> : null}
-        {successMessage ? <p className={styles.success}>{successMessage}</p> : null}
+        {searchError ? <ErrorState message={searchError} /> : null}
 
         {order ? (
           <div className={styles.orderCard}>
@@ -185,7 +197,7 @@ export default function RefundsPage() {
             ))}
 
             <div className={styles.submitRow}>
-              <Button size="lg" disabled={submitting} onClick={handleSubmitRefund}>
+              <Button size="lg" disabled={submitting} onClick={handleRequestRefund}>
                 {submitting ? "İşleniyor…" : "İade Başlat"}
               </Button>
             </div>
@@ -204,6 +216,18 @@ export default function RefundsPage() {
           </div>
         ) : null}
       </main>
+
+      {confirmingRefundQuantity !== null ? (
+        <ConfirmDialog
+          title="İadeyi Başlat"
+          message={`#${order?.orderNumber} numaralı sipariş için ${confirmingRefundQuantity} kalem iade edilecek. Bu işlem geri alınamaz.`}
+          confirmLabel="İade Başlat"
+          tone="danger"
+          confirmLoading={submitting}
+          onConfirm={handleSubmitRefund}
+          onCancel={() => setConfirmingRefundQuantity(null)}
+        />
+      ) : null}
     </AppShell>
   );
 }
