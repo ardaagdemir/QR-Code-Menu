@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createStaffUser, deactivateStaffUser, listBranches, listStaffUsers, type Branch, type StaffRole, type StaffUser } from "@/lib/api";
-import StaffNav from "@/components/layout/StaffNav";
+import AppShell from "@/components/layout/AppShell";
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import styles from "@/styles/admin.module.css";
@@ -107,8 +107,7 @@ export default function StaffPage() {
   }
 
   return (
-    <>
-      <StaffNav />
+    <AppShell>
       <main className={styles.page}>
         <div className={styles.header}>
           <h1 className={styles.title}>Personel &amp; Rol Yönetimi</h1>
@@ -200,6 +199,6 @@ export default function StaffPage() {
           )}
         </div>
       </main>
-    </>
+    </AppShell>
   );
 }

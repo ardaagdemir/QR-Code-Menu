@@ -22,7 +22,7 @@ import {
   type RecurringExpenseTemplate,
   type StaffContext,
 } from "@/lib/api";
-import StaffNav from "@/components/layout/StaffNav";
+import AppShell from "@/components/layout/AppShell";
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import styles from "@/styles/admin.module.css";
@@ -247,8 +247,7 @@ export default function ExpensesPage() {
   }
 
   return (
-    <>
-      <StaffNav />
+    <AppShell>
       <main className={styles.page}>
         <div className={styles.header}>
           <h1 className={styles.title}>Gider Yönetimi</h1>
@@ -551,6 +550,6 @@ export default function ExpensesPage() {
           </div>
         </section>
       </main>
-    </>
+    </AppShell>
   );
 }

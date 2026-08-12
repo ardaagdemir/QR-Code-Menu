@@ -19,7 +19,7 @@ import {
   type MenuCategoryAdmin,
   type ProductAdmin,
 } from "@/lib/api";
-import StaffNav from "@/components/layout/StaffNav";
+import AppShell from "@/components/layout/AppShell";
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import styles from "@/styles/admin.module.css";
@@ -277,8 +277,7 @@ export default function MenuPage() {
   }
 
   return (
-    <>
-      <StaffNav />
+    <AppShell>
       <main className={styles.page}>
         <div className={styles.header}>
           <h1 className={styles.title}>Menü Yönetimi</h1>
@@ -541,6 +540,6 @@ export default function MenuPage() {
           </section>
         ) : null}
       </main>
-    </>
+    </AppShell>
   );
 }

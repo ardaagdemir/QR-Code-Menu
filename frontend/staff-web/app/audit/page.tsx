@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { listAuditEntries, listStaffUsers, type AuditEntry, type StaffUser } from "@/lib/api";
-import StaffNav from "@/components/layout/StaffNav";
+import AppShell from "@/components/layout/AppShell";
 import styles from "@/styles/admin.module.css";
 
 /** Section 4, staff-web admin screen #7: "Sipariş/Ödeme/İade geçmişi ve audit görünümü" (Permission.AUDIT_VIEW). */
@@ -30,8 +30,7 @@ export default function AuditPage() {
   }
 
   return (
-    <>
-      <StaffNav />
+    <AppShell>
       <main className={styles.page}>
         <div className={styles.header}>
           <h1 className={styles.title}>Denetim Kaydı</h1>
@@ -61,6 +60,6 @@ export default function AuditPage() {
           )}
         </div>
       </main>
-    </>
+    </AppShell>
   );
 }

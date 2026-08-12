@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getBranchComparison, type BranchComparisonRow } from "@/lib/api";
-import StaffNav from "@/components/layout/StaffNav";
+import AppShell from "@/components/layout/AppShell";
 import styles from "@/styles/admin.module.css";
 
 /**
@@ -23,8 +23,7 @@ export default function ChainComparisonPage() {
   }, []);
 
   return (
-    <>
-      <StaffNav />
+    <AppShell>
       <main className={styles.page}>
         <div className={styles.header}>
           <h1 className={styles.title}>Şube Karşılaştırma</h1>
@@ -55,6 +54,6 @@ export default function ChainComparisonPage() {
           </div>
         </section>
       </main>
-    </>
+    </AppShell>
   );
 }

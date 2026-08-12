@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { ApiError, completeOrder, createRefund, formatPriceMinorUnits, searchOrderByNumber, type StaffOrderLookup } from "@/lib/api";
-import StaffNav from "@/components/layout/StaffNav";
+import AppShell from "@/components/layout/AppShell";
 import Button from "@/components/ui/Button";
 import styles from "./page.module.css";
 
@@ -113,8 +113,7 @@ export default function RefundsPage() {
   }
 
   return (
-    <>
-      <StaffNav />
+    <AppShell>
       <main className={styles.page}>
         <div className={styles.header}>
           <h1 className={styles.title}>İade İşlemleri</h1>
@@ -205,6 +204,6 @@ export default function RefundsPage() {
           </div>
         ) : null}
       </main>
-    </>
+    </AppShell>
   );
 }

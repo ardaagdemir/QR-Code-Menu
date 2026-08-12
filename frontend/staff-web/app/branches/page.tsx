@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ApiError, createBranch, listBranches, setDeliveryModel, setOrderingEnabled, type Branch, type DeliveryModel } from "@/lib/api";
-import StaffNav from "@/components/layout/StaffNav";
+import AppShell from "@/components/layout/AppShell";
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import styles from "@/styles/admin.module.css";
@@ -97,8 +97,7 @@ export default function BranchesPage() {
   }
 
   return (
-    <>
-      <StaffNav />
+    <AppShell>
       <main className={styles.page}>
         <div className={styles.header}>
           <h1 className={styles.title}>Şubeler</h1>
@@ -183,6 +182,6 @@ export default function BranchesPage() {
           )}
         </div>
       </main>
-    </>
+    </AppShell>
   );
 }

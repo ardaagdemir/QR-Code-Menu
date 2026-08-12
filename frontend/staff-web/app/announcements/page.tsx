@@ -10,7 +10,7 @@ import {
   type BranchAssignmentTarget,
   type StaffAnnouncement,
 } from "@/lib/api";
-import StaffNav from "@/components/layout/StaffNav";
+import AppShell from "@/components/layout/AppShell";
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import styles from "@/styles/admin.module.css";
@@ -114,8 +114,7 @@ export default function AnnouncementsPage() {
   }
 
   return (
-    <>
-      <StaffNav />
+    <AppShell>
       <main className={styles.page}>
         <div className={styles.header}>
           <h1 className={styles.title}>Duyurular</h1>
@@ -244,6 +243,6 @@ export default function AnnouncementsPage() {
           </div>
         </section>
       </main>
-    </>
+    </AppShell>
   );
 }

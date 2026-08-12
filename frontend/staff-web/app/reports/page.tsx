@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ApiError, formatPriceMinorUnits, getChainSalesReport, type ChainSalesReport } from "@/lib/api";
-import StaffNav from "@/components/layout/StaffNav";
+import AppShell from "@/components/layout/AppShell";
 import Button from "@/components/ui/Button";
 import adminStyles from "@/styles/admin.module.css";
 import styles from "./reports.module.css";
@@ -16,7 +16,7 @@ function todayIsoDate(): string {
  * Gap-analysis #8 (product-requirements.md Section 13.2): BUSINESS_ADMIN'in zincir
  * görünümü - tüm şubeler için karşılaştırmalı brüt/net satış, refund, sipariş sayısı.
  * Permission.REPORT_CHAIN_VIEW yalnızca BUSINESS_ADMIN/PLATFORM_ADMIN'de olduğu için
- * bu ekran de nav'da yalnızca admin'e gösteriliyor (StaffNav) - şube bazlı detay için
+ * bu ekran de nav'da yalnızca admin'e gösteriliyor (AppShell) - şube bazlı detay için
  * her satır /reports/{branchId}'ye bağlanıyor.
  */
 export default function ChainSalesReportPage() {
@@ -49,8 +49,7 @@ export default function ChainSalesReportPage() {
   }
 
   return (
-    <>
-      <StaffNav />
+    <AppShell>
       <main className={adminStyles.page}>
         <div className={adminStyles.header}>
           <h1 className={adminStyles.title}>Satış Raporları</h1>
@@ -133,7 +132,7 @@ export default function ChainSalesReportPage() {
           </>
         )}
       </main>
-    </>
+    </AppShell>
   );
 }
 

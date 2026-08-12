@@ -17,7 +17,7 @@ import {
   type OperatingResult,
   type OwnerNotificationLog,
 } from "@/lib/api";
-import StaffNav from "@/components/layout/StaffNav";
+import AppShell from "@/components/layout/AppShell";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import adminStyles from "@/styles/admin.module.css";
@@ -136,8 +136,7 @@ export default function BranchReportPage() {
   );
 
   return (
-    <>
-      <StaffNav />
+    <AppShell>
       <main className={adminStyles.page}>
         <div className={adminStyles.header}>
           <h1 className={adminStyles.title}>Şube Raporu</h1>
@@ -350,7 +349,7 @@ export default function BranchReportPage() {
           </>
         )}
       </main>
-    </>
+    </AppShell>
   );
 }
 

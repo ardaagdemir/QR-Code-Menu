@@ -20,7 +20,7 @@ import {
   type QrToken,
   type StaffTable,
 } from "@/lib/api";
-import StaffNav from "@/components/layout/StaffNav";
+import AppShell from "@/components/layout/AppShell";
 import Button from "@/components/ui/Button";
 import styles from "@/styles/admin.module.css";
 
@@ -223,8 +223,7 @@ export default function BranchDetailPage() {
   }
 
   return (
-    <>
-      <StaffNav />
+    <AppShell>
       <main className={styles.page}>
         <div className={styles.header}>
           <h1 className={styles.title}>{branch ? branch.name : "Şube"}</h1>
@@ -359,6 +358,6 @@ export default function BranchDetailPage() {
         </div>
         </section>
       </main>
-    </>
+    </AppShell>
   );
 }

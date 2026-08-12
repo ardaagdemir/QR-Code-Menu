@@ -16,7 +16,7 @@ import {
   type KitchenFinancialSummary,
   type KitchenOrder,
 } from "@/lib/api";
-import StaffNav from "@/components/layout/StaffNav";
+import AppShell from "@/components/layout/AppShell";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import styles from "./page.module.css";
@@ -180,8 +180,7 @@ export default function KitchenBoardPage() {
   }
 
   return (
-    <>
-      <StaffNav />
+    <AppShell>
       <main className={styles.page}>
         <div className={styles.header}>
           <h1 className={styles.title}>Mutfak</h1>
@@ -281,6 +280,6 @@ export default function KitchenBoardPage() {
           </div>
         )}
       </main>
-    </>
+    </AppShell>
   );
 }
