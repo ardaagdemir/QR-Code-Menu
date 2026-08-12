@@ -40,6 +40,16 @@
   color: var(--color-fg);
 }
 
+.danger {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+.danger:not(:disabled):active {
+  opacity: 0.85;
+}
+
 .md {
   font-size: var(--font-size-sm);
 }
