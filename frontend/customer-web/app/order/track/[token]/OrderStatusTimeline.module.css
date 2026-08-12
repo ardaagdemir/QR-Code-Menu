@@ -1,0 +1,103 @@
+.timeline {
+  list-style: none;
+  margin: var(--space-5) 0 0;
+  padding: 0;
+}
+
+.step {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.markerColumn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.marker {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  border: 2px solid var(--color-border);
+  color: var(--color-fg-muted);
+  background: var(--color-surface);
+  flex-shrink: 0;
+}
+
+.connector {
+  width: 2px;
+  flex: 1;
+  min-height: var(--space-5);
+  background: var(--color-border);
+  margin: var(--space-1) 0;
+}
+
+.label {
+  padding-top: var(--space-1);
+  padding-bottom: var(--space-5);
+  font-size: var(--font-size-sm);
+  color: var(--color-fg-muted);
+}
+
+.done .marker {
+  background: var(--color-success);
+  border-color: var(--color-success);
+  color: var(--color-primary-fg);
+}
+
+.done .connector {
+  background: var(--color-success);
+}
+
+.done .label {
+  color: var(--color-fg);
+}
+
+.current .marker {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.current .label {
+  color: var(--color-fg);
+  font-weight: var(--font-weight-semibold);
+}
+
+.error .marker {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+.errorNote {
+  color: var(--color-danger);
+  font-weight: var(--font-weight-regular);
+}
+
+.stopped {
+  margin-top: var(--space-5);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+}
+
+.stoppedDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--color-danger);
+  flex-shrink: 0;
+}

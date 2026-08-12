@@ -4,22 +4,10 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ApiError, buildOrderTrackingStreamUrl, formatPriceMinorUnits, getOrderTracking, type OrderTracking } from "@/lib/api";
-import Badge from "@/components/ui/Badge";
 import ErrorState from "@/components/ui/ErrorState";
 import Skeleton from "@/components/ui/Skeleton";
+import OrderStatusTimeline from "./OrderStatusTimeline";
 import styles from "./page.module.css";
-
-const ORDER_STATUS_LABELS: Record<string, string> = {
-  DRAFT: "Sepet hazırlanıyor",
-  AWAITING_PAYMENT: "Ödeme bekleniyor",
-  PAYMENT_FAILED: "Ödeme başarısız - tekrar deneyebilirsiniz",
-  AWAITING_STORE_ACCEPTANCE: "İşletme onayı bekleniyor",
-  REJECTED_BY_STORE: "İşletme siparişi reddetti",
-  IN_KITCHEN: "Hazırlanıyor",
-  READY: "Hazır",
-  COMPLETED: "Tamamlandı",
-  CANCELLED: "İptal edildi",
-};
 
 /** Gap-analysis #6 (Section 9): "refund başlatıldı / tamamlandı / başarısız" durumları. */
 const REFUND_STATUS_MESSAGES: Record<string, string> = {
@@ -129,22 +117,22 @@ export default function OrderTrackingPage() {
     <main className={styles.page}>
       <div className={styles.header}>
         <p className={styles.orderNumber}>{tracking.orderNumber !== null ? `Sipariş No: #${tracking.orderNumber}` : "Siparişiniz"}</p>
-        <div className={styles.statusBadge}>
-          <Badge>{ORDER_STATUS_LABELS[tracking.status] ?? tracking.status}</Badge>
-        </div>
         <p className={styles.total}>{formatPriceMinorUnits(tracking.totalMinorUnits)}</p>
-        {tracking.status === "IN_KITCHEN" || tracking.status === "READY" ? (
-          <p className={styles.deliveryNote}>
-            {DELIVERY_MODEL_MESSAGES[tracking.deliveryModel]?.[tracking.status] ??
-              DELIVERY_MODEL_MESSAGES[tracking.deliveryModel]?.default}
-          </p>
-        ) : null}
-        {tracking.latestRefundStatus ? (
-          <p className={styles.deliveryNote}>{REFUND_STATUS_MESSAGES[tracking.latestRefundStatus] ?? tracking.latestRefundStatus}</p>
-        ) : tracking.status === "REJECTED_BY_STORE" ? (
-          <p className={styles.deliveryNote}>Ödemeniz iade edilecek.</p>
-        ) : null}
       </div>
+
+      <OrderStatusTimeline status={tracking.status} />
+
+      {tracking.status === "IN_KITCHEN" || tracking.status === "READY" ? (
+        <p className={styles.deliveryNote}>
+          {DELIVERY_MODEL_MESSAGES[tracking.deliveryModel]?.[tracking.status] ??
+            DELIVERY_MODEL_MESSAGES[tracking.deliveryModel]?.default}
+        </p>
+      ) : null}
+      {tracking.latestRefundStatus ? (
+        <p className={styles.deliveryNote}>{REFUND_STATUS_MESSAGES[tracking.latestRefundStatus] ?? tracking.latestRefundStatus}</p>
+      ) : tracking.status === "REJECTED_BY_STORE" ? (
+        <p className={styles.deliveryNote}>Ödemeniz iade edilecek.</p>
+      ) : null}
 
       <div className={styles.itemList}>
         {tracking.items.map((item, index) => (
