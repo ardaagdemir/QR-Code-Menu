@@ -990,3 +990,46 @@ kapsam dışı bir yeniden yazım yapılmadı:
 
 **Doğrulama:** her değişiklikten sonra `customer-web`'de `npm run lint` + `npm run build` (tsc dahil) temiz.
 Canlı Chrome testi yapılmadı (proje hafızası - browser testi bu projede kapalı). Backend değişikliği yok.
+
+---
+
+## UI/UX Productization Gate — Adım 3: Staff Web Application Shell/Sidebar — tasarım kaydı
+
+`product-requirements.md` Bölüm 19.5'in "Cross-cutting" uygulama sırasının 3. adımı: Bölüm 19.3'ün
+"Application shell" gereksinimi — desktop'ta üstte wrap olan link listesi yerine kalıcı sol sidebar +
+top bar, küçük ekranda drawer navigation. Mevcut `StaffNav` (`components/layout/StaffNav.tsx`) tam olarak
+bu yasaklanan pattern: `flex-wrap` ile taşan düz link listesi, ~13 sayfanın her biri kendi başına mount
+ediyor, hiçbir landing/dashboard route'u yok (her rol girişten sonra `/branches`'e düşüyor).
+
+Kullanıcıyla iki kapsam kararı netleştirildi:
+1. **Dashboard:** minimal bir `/dashboard` placeholder sayfası eklenecek (karşılama + role göre kısayol
+   kartları, KPI verisi yok); gerçek KPI içeriği Bölüm 19.3'ün "Dashboard" alt-bölümü Adım 6'da (raporlama/
+   dashboard görselleştirme) yapılacak. Sidebar'ın "Dashboard" maddesi ve login sonrası yönlendirme buraya
+   işaret edecek.
+2. **Şube bazlı nav linkleri** (Kasa/Mutfak/Pickup/Raporlar/İadeler, URL'de branchId var): rolün
+   `branchIds`'i tam 1 ise link doğrudan o şubeye gider (ör. `/cashier/{branchId}`); değilse (BUSINESS_ADMIN/
+   PLATFORM_ADMIN/çok şubeli manager) mevcut `/branches` şube seçiciye yönlendirir. Yeni bir branch-switcher
+   state'i eklenmiyor (YAGNI - mevcut `/branches` zaten bu işi görüyor).
+
+**Backend — küçük additive değişiklik:** top bar'ın "aktif şube/işletme bağlamı" göstermesi gerekiyor
+(Bölüm 19.3) ama `GET /business` (`BUSINESS_SETTINGS_MANAGE`) ve `GET /branches` (`BRANCH_MANAGE`) CASHIER/
+KITCHEN_STAFF için erişilemez. Permission-gated olmayan `GET /api/staff/auth/me`'nin `StaffContextResponse`'una
+`businessName: string` ve `branches: {id,name}[]` (yalnızca `context.branchIds()`'e karşılık gelenler -
+admin rollerinde branchIds boş olduğu için bu liste de boş kalır) eklenecek. `StaffAuthController`'a
+`TenantService` inject edilip `getBusiness`/`listBranches` (filtrelenmiş) kullanılacak. Yeni permission
+yüzeyi yok - yalnızca zaten kimliği doğrulanmış kullanıcının kendi business/branch adlarını görmesi.
+
+**Frontend:** yeni `AppShell` component (`components/layout/AppShell.tsx`) `StaffNav`'ın yerini alıyor -
+aynı `me()` + 401→redirect deseni, `AnnouncementBanner` mount'u korunuyor. Sol sidebar (≥1024px kalıcı,
+<1024px hamburger tetikli drawer overlay), Bölüm 19.3'teki dört grup bilgi mimarisi (Operasyon/Yönetim/
+Finans/Sistem), rol bazlı link filtreleme (frontend'de granüler permission listesi yok, mevcut `isAdmin`
+deseninin genişletilmiş hali), aktif route vurgusu, top bar'da `businessName`/`branches` + email/rol +
+çıkış. Var olan ~13 sayfa dosya taşınmadan (route group yok, düşük riskli) `<StaffNav />`'ı
+`<AppShell>...</AppShell>` ile değiştiriyor; eski `StaffNav.tsx`/`.module.css` silinecek. Ayrı bir
+collapse-toggle eklenmiyor (spec "kalıcı **veya** collapsible" diyor, kalıcı yeterli).
+
+**Doğrulama planı:** her adımdan sonra backend `mvn test`, frontend `npm run lint` + `npm run build`.
+Canlı Chrome testi yapılmayacak (proje hafızası). Bu tasarım superpowers:brainstorming akışıyla (2
+netleştirme sorusu: dashboard kapsamı, şube bazlı nav) kullanıcıyla netleştirildi ve onaylandı; ayrı bir
+`docs/superpowers/specs/*.md` dosyası yerine doğrudan buraya yazıldı. Uygulama adımları ilerledikçe bu
+bölüm güncellenecek, tamamlandığında `✅ COMPLETED` olarak kapatılacak.
