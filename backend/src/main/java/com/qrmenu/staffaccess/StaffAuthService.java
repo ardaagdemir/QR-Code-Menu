@@ -6,6 +6,7 @@ import com.qrmenu.common.web.StaffPermissionDeniedException;
 import com.qrmenu.staffaccess.repository.StaffSessionRepository;
 import com.qrmenu.staffaccess.repository.StaffUserBranchRepository;
 import com.qrmenu.staffaccess.repository.StaffUserRepository;
+import com.qrmenu.tenant.TenantService;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -33,15 +34,18 @@ public class StaffAuthService {
     private final StaffUserRepository staffUserRepository;
     private final StaffUserBranchRepository staffUserBranchRepository;
     private final StaffSessionRepository staffSessionRepository;
+    private final TenantService tenantService;
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
     public StaffAuthService(
             StaffUserRepository staffUserRepository,
             StaffUserBranchRepository staffUserBranchRepository,
-            StaffSessionRepository staffSessionRepository) {
+            StaffSessionRepository staffSessionRepository,
+            TenantService tenantService) {
         this.staffUserRepository = staffUserRepository;
         this.staffUserBranchRepository = staffUserBranchRepository;
         this.staffSessionRepository = staffSessionRepository;
+        this.tenantService = tenantService;
     }
 
     @Transactional
@@ -93,6 +97,10 @@ public class StaffAuthService {
     @Transactional(readOnly = true)
     public StaffContext resolveStaffContextForBranch(UUID sessionId, Permission required, UUID branchId) {
         StaffContext context = resolveStaffContext(sessionId, required);
+        if (context.role() != StaffRole.PLATFORM_ADMIN
+                && !tenantService.requireBusinessIdForBranch(branchId).equals(context.businessId())) {
+            throw new StaffPermissionDeniedException("Not authorized for branch: " + branchId);
+        }
         if (!context.canAccessBranch(branchId)) {
             throw new StaffPermissionDeniedException("Not authorized for branch: " + branchId);
         }

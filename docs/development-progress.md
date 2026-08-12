@@ -787,11 +787,20 @@ maddesi ("kapanışta").
 
 **Onaylanmış tasarım — 6 alt-alan, sırayla, her biri kendi tara→düzelt→test→commit döngüsüyle:**
 
-1. **RLS reassessment** — DB-seviyesi Postgres RLS **eklenmeyecek** (product-requirements.md Section 21'deki
-   bilinçli karar korunuyor: "RLS erken aşamada yok; açık business_id sorguları + servis ownership kontrolü +
-   integration test"). Bu adım yalnızca bu yaklaşımın hâlâ yeterli olduğunu doğrulayan bir **karar
-   dokümantasyonu**: tenant/ordering/menu/reporting/expense servislerinde business_id filtreleme + ownership-check
-   tutarlılığı kod taramasıyla doğrulanacak, eksik bulunursa düzeltilecek, sonuç bu bölüme eklenecek.
+1. **RLS reassessment — sonuç:** DB-seviyesi RLS eklenmedi (Section 21'deki karar korundu). Kod
+   taraması sırasında gerçek bir cross-tenant IDOR bulundu ve düzeltildi:
+   `StaffContext.canAccessBranch()` BUSINESS_ADMIN'i PLATFORM_ADMIN ile aynı şekilde ele alıp
+   herhangi bir branchId'ye izin veriyordu; `KitchenController`/`OrderControlController`/
+   `RefundController` bunun tek yetkilendirme kapısı olduğundan (altlarındaki OrderingService/
+   RefundService metotları yalnızca branch-order tutarlılığını kontrol ediyor, business
+   sahipliğini değil), bir işletmenin BUSINESS_ADMIN'i başka bir işletmenin mutfak kuyruğunu
+   görebilir/sipariş kabul-red edebilir/refund işleyebilirdi.
+   `StaffAuthService.resolveStaffContextForBranch` artık PLATFORM_ADMIN dışında her rol için
+   branch'in gerçekten `context.businessId()`'ye ait olduğunu `TenantService.
+   requireBusinessIdForBranch` ile doğruluyor. `StaffTenantController`/`StaffReportingController`/
+   `StaffDailyCloseController` zaten kendi servis katmanlarında businessId-scoped sorgu kullandığı
+   için bu açıktan etkilenmiyordu (`TenantService.getBranch`/`findByIdAndBusinessId` deseni).
+   Yeni regresyon testi: `CrossTenantBranchAccessIntegrationTest`.
 2. **Complete security review** — kontrol listesi: (a) her staff endpoint'in doğru `Permission` kontrolü yaptığı,
    (b) şube-scoping'in (staff yalnızca atandığı branch'lere erişebiliyor mu) tutarlı uygulandığı, (c)
    `CorsConfig`'in gereksiz method/header açmadığı, (d) staff/customer session cookie'lerinin
