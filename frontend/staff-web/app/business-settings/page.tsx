@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import {
   createBusinessContact,
   getBusiness,
@@ -12,8 +12,18 @@ import {
   type BusinessContactInput,
 } from "@/lib/api";
 import AppShell from "@/components/layout/AppShell";
+import PageHeader from "@/components/ui/PageHeader";
+import Table from "@/components/ui/Table";
+import EmptyState from "@/components/ui/EmptyState";
+import ErrorState from "@/components/ui/ErrorState";
+import TableSkeleton from "@/components/ui/TableSkeleton";
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
+import Dialog from "@/components/ui/Dialog";
+import FormField from "@/components/ui/FormField";
+import Input from "@/components/ui/Input";
+import { useToast } from "@/components/ui/ToastProvider";
+import tableStyles from "@/components/ui/Table.module.css";
 import styles from "@/styles/admin.module.css";
 
 const EMPTY_CONTACT_INPUT: BusinessContactInput = {
@@ -32,69 +42,58 @@ const EMPTY_CONTACT_INPUT: BusinessContactInput = {
  * dilimi/çalışma saatleri zaten /branches/[branchId]'de.
  */
 export default function BusinessSettingsPage() {
+  const { showToast } = useToast();
+  const dialogTitleId = useId();
+
   const [business, setBusiness] = useState<Business | null>(null);
   const [currencyInput, setCurrencyInput] = useState("");
   const [timeZoneInput, setTimeZoneInput] = useState("");
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
-  const [settingsSuccess, setSettingsSuccess] = useState<string | null>(null);
 
   const [contacts, setContacts] = useState<BusinessContact[]>([]);
   const [loadingContacts, setLoadingContacts] = useState(true);
   const [contactsError, setContactsError] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
   const [newContact, setNewContact] = useState<BusinessContactInput>(EMPTY_CONTACT_INPUT);
   const [creatingContact, setCreatingContact] = useState(false);
   const [busyContactId, setBusyContactId] = useState<string | null>(null);
 
-  async function reloadContacts() {
-    try {
-      setContacts(await listBusinessContacts());
-    } catch {
-      setContactsError("Kişiler yüklenemedi.");
-    } finally {
-      setLoadingContacts(false);
-    }
+  function loadContacts() {
+    listBusinessContacts()
+      .then((data) => {
+        setContacts(data);
+        setContactsError(null);
+      })
+      .catch(() => setContactsError("Kişiler yüklenemedi."))
+      .finally(() => setLoadingContacts(false));
   }
 
   useEffect(() => {
-    let cancelled = false;
     async function fetchAll() {
       try {
-        const [businessResult, contactsResult] = await Promise.all([getBusiness(), listBusinessContacts()]);
-        if (cancelled) {
-          return;
-        }
+        const businessResult = await getBusiness();
         setBusiness(businessResult);
         setCurrencyInput(businessResult.defaultCurrency);
         setTimeZoneInput(businessResult.defaultTimeZone);
-        setContacts(contactsResult);
       } catch {
-        if (!cancelled) {
-          setSettingsError("İşletme ayarları yüklenemedi.");
-        }
-      } finally {
-        if (!cancelled) {
-          setLoadingContacts(false);
-        }
+        setSettingsError("İşletme ayarları yüklenemedi.");
       }
     }
     void fetchAll();
-    return () => {
-      cancelled = true;
-    };
+    loadContacts();
   }, []);
 
   async function handleSaveSettings(event: React.FormEvent) {
     event.preventDefault();
     setSavingSettings(true);
-    setSettingsError(null);
-    setSettingsSuccess(null);
     try {
       const updated = await updateBusinessSettings(currencyInput.trim(), timeZoneInput.trim());
       setBusiness(updated);
-      setSettingsSuccess("Ayarlar kaydedildi.");
+      setSettingsError(null);
+      showToast("Ayarlar kaydedildi.", "success");
     } catch {
-      setSettingsError("Ayarlar kaydedilemedi. Geçerli bir ISO 4217 para birimi kodu (ör. TRY) ve IANA saat dilimi kimliği (ör. Europe/Istanbul) girin.");
+      showToast("Ayarlar kaydedilemedi. Geçerli bir ISO 4217 para birimi kodu (ör. TRY) ve IANA saat dilimi kimliği (ör. Europe/Istanbul) girin.", "error");
     } finally {
       setSavingSettings(false);
     }
@@ -106,13 +105,14 @@ export default function BusinessSettingsPage() {
       return;
     }
     setCreatingContact(true);
-    setContactsError(null);
     try {
       await createBusinessContact({ ...newContact, name: newContact.name.trim() });
       setNewContact(EMPTY_CONTACT_INPUT);
-      await reloadContacts();
+      setCreateOpen(false);
+      loadContacts();
+      showToast("Kişi eklendi.", "success");
     } catch {
-      setContactsError("Kişi oluşturulamadı.");
+      showToast("Kişi oluşturulamadı.", "error");
     } finally {
       setCreatingContact(false);
     }
@@ -120,7 +120,6 @@ export default function BusinessSettingsPage() {
 
   async function handleToggleActive(contact: BusinessContact) {
     setBusyContactId(contact.id);
-    setContactsError(null);
     try {
       await updateBusinessContact(contact.id, {
         name: contact.name,
@@ -131,52 +130,57 @@ export default function BusinessSettingsPage() {
         monthlyReportRecipient: contact.monthlyReportRecipient,
         active: !contact.active,
       });
-      await reloadContacts();
+      loadContacts();
     } catch {
-      setContactsError("Kişi güncellenemedi.");
+      showToast("Kişi güncellenemedi.", "error");
     } finally {
       setBusyContactId(null);
     }
   }
 
+  function reportTags(contact: BusinessContact): string {
+    return (
+      [
+        contact.dailyReportRecipient ? "Günlük rapor" : null,
+        contact.monthlyReportRecipient ? "Aylık rapor" : null,
+        contact.whatsappEnabled ? "WhatsApp" : null,
+      ]
+        .filter(Boolean)
+        .join(", ") || "Rapor ayarı yok"
+    );
+  }
+
   return (
     <AppShell>
       <main className={styles.page}>
-        <div className={styles.header}>
-          <h1 className={styles.title}>İşletme Ayarları</h1>
-        </div>
+        <PageHeader title="İşletme Ayarları" />
 
         <section className={styles.section}>
           <h2 className={styles.sectionTitle}>Varsayılan Para Birimi &amp; Saat Dilimi</h2>
-          {settingsError ? <p className={styles.error}>{settingsError}</p> : null}
-          {settingsSuccess ? <p className={styles.success}>{settingsSuccess}</p> : null}
+          {settingsError ? <ErrorState message={settingsError} /> : null}
           <form className={styles.form} onSubmit={handleSaveSettings}>
-            <div className={styles.field}>
-              <label className={styles.label} htmlFor="business-currency">
-                Para Birimi (ISO 4217)
-              </label>
-              <input
-                id="business-currency"
-                className={styles.input}
-                placeholder="TRY"
-                value={currencyInput}
-                onChange={(event) => setCurrencyInput(event.target.value.toUpperCase())}
-                required
-              />
-            </div>
-            <div className={styles.field}>
-              <label className={styles.label} htmlFor="business-timezone">
-                Saat Dilimi (IANA)
-              </label>
-              <input
-                id="business-timezone"
-                className={styles.input}
-                placeholder="Europe/Istanbul"
-                value={timeZoneInput}
-                onChange={(event) => setTimeZoneInput(event.target.value)}
-                required
-              />
-            </div>
+            <FormField label="Para Birimi (ISO 4217)" required>
+              {(controlProps) => (
+                <Input
+                  {...controlProps}
+                  placeholder="TRY"
+                  value={currencyInput}
+                  onChange={(event) => setCurrencyInput(event.target.value.toUpperCase())}
+                  required
+                />
+              )}
+            </FormField>
+            <FormField label="Saat Dilimi (IANA)" required>
+              {(controlProps) => (
+                <Input
+                  {...controlProps}
+                  placeholder="Europe/Istanbul"
+                  value={timeZoneInput}
+                  onChange={(event) => setTimeZoneInput(event.target.value)}
+                  required
+                />
+              )}
+            </FormField>
             <Button type="submit" disabled={savingSettings}>
               {savingSettings ? "Kaydediliyor…" : "Kaydet"}
             </Button>
@@ -189,117 +193,122 @@ export default function BusinessSettingsPage() {
         </section>
 
         <section className={styles.section}>
-          <h2 className={styles.sectionTitle}>Rapor Alıcıları (İşletme Sahipleri/Kişiler)</h2>
+          <PageHeader
+            title="Rapor Alıcıları"
+            description="İşletme sahipleri/kişiler - günlük/aylık rapor ve WhatsApp bildirimi alır."
+            actions={<Button onClick={() => setCreateOpen(true)}>+ Kişi Ekle</Button>}
+          />
 
-          <form className={styles.form} onSubmit={handleCreateContact}>
-            <div className={styles.field}>
-              <label className={styles.label} htmlFor="contact-name">
-                Ad
+          {loadingContacts ? (
+            <TableSkeleton />
+          ) : contactsError ? (
+            <ErrorState message={contactsError} onRetry={loadContacts} />
+          ) : contacts.length === 0 ? (
+            <EmptyState title="Henüz kişi yok" />
+          ) : (
+            <Table>
+              <thead>
+                <tr>
+                  <th>Ad</th>
+                  <th>İletişim</th>
+                  <th>Rapor tercihleri</th>
+                  <th>Durum</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {contacts.map((contact) => (
+                  <tr key={contact.id}>
+                    <td className={tableStyles.primary}>{contact.name}</td>
+                    <td className={tableStyles.muted}>{[contact.phone, contact.email].filter(Boolean).join(" · ") || "İletişim bilgisi yok"}</td>
+                    <td className={tableStyles.muted}>{reportTags(contact)}</td>
+                    <td>
+                      <Badge tone={contact.active ? "neutral" : "danger"}>{contact.active ? "Aktif" : "Devre dışı"}</Badge>
+                    </td>
+                    <td>
+                      <div className={tableStyles.actions}>
+                        <Button size="md" variant="ghost" disabled={busyContactId === contact.id} onClick={() => handleToggleActive(contact)}>
+                          {contact.active ? "Devre Dışı Bırak" : "Aktif Et"}
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          )}
+        </section>
+      </main>
+
+      {createOpen ? (
+        <Dialog onClose={() => setCreateOpen(false)} labelledBy={dialogTitleId}>
+          <h2 id={dialogTitleId} className={styles.sectionTitle}>
+            Yeni Kişi
+          </h2>
+          <form className={styles.section} onSubmit={handleCreateContact}>
+            <FormField label="Ad" required>
+              {(controlProps) => (
+                <Input
+                  {...controlProps}
+                  value={newContact.name}
+                  onChange={(event) => setNewContact((current) => ({ ...current, name: event.target.value }))}
+                  required
+                />
+              )}
+            </FormField>
+            <FormField label="Telefon">
+              {(controlProps) => (
+                <Input
+                  {...controlProps}
+                  value={newContact.phone}
+                  onChange={(event) => setNewContact((current) => ({ ...current, phone: event.target.value }))}
+                />
+              )}
+            </FormField>
+            <FormField label="E-posta">
+              {(controlProps) => (
+                <Input
+                  {...controlProps}
+                  type="email"
+                  value={newContact.email}
+                  onChange={(event) => setNewContact((current) => ({ ...current, email: event.target.value }))}
+                />
+              )}
+            </FormField>
+
+            <div className={styles.rowActions}>
+              <label style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <input
+                  type="checkbox"
+                  checked={newContact.dailyReportRecipient}
+                  onChange={(event) => setNewContact((current) => ({ ...current, dailyReportRecipient: event.target.checked }))}
+                />
+                Günlük rapor alsın
               </label>
-              <input
-                id="contact-name"
-                className={styles.input}
-                value={newContact.name}
-                onChange={(event) => setNewContact((current) => ({ ...current, name: event.target.value }))}
-                required
-              />
-            </div>
-            <div className={styles.field}>
-              <label className={styles.label} htmlFor="contact-phone">
-                Telefon
+              <label style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <input
+                  type="checkbox"
+                  checked={newContact.monthlyReportRecipient}
+                  onChange={(event) => setNewContact((current) => ({ ...current, monthlyReportRecipient: event.target.checked }))}
+                />
+                Aylık rapor alsın
               </label>
-              <input
-                id="contact-phone"
-                className={styles.input}
-                value={newContact.phone}
-                onChange={(event) => setNewContact((current) => ({ ...current, phone: event.target.value }))}
-              />
-            </div>
-            <div className={styles.field}>
-              <label className={styles.label} htmlFor="contact-email">
-                E-posta
+              <label style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <input
+                  type="checkbox"
+                  checked={newContact.whatsappEnabled}
+                  onChange={(event) => setNewContact((current) => ({ ...current, whatsappEnabled: event.target.checked }))}
+                />
+                WhatsApp bildirimleri
               </label>
-              <input
-                id="contact-email"
-                type="email"
-                className={styles.input}
-                value={newContact.email}
-                onChange={(event) => setNewContact((current) => ({ ...current, email: event.target.value }))}
-              />
             </div>
+
             <Button type="submit" disabled={creatingContact}>
               {creatingContact ? "Ekleniyor…" : "Kişi Ekle"}
             </Button>
           </form>
-
-          <div className={styles.rowActions}>
-            <label style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              <input
-                type="checkbox"
-                checked={newContact.dailyReportRecipient}
-                onChange={(event) => setNewContact((current) => ({ ...current, dailyReportRecipient: event.target.checked }))}
-              />
-              Günlük rapor alsın
-            </label>
-            <label style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              <input
-                type="checkbox"
-                checked={newContact.monthlyReportRecipient}
-                onChange={(event) => setNewContact((current) => ({ ...current, monthlyReportRecipient: event.target.checked }))}
-              />
-              Aylık rapor alsın
-            </label>
-            <label style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              <input
-                type="checkbox"
-                checked={newContact.whatsappEnabled}
-                onChange={(event) => setNewContact((current) => ({ ...current, whatsappEnabled: event.target.checked }))}
-              />
-              WhatsApp bildirimleri
-            </label>
-          </div>
-
-          {contactsError ? <p className={styles.error}>{contactsError}</p> : null}
-
-          <div className={styles.list}>
-            {loadingContacts ? (
-              <p className={styles.empty}>Yükleniyor…</p>
-            ) : contacts.length === 0 ? (
-              <p className={styles.empty}>Henüz kişi yok.</p>
-            ) : (
-              contacts.map((contact) => (
-                <div key={contact.id} className={styles.row}>
-                  <div className={styles.rowMain}>
-                    <span className={styles.rowTitle}>{contact.name}</span>
-                    <span className={styles.rowMeta}>
-                      {[contact.phone, contact.email].filter(Boolean).join(" · ") || "İletişim bilgisi yok"}
-                      {" · "}
-                      {[
-                        contact.dailyReportRecipient ? "Günlük rapor" : null,
-                        contact.monthlyReportRecipient ? "Aylık rapor" : null,
-                        contact.whatsappEnabled ? "WhatsApp" : null,
-                      ]
-                        .filter(Boolean)
-                        .join(", ") || "Rapor ayarı yok"}
-                    </span>
-                  </div>
-                  <div className={styles.rowActions}>
-                    <Badge tone={contact.active ? "neutral" : "danger"}>{contact.active ? "Aktif" : "Devre dışı"}</Badge>
-                    <Button
-                      size="md"
-                      variant="ghost"
-                      disabled={busyContactId === contact.id}
-                      onClick={() => handleToggleActive(contact)}
-                    >
-                      {contact.active ? "Devre Dışı Bırak" : "Aktif Et"}
-                    </Button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </section>
-      </main>
+        </Dialog>
+      ) : null}
     </AppShell>
   );
 }
