@@ -62,7 +62,8 @@ log, pickup board, `DeliveryModel`, rate limiting, payment timeout scheduler.
 10. ✅ **Gider yönetimi** (expense + recurring). (Bkz. development-progress.md, Gap-Analysis #10.)
 11. ✅ **Sahibine otomatik bildirim** (email adapter — WhatsApp blocker olmadığı için ertelendi). (Bkz.
     development-progress.md, Gap-Analysis #11.)
-12. **Security hardening / RLS yeniden değerlendirme** — kapanışta.
+12. ✅ **Security hardening / RLS yeniden değerlendirme** — kapanışta. (Bkz. development-progress.md,
+    Gap-Analysis #12.)
 
 Bu sıralama, dokümanın kendi M6→M13 planıyla ve Bölüm 25'teki "önce CONFLICTING düzelt, sonra sırayla eksikleri
 tamamla" kuralıyla birebir uyumlu.

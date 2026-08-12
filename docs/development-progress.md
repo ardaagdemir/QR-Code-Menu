@@ -773,7 +773,7 @@ projede kapalı); doğrulama backend integration testleri (GreenMail in-memory S
 
 ---
 
-## Gap-Analysis #12 — Security Hardening / RLS Reassessment — 🔄 TASARIM ONAYLANDI, UYGULAMA SÜRÜYOR
+## Gap-Analysis #12 — Security Hardening / RLS Reassessment — ✅ COMPLETED
 
 Gap-analysis'in "Önerilen Geliştirme Sırası" #12 maddesi, product-requirements.md M13 (Section 24) ile aynı
 kapsam: complete security review, RLS reassessment, rate limiting, token/log redaction, upload security, export
@@ -831,3 +831,33 @@ güncellenecek, tamamlandığında `✅ COMPLETED` olarak kapatılacak.
 (chain) uç noktaları zaten doğru Permission kontrolünü yapıyordu (REPORT_VIEW / REPORT_CHAIN_VIEW)
 ama hiçbir test bunu doğrulamıyordu. `DailyCloseFlowIntegrationTest`'e iki yeni test eklendi:
 `kitchenStaffCannotExportDailyCloseExcel`, `branchManagerCannotExportChainDailyCloseExcel`.
+
+**Security review (kalan kontroller) — sonuç:** CORS (`CorsConfig`: `/api/**`'e scoped, wildcard
+olmayan origin listesi + `allowCredentials`), cookie flag'leri (staff+customer session
+cookie'lerinin ikisi de `HttpOnly`/`Secure`/`SameSite=Lax`), DTO validation (`@RequestBody`
+kullanan her uç nokta `@Valid` - tek istisna, tasarımı gereği ham body alan
+`PaymentWebhookController`) zaten doğruydu, kod değişikliği gerekmedi.
+
+**Token/log redaction — sonuç:** Backend'de tek bir logger çağrısı var
+(`OwnerNotificationService`, yalnızca reportId/contactId/SMTP hata mesajı basıyor,
+hassas veri yok), `printStackTrace` hiç kullanılmıyor, `server.error.include-stacktrace/
+include-message` override edilmemiş (Spring Boot varsayılanı: never). Kod değişikliği
+gerekmedi.
+
+**Deployment hardening — sonuç:** `infra/.env.example`'da gerçek secret yok (yalnızca
+"change-me" placeholder'lar + local-only Postgres şifresi), actuator zaten `health,info`'a
+kısıtlı ve `show-details: never`. Kod değişikliği gerekmedi.
+
+**Backup/restore expectations:** Postgres, Docker Compose'da adlandırılmış bir volume ile
+çalışıyor (bkz. `infra/docker-compose.yml`) - konteyner silinse bile veri korunuyor, ama
+otomatik bir `pg_dump` zamanlaması veya restore tatbikatı yok. Prod'a çıkışta: (1) düzenli
+`pg_dump` (ör. günlük, gün sonu snapshot'ından sonra) harici bir depoya (yerel volume'un
+dışına) alınmalı, (2) restore prosedürü en az bir kez gerçek bir dump ile tatbik edilmeli,
+(3) `INTERNAL_ADMIN_TOKEN`/`PAYMENT_MOCK_WEBHOOK_SECRET` gibi ortam değişkenleri de yedeğin
+bir parçası olarak (ayrı, güvenli bir secret store'da) saklanmalı. V1 kapsamında bu yalnızca
+bir beklenti notu - otomasyon bu maddenin parçası değil.
+
+Gap-Analysis #12 tamamlandı: RLS için DB-seviyesi politika eklenmedi (bilinçli karar
+korundu), ama reassessment sürecinde gerçek bir cross-tenant IDOR bulunup düzeltildi
+(yukarıya bkz.). Diğer M13 alt maddeleri (rate limiting, upload security) zaten
+var/N-A olduğundan yeniden ele alınmadı.
