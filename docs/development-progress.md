@@ -951,3 +951,42 @@ eklenmedi); ihtiyaç doğduğunda (staff mobile nav/drawer, adım 3) eklenecek.
 **Doğrulama:** her iki app'te `npm run lint` + `npm run build` (tsc dahil) temiz. Canlı Chrome testi
 yapılmadı (proje hafızası - browser testi bu projede kapalı). Component'ler henüz hiçbir mevcut sayfaya
 wiring edilmedi; bu iş roadmap'in sonraki adımlarında (sidebar/kasa-KDS/admin refactor/raporlama) yapılacak.
+
+---
+
+## UI/UX Productization Gate — Adım 2: Customer Web Productization — ✅ COMPLETED
+
+`product-requirements.md` Bölüm 19.5'in "Cross-cutting" uygulama sırasının 2. adımı. Mevcut
+`customer-web` akışı (QR karşılama → menü → ürün detay → sepet → ödeme → takip) Milestone 1-9'un ilk
+yapımından beri elle test edilmemiş/yeniden gözden geçirilmemişti, ama beklenenin aksine büyük ölçüde
+Bölüm 19.2'ye zaten uyuyordu (sticky header/kategori nav, bottom sheet'ler, required/optional option
+ayrımı, sticky CTA'lar, Türkçe hata mesajları, EmptyState/ErrorState/Skeleton kullanımı, geçersiz QR/tükenmiş
+ürün ele alımı). Kod taraması yalnızca 4 somut gap buldu; kapsam kullanıcıyla bu 4 maddeyle netleştirildi,
+kapsam dışı bir yeniden yazım yapılmadı:
+
+1. **Emoji placeholder kaldırıldı** - `ProductCard`'ın görselsiz ürün alanı ve boş menü `EmptyState`'i
+   🍽️ emoji kullanıyordu (Bölüm 19.1: "emoji yerine tasarım diliyle uyumlu nötr placeholder"). Yeni
+   `DishPlaceholderIcon` (elle yazılmış küçük inline SVG, yeni bağımlılık yok - kullanıcıyla netleştirilen
+   karar: Lucide gibi bir icon library şimdilik eklenmedi) her iki yerde kullanılıyor.
+2. **Ürün kartı görsel boyutu** - 84px'den Bölüm 19.2'nin önerdiği aralığa (104-120px) uyacak şekilde
+   112px'e çıkarıldı; aspect-ratio/lazy-load/onError fallback davranışı değişmedi.
+3. **Sipariş takip timeline'ı** - `/order/track/[token]` yalnızca tek bir status `Badge` gösteriyordu
+   (Bölüm 19.2: "salt status metni olmamalı; anlamlı durum kartı/timeline/progress pattern'i
+   kullanılmalıdır"). Yeni `OrderStatusTimeline`: happy-path adımlarını (Ödeme → İşletme onayı →
+   Hazırlanıyor → Hazır → Tamamlandı) done/current/upcoming durumlarıyla dikey bir stepper olarak
+   gösteriyor. `REJECTED_BY_STORE`/`CANCELLED` adımların bir devamı gibi değil, ayrı bir "durduruldu"
+   banner'ı olarak gösteriliyor (refund notu oraya bağlanıyor); `PAYMENT_FAILED` ödeme adımını durdurmadan
+   yerinde bir hata olarak işaretliyor (sipariş `AWAITING_PAYMENT`'a geri dönebildiği için).
+4. **Oturum/sepet süresi dolma ekranı** - sayfa yüklendikten sonra sepet aksiyonlarından
+   (`addCartItem`/`removeCartItem`/`createPaymentIntent`) gelen bir 404, artık jenerik satır-içi hata yerine
+   tam sayfa bir kurtarma ekranına yönlendiriyor (retry, mevcut `retry()`/`checkInWithQrToken` akışını tekrar
+   kullanıyor - kapanmış bir visit varsa zaten yeni bir visit başlatıyor, Gap-Analysis #13). Backend araştırması
+   sırasında bulunan bir nüans: bu 404 hem kapanmış `TableVisit`'ten hem de bayat ürün/sepet referansından
+   gelebiliyor (`OrderingService.addItem/removeItem/beginPaymentForDraftOrder`), ve `ApiError` yalnızca HTTP
+   status taşıdığı için (makine-okunur bir reason code yok) ikisi client-side ayırt edilemiyor. Backend'e yeni
+   bir error code eklemek onaylanan kapsamın (backend değişikliği yok) dışında kalacağından, ekran metni her
+   iki nedende de doğru kalacak şekilde ("oturumunuz sona erdi" yerine "masa oturumunuz veya sepetiniz güncel
+   görünmüyor") yazıldı - kurtarma eylemi (yeniden yükleme) ikisi için de zaten doğru.
+
+**Doğrulama:** her değişiklikten sonra `customer-web`'de `npm run lint` + `npm run build` (tsc dahil) temiz.
+Canlı Chrome testi yapılmadı (proje hafızası - browser testi bu projede kapalı). Backend değişikliği yok.
