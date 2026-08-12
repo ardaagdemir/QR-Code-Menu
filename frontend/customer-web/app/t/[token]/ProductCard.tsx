@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ALLERGEN_LABELS, formatPriceMinorUnits, type MenuProduct } from "@/lib/api";
 import Badge from "@/components/ui/Badge";
+import DishPlaceholderIcon from "@/components/ui/DishPlaceholderIcon";
 import styles from "./ProductCard.module.css";
 
 type Props = {
@@ -39,7 +40,7 @@ export default function ProductCard({ product, onSelect }: Props) {
             />
           ) : (
             <div className={styles.imagePlaceholder} aria-hidden="true">
-              🍽️
+              <DishPlaceholderIcon />
             </div>
           )}
           {!isAvailable ? (

@@ -16,6 +16,7 @@ import {
   type PaymentIntent,
   type TableVisit,
 } from "@/lib/api";
+import DishPlaceholderIcon from "@/components/ui/DishPlaceholderIcon";
 import EmptyState from "@/components/ui/EmptyState";
 import ErrorState from "@/components/ui/ErrorState";
 import CartDrawer from "./CartDrawer";
@@ -241,7 +242,11 @@ export default function TableVisitPage() {
 
       <div className={styles.content}>
         {menu.categories.length === 0 ? (
-          <EmptyState icon="🍽️" title="Menü hazırlanıyor" description="Bu şube için henüz menüde ürün bulunmuyor." />
+          <EmptyState
+            icon={<DishPlaceholderIcon size={32} />}
+            title="Menü hazırlanıyor"
+            description="Bu şube için henüz menüde ürün bulunmuyor."
+          />
         ) : (
           menu.categories.map((category) => (
             <MenuSection key={category.id} category={category} onSelectProduct={setActiveProduct} />
