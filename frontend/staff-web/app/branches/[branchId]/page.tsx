@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -21,7 +21,18 @@ import {
   type StaffTable,
 } from "@/lib/api";
 import AppShell from "@/components/layout/AppShell";
+import PageHeader from "@/components/ui/PageHeader";
+import Table from "@/components/ui/Table";
+import EmptyState from "@/components/ui/EmptyState";
+import ErrorState from "@/components/ui/ErrorState";
+import TableSkeleton from "@/components/ui/TableSkeleton";
 import Button from "@/components/ui/Button";
+import Dialog from "@/components/ui/Dialog";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import FormField from "@/components/ui/FormField";
+import Input from "@/components/ui/Input";
+import { useToast } from "@/components/ui/ToastProvider";
+import tableStyles from "@/components/ui/Table.module.css";
 import styles from "@/styles/admin.module.css";
 
 const DAY_LABELS: Record<DayOfWeek, string> = {
@@ -43,63 +54,42 @@ function defaultHoursForDay(dayOfWeek: DayOfWeek): BranchBusinessHoursEntry {
 export default function BranchDetailPage() {
   const params = useParams<{ branchId: string }>();
   const branchId = params.branchId;
+  const { showToast } = useToast();
+  const createTableDialogTitleId = useId();
 
   const [tables, setTables] = useState<StaffTable[]>([]);
   const [qrTokens, setQrTokens] = useState<Record<string, QrToken | null>>({});
   const [loading, setLoading] = useState(true);
-  const [label, setLabel] = useState("");
-  const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busyTableId, setBusyTableId] = useState<string | null>(null);
+  const [revokeTarget, setRevokeTarget] = useState<{ tableId: string; qrTokenId: string; label: string } | null>(null);
+
+  const [createTableOpen, setCreateTableOpen] = useState(false);
+  const [label, setLabel] = useState("");
+  const [creating, setCreating] = useState(false);
 
   const [branch, setBranch] = useState<Branch | null>(null);
   const [addressInput, setAddressInput] = useState("");
   const [timezoneInput, setTimezoneInput] = useState("");
   const [hours, setHours] = useState<BranchBusinessHoursEntry[]>(DAYS_OF_WEEK.map(defaultHoursForDay));
   const [settingsError, setSettingsError] = useState<string | null>(null);
-  const [settingsSuccess, setSettingsSuccess] = useState<string | null>(null);
   const [savingAddress, setSavingAddress] = useState(false);
   const [savingTimezone, setSavingTimezone] = useState(false);
   const [savingHours, setSavingHours] = useState(false);
 
-  async function reload() {
-    try {
-      const tableList = await listTables(branchId);
-      setTables(tableList);
-      const tokens = await Promise.all(tableList.map((table) => getActiveQrToken(branchId, table.id)));
-      setQrTokens(Object.fromEntries(tableList.map((table, index) => [table.id, tokens[index]])));
-    } catch {
-      setError("Masalar yüklenemedi.");
-    } finally {
-      setLoading(false);
-    }
+  function loadTables() {
+    listTables(branchId)
+      .then(async (tableList) => {
+        const tokens = await Promise.all(tableList.map((table) => getActiveQrToken(branchId, table.id)));
+        setTables(tableList);
+        setQrTokens(Object.fromEntries(tableList.map((table, index) => [table.id, tokens[index]])));
+        setError(null);
+      })
+      .catch(() => setError("Masalar yüklenemedi."))
+      .finally(() => setLoading(false));
   }
 
-  useEffect(() => {
-    let cancelled = false;
-    async function fetchTables() {
-      try {
-        const tableList = await listTables(branchId);
-        const tokens = await Promise.all(tableList.map((table) => getActiveQrToken(branchId, table.id)));
-        if (!cancelled) {
-          setTables(tableList);
-          setQrTokens(Object.fromEntries(tableList.map((table, index) => [table.id, tokens[index]])));
-        }
-      } catch {
-        if (!cancelled) {
-          setError("Masalar yüklenemedi.");
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    }
-    void fetchTables();
-    return () => {
-      cancelled = true;
-    };
-  }, [branchId]);
+  useEffect(loadTables, [branchId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -130,14 +120,12 @@ export default function BranchDetailPage() {
   async function handleSaveAddress(event: React.FormEvent) {
     event.preventDefault();
     setSavingAddress(true);
-    setSettingsError(null);
-    setSettingsSuccess(null);
     try {
       const updated = await setAddress(branchId, addressInput.trim());
       setBranch(updated);
-      setSettingsSuccess("Adres kaydedildi.");
+      showToast("Adres kaydedildi.", "success");
     } catch {
-      setSettingsError("Adres kaydedilemedi.");
+      showToast("Adres kaydedilemedi.", "error");
     } finally {
       setSavingAddress(false);
     }
@@ -146,14 +134,12 @@ export default function BranchDetailPage() {
   async function handleSaveTimezone(event: React.FormEvent) {
     event.preventDefault();
     setSavingTimezone(true);
-    setSettingsError(null);
-    setSettingsSuccess(null);
     try {
       const updated = await setBranchTimezone(branchId, timezoneInput.trim() || null);
       setBranch(updated);
-      setSettingsSuccess("Saat dilimi kaydedildi.");
+      showToast("Saat dilimi kaydedildi.", "success");
     } catch {
-      setSettingsError("Saat dilimi kaydedilemedi. Geçerli bir IANA saat dilimi kimliği girin (ör. Europe/Istanbul).");
+      showToast("Saat dilimi kaydedilemedi. Geçerli bir IANA saat dilimi kimliği girin (ör. Europe/Istanbul).", "error");
     } finally {
       setSavingTimezone(false);
     }
@@ -161,14 +147,12 @@ export default function BranchDetailPage() {
 
   async function handleSaveHours() {
     setSavingHours(true);
-    setSettingsError(null);
-    setSettingsSuccess(null);
     try {
       const updated = await setBusinessHours(branchId, hours);
       setHours(updated);
-      setSettingsSuccess("Çalışma saatleri kaydedildi.");
+      showToast("Çalışma saatleri kaydedildi.", "success");
     } catch {
-      setSettingsError("Çalışma saatleri kaydedilemedi.");
+      showToast("Çalışma saatleri kaydedilemedi.", "error");
     } finally {
       setSavingHours(false);
     }
@@ -184,13 +168,14 @@ export default function BranchDetailPage() {
       return;
     }
     setCreating(true);
-    setError(null);
     try {
       await createTable(branchId, label.trim());
       setLabel("");
-      await reload();
+      setCreateTableOpen(false);
+      loadTables();
+      showToast("Masa oluşturuldu.", "success");
     } catch {
-      setError("Masa oluşturulamadı.");
+      showToast("Masa oluşturulamadı.", "error");
     } finally {
       setCreating(false);
     }
@@ -198,166 +183,200 @@ export default function BranchDetailPage() {
 
   async function handleRegenerate(tableId: string) {
     setBusyTableId(tableId);
-    setError(null);
     try {
       const token = await regenerateQrToken(branchId, tableId);
       setQrTokens((current) => ({ ...current, [tableId]: token }));
+      showToast("QR kod üretildi.", "success");
     } catch {
-      setError("QR kod üretilemedi.");
+      showToast("QR kod üretilemedi.", "error");
     } finally {
       setBusyTableId(null);
     }
   }
 
-  async function handleRevoke(tableId: string, qrTokenId: string) {
-    setBusyTableId(tableId);
-    setError(null);
+  async function handleConfirmRevoke() {
+    if (!revokeTarget) {
+      return;
+    }
+    setBusyTableId(revokeTarget.tableId);
     try {
-      await revokeQrToken(qrTokenId);
-      setQrTokens((current) => ({ ...current, [tableId]: null }));
+      await revokeQrToken(revokeTarget.qrTokenId);
+      setQrTokens((current) => ({ ...current, [revokeTarget.tableId]: null }));
+      showToast("QR kod iptal edildi.", "success");
     } catch {
-      setError("QR kod iptal edilemedi.");
+      showToast("QR kod iptal edilemedi.", "error");
     } finally {
       setBusyTableId(null);
+      setRevokeTarget(null);
     }
   }
 
   return (
     <AppShell>
       <main className={styles.page}>
-        <div className={styles.header}>
-          <h1 className={styles.title}>{branch ? branch.name : "Şube"}</h1>
-          <Link href="/branches" className={styles.backLink}>
-            Şubelere dön
-          </Link>
-        </div>
+        <PageHeader
+          title={branch ? branch.name : "Şube"}
+          actions={
+            <Link href="/branches" className={styles.backLink}>
+              Şubelere dön
+            </Link>
+          }
+        />
 
         <section className={styles.section}>
           <h2 className={styles.sectionTitle}>Şube Ayarları</h2>
-          {settingsError ? <p className={styles.error}>{settingsError}</p> : null}
-          {settingsSuccess ? <p className={styles.success}>{settingsSuccess}</p> : null}
+          {settingsError ? <ErrorState message={settingsError} /> : null}
 
           <form className={styles.form} onSubmit={handleSaveAddress}>
-            <div className={styles.field}>
-              <label className={styles.label} htmlFor="branch-address">
-                Adres
-              </label>
-              <input
-                id="branch-address"
-                className={styles.input}
-                value={addressInput}
-                onChange={(event) => setAddressInput(event.target.value)}
-              />
-            </div>
+            <FormField label="Adres">
+              {(controlProps) => <Input {...controlProps} value={addressInput} onChange={(event) => setAddressInput(event.target.value)} />}
+            </FormField>
             <Button type="submit" disabled={savingAddress}>
               {savingAddress ? "Kaydediliyor…" : "Adresi Kaydet"}
             </Button>
           </form>
 
           <form className={styles.form} onSubmit={handleSaveTimezone}>
-            <div className={styles.field}>
-              <label className={styles.label} htmlFor="branch-timezone">
-                Saat Dilimi (opsiyonel - boş bırakılırsa işletme varsayılanı kullanılır)
-              </label>
-              <input
-                id="branch-timezone"
-                className={styles.input}
-                placeholder="Europe/Istanbul"
-                value={timezoneInput}
-                onChange={(event) => setTimezoneInput(event.target.value)}
-              />
-            </div>
+            <FormField label="Saat Dilimi (opsiyonel - boş bırakılırsa işletme varsayılanı kullanılır)">
+              {(controlProps) => (
+                <Input
+                  {...controlProps}
+                  placeholder="Europe/Istanbul"
+                  value={timezoneInput}
+                  onChange={(event) => setTimezoneInput(event.target.value)}
+                />
+              )}
+            </FormField>
             <Button type="submit" disabled={savingTimezone}>
               {savingTimezone ? "Kaydediliyor…" : "Saat Dilimini Kaydet"}
             </Button>
           </form>
 
-          <div className={styles.list}>
-            {hours.map((entry) => (
-              <div key={entry.dayOfWeek} className={styles.row}>
-                <div className={styles.rowMain}>
-                  <span className={styles.rowTitle}>{DAY_LABELS[entry.dayOfWeek]}</span>
-                </div>
-                <div className={styles.rowActions}>
-                  <label className={styles.rowMeta}>
+          <Table>
+            <thead>
+              <tr>
+                <th>Gün</th>
+                <th>Kapalı</th>
+                <th>Açılış</th>
+                <th>Kapanış</th>
+              </tr>
+            </thead>
+            <tbody>
+              {hours.map((entry) => (
+                <tr key={entry.dayOfWeek}>
+                  <td className={tableStyles.primary}>{DAY_LABELS[entry.dayOfWeek]}</td>
+                  <td>
                     <input
                       type="checkbox"
                       checked={entry.closed}
                       onChange={(event) => updateDay(entry.dayOfWeek, { closed: event.target.checked })}
-                    />{" "}
-                    Kapalı
-                  </label>
-                  <input
-                    type="time"
-                    className={styles.input}
-                    disabled={entry.closed}
-                    value={entry.openingTime?.slice(0, 5) ?? ""}
-                    onChange={(event) => updateDay(entry.dayOfWeek, { openingTime: event.target.value || null })}
-                  />
-                  <span className={styles.rowMeta}>–</span>
-                  <input
-                    type="time"
-                    className={styles.input}
-                    disabled={entry.closed}
-                    value={entry.closingTime?.slice(0, 5) ?? ""}
-                    onChange={(event) => updateDay(entry.dayOfWeek, { closingTime: event.target.value || null })}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="time"
+                      className={styles.input}
+                      disabled={entry.closed}
+                      value={entry.openingTime?.slice(0, 5) ?? ""}
+                      onChange={(event) => updateDay(entry.dayOfWeek, { openingTime: event.target.value || null })}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="time"
+                      className={styles.input}
+                      disabled={entry.closed}
+                      value={entry.closingTime?.slice(0, 5) ?? ""}
+                      onChange={(event) => updateDay(entry.dayOfWeek, { closingTime: event.target.value || null })}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
           <Button disabled={savingHours} onClick={handleSaveHours}>
             {savingHours ? "Kaydediliyor…" : "Çalışma Saatlerini Kaydet"}
           </Button>
         </section>
 
         <section className={styles.section}>
-          <h2 className={styles.sectionTitle}>Masalar &amp; QR Kodları</h2>
-          <form className={styles.form} onSubmit={handleCreateTable}>
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="table-label">
-              Yeni masa adı
-            </label>
-            <input id="table-label" className={styles.input} value={label} onChange={(event) => setLabel(event.target.value)} required />
-          </div>
-          <Button type="submit" disabled={creating}>
-            {creating ? "Oluşturuluyor…" : "Masa Ekle"}
-          </Button>
-        </form>
+          <PageHeader title="Masalar & QR Kodları" actions={<Button onClick={() => setCreateTableOpen(true)}>+ Masa Ekle</Button>} />
 
-        {error ? <p className={styles.error}>{error}</p> : null}
-
-        <div className={styles.list}>
           {loading ? (
-            <p className={styles.empty}>Yükleniyor…</p>
+            <TableSkeleton />
+          ) : error ? (
+            <ErrorState message={error} onRetry={loadTables} />
           ) : tables.length === 0 ? (
-            <p className={styles.empty}>Henüz masa yok.</p>
+            <EmptyState title="Henüz masa yok" />
           ) : (
-            tables.map((table) => {
-              const token = qrTokens[table.id];
-              return (
-                <div key={table.id} className={styles.row}>
-                  <div className={styles.rowMain}>
-                    <span className={styles.rowTitle}>{table.label}</span>
-                    <span className={styles.qrToken}>{token ? token.token : "Aktif QR kodu yok"}</span>
-                  </div>
-                  <div className={styles.rowActions}>
-                    <Button size="md" variant="secondary" disabled={busyTableId === table.id} onClick={() => handleRegenerate(table.id)}>
-                      {token ? "Yeniden Üret" : "QR Üret"}
-                    </Button>
-                    {token ? (
-                      <Button size="md" variant="ghost" disabled={busyTableId === table.id} onClick={() => handleRevoke(table.id, token.id)}>
-                        İptal Et
-                      </Button>
-                    ) : null}
-                  </div>
-                </div>
-              );
-            })
+            <Table>
+              <thead>
+                <tr>
+                  <th>Masa</th>
+                  <th>QR Token</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {tables.map((table) => {
+                  const token = qrTokens[table.id];
+                  return (
+                    <tr key={table.id}>
+                      <td className={tableStyles.primary}>{table.label}</td>
+                      <td className={`${tableStyles.muted} ${styles.qrToken}`}>{token ? token.token : "Aktif QR kodu yok"}</td>
+                      <td>
+                        <div className={tableStyles.actions}>
+                          <Button size="md" variant="secondary" disabled={busyTableId === table.id} onClick={() => handleRegenerate(table.id)}>
+                            {token ? "Yeniden Üret" : "QR Üret"}
+                          </Button>
+                          {token ? (
+                            <Button
+                              size="md"
+                              variant="ghost"
+                              disabled={busyTableId === table.id}
+                              onClick={() => setRevokeTarget({ tableId: table.id, qrTokenId: token.id, label: table.label })}
+                            >
+                              İptal Et
+                            </Button>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </Table>
           )}
-        </div>
         </section>
       </main>
+
+      {createTableOpen ? (
+        <Dialog onClose={() => setCreateTableOpen(false)} labelledBy={createTableDialogTitleId}>
+          <h2 id={createTableDialogTitleId} className={styles.sectionTitle}>
+            Yeni Masa
+          </h2>
+          <form className={styles.section} onSubmit={handleCreateTable}>
+            <FormField label="Masa adı" required>
+              {(controlProps) => <Input {...controlProps} value={label} onChange={(event) => setLabel(event.target.value)} required />}
+            </FormField>
+            <Button type="submit" disabled={creating}>
+              {creating ? "Oluşturuluyor…" : "Masa Ekle"}
+            </Button>
+          </form>
+        </Dialog>
+      ) : null}
+
+      {revokeTarget ? (
+        <ConfirmDialog
+          title="QR Kodu İptal Et"
+          message={`"${revokeTarget.label}" masasının QR kodu iptal edilecek. Bu masadaki fiziksel QR etiketi artık çalışmayacak.`}
+          confirmLabel="İptal Et"
+          tone="danger"
+          confirmLoading={busyTableId === revokeTarget.tableId}
+          onConfirm={handleConfirmRevoke}
+          onCancel={() => setRevokeTarget(null)}
+        />
+      ) : null}
     </AppShell>
   );
 }
