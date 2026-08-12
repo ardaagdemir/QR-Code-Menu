@@ -3,6 +3,12 @@
 import { useEffect, useState } from "react";
 import { listAuditEntries, listStaffUsers, type AuditEntry, type StaffUser } from "@/lib/api";
 import AppShell from "@/components/layout/AppShell";
+import PageHeader from "@/components/ui/PageHeader";
+import Table from "@/components/ui/Table";
+import EmptyState from "@/components/ui/EmptyState";
+import ErrorState from "@/components/ui/ErrorState";
+import TableSkeleton from "@/components/ui/TableSkeleton";
+import tableStyles from "@/components/ui/Table.module.css";
 import styles from "@/styles/admin.module.css";
 
 /** Section 4, staff-web admin screen #7: "Sipariş/Ödeme/İade geçmişi ve audit görünümü" (Permission.AUDIT_VIEW). */
@@ -12,15 +18,18 @@ export default function AuditPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  function load() {
     Promise.all([listAuditEntries(), listStaffUsers()])
       .then(([auditEntries, users]) => {
         setEntries(auditEntries);
         setStaffUsers(users);
+        setError(null);
       })
       .catch(() => setError("Denetim kaydı yüklenemedi."))
       .finally(() => setLoading(false));
-  }, []);
+  }
+
+  useEffect(load, []);
 
   function actorLabel(actorStaffUserId: string | null): string {
     if (!actorStaffUserId) {
@@ -32,33 +41,38 @@ export default function AuditPage() {
   return (
     <AppShell>
       <main className={styles.page}>
-        <div className={styles.header}>
-          <h1 className={styles.title}>Denetim Kaydı</h1>
-        </div>
+        <PageHeader title="Denetim Kaydı" description="Ödeme, sipariş, iade ve yönetim işlemlerinin denetim izi." />
 
-        {error ? <p className={styles.error}>{error}</p> : null}
-
-        <div className={styles.list}>
-          {loading ? (
-            <p className={styles.empty}>Yükleniyor…</p>
-          ) : entries.length === 0 ? (
-            <p className={styles.empty}>Henüz kayıt yok.</p>
-          ) : (
-            entries.map((entry) => (
-              <div key={entry.id} className={styles.row}>
-                <div className={styles.rowMain}>
-                  <span className={styles.rowTitle}>
-                    {entry.entityType} · {entry.action}
-                  </span>
-                  <span className={styles.rowMeta}>
-                    {actorLabel(entry.actorStaffUserId)} · {new Date(entry.createdAt).toLocaleString("tr-TR")}
-                  </span>
-                  {entry.details ? <span className={styles.qrToken}>{entry.details}</span> : null}
-                </div>
-              </div>
-            ))
-          )}
-        </div>
+        {loading ? (
+          <TableSkeleton />
+        ) : error ? (
+          <ErrorState message={error} onRetry={load} />
+        ) : entries.length === 0 ? (
+          <EmptyState title="Henüz kayıt yok" />
+        ) : (
+          <Table>
+            <thead>
+              <tr>
+                <th>Tarih</th>
+                <th>Aktör</th>
+                <th>Varlık</th>
+                <th>Aksiyon</th>
+                <th>Detay</th>
+              </tr>
+            </thead>
+            <tbody>
+              {entries.map((entry) => (
+                <tr key={entry.id}>
+                  <td className={tableStyles.muted}>{new Date(entry.createdAt).toLocaleString("tr-TR")}</td>
+                  <td>{actorLabel(entry.actorStaffUserId)}</td>
+                  <td>{entry.entityType}</td>
+                  <td>{entry.action}</td>
+                  <td className={tableStyles.muted}>{entry.details ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        )}
       </main>
     </AppShell>
   );

@@ -3,6 +3,12 @@
 import { useEffect, useState } from "react";
 import { getBranchComparison, type BranchComparisonRow } from "@/lib/api";
 import AppShell from "@/components/layout/AppShell";
+import PageHeader from "@/components/ui/PageHeader";
+import Table from "@/components/ui/Table";
+import EmptyState from "@/components/ui/EmptyState";
+import ErrorState from "@/components/ui/ErrorState";
+import TableSkeleton from "@/components/ui/TableSkeleton";
+import tableStyles from "@/components/ui/Table.module.css";
 import styles from "@/styles/admin.module.css";
 
 /**
@@ -15,44 +21,49 @@ export default function ChainComparisonPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  function load() {
     getBranchComparison()
-      .then(setRows)
+      .then((data) => {
+        setRows(data);
+        setError(null);
+      })
       .catch(() => setError("Şube karşılaştırması yüklenemedi."))
       .finally(() => setLoading(false));
-  }, []);
+  }
+
+  useEffect(load, []);
 
   return (
     <AppShell>
       <main className={styles.page}>
-        <div className={styles.header}>
-          <h1 className={styles.title}>Şube Karşılaştırma</h1>
-        </div>
-        <p className={styles.rowMeta}>Son 24 saat, sipariş sayısı ve masa ziyareti sayısı.</p>
+        <PageHeader title="Şube Karşılaştırma" description="Son 24 saat, sipariş sayısı ve masa ziyareti sayısı." />
 
-        {error ? <p className={styles.error}>{error}</p> : null}
-
-        <section className={styles.section}>
-          <div className={styles.list}>
-            {loading ? (
-              <p className={styles.empty}>Yükleniyor…</p>
-            ) : rows.length === 0 ? (
-              <p className={styles.empty}>Şube bulunamadı.</p>
-            ) : (
-              rows.map((row) => (
-                <div key={row.branchId} className={styles.row}>
-                  <div className={styles.rowMain}>
-                    <span className={styles.rowTitle}>{row.branchName}</span>
-                  </div>
-                  <div className={styles.rowActions}>
-                    <span className={styles.rowMeta}>Sipariş: {row.orderCount}</span>
-                    <span className={styles.rowMeta}>Masa Ziyareti: {row.tableVisitCount}</span>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </section>
+        {loading ? (
+          <TableSkeleton />
+        ) : error ? (
+          <ErrorState message={error} onRetry={load} />
+        ) : rows.length === 0 ? (
+          <EmptyState title="Şube bulunamadı" />
+        ) : (
+          <Table>
+            <thead>
+              <tr>
+                <th>Şube</th>
+                <th className={tableStyles.numeric}>Sipariş</th>
+                <th className={tableStyles.numeric}>Masa Ziyareti</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.branchId}>
+                  <td className={tableStyles.primary}>{row.branchName}</td>
+                  <td className={tableStyles.numeric}>{row.orderCount}</td>
+                  <td className={tableStyles.numeric}>{row.tableVisitCount}</td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        )}
       </main>
     </AppShell>
   );
