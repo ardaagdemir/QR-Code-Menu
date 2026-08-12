@@ -913,3 +913,41 @@ sipariş sayısı bloğu eklendi (`page.module.css`'e `.financialSummary*` sın�
 Yeni test: `ReportingFlowIntegrationTest.kitchenFinancialSummaryIsGatedToItsOwnPermissionNotPlainReportView` -
 BUSINESS_ADMIN özeti görebiliyor, CASHIER (REPORT_VIEW'a sahip olmasına rağmen) 403 alıyor. Tam backend suite
 yeşil (120 test). Frontend `tsc --noEmit` + `eslint` temiz.
+
+---
+
+## UI/UX Productization Gate — Adım 1: Shared Frontend Component Library — ✅ COMPLETED
+
+`product-requirements.md` Bölüm 19.5'in "Cross-cutting" uygulama sırasının 1. adımı: design token'lar
+(`globals.css`) zaten iki app arasında birebir eşleşiyordu (staff-web'in kendi dosyasında "customer-web'den
+kopyalandı" notu vardı), ama Bölüm 19.1'in ortak component listesinin çoğu (Card, Dialog/Modal, Tabs, Toast,
+ConfirmDialog, IconButton, Input/Select/Textarea/FormField) hiçbir app'te yoktu, ve customer-web'de var olan
+`EmptyState`/`ErrorState`/`Skeleton` staff-web'de hiç yoktu (10 staff-web sayfası elle "Yükleniyor..." metni
+yazıyordu). Kullanıcıyla netleştirme: bu adım yalnızca kütüphaneyi kurar, mevcut sayfalara wiring/refactor
+(3-6. adımlar: sidebar, kasa/KDS, admin CRUD refactor, raporlama) bu kapsamda **değil**.
+
+**Ana özellikler:** customer-web canonical kaynak, staff-web'e mevcut `Button`/`globals.css` convention'ıyla
+("Copied from customer-web/...") kopyalandı - iki app arasında hâlâ workspace/monorepo tooling yok, kasıtlı
+karar korundu. Yeni primitive'ler: `IconButton`, `Card`, `FormField`+`Input`+`Textarea`+`Select` (FormField
+`useId` ile label/hint/error `aria-describedby`/`aria-invalid` bağlantısını render-prop üzerinden kuruyor),
+`Dialog` (BottomSheet'e dokunulmadı - masaüstü/orta ekran için ayrı, bağımsız bir modal, aynı erişilebilirlik
+sözleşmesi: role="dialog"/aria-modal/Escape+overlay ile kapanma), `ConfirmDialog` (Dialog üzerine kurulu,
+`tone=default|danger`), `Tabs` (role="tablist" segmented control), `Toast`/`ToastProvider`/`useToast` (native
+`alert()` yerine, her iki app'in `layout.tsx`'ine root'ta mount edildi - bu tek başına görünür/davranışsal
+değişiklik yaratmıyor, sadece provider'ı kullanılabilir kılıyor). `EmptyState`/`ErrorState`/`Skeleton`
+staff-web'e parity kopyası olarak eklendi (+ staff-web `globals.css`'te eksik olan `skeleton-pulse`
+keyframes'i tamamlandı). `Badge` tone union'ı iki app'te `neutral|success|danger|warning`'e birleştirildi
+(customer-web'de `--color-success` yoktu, ikisine de `--color-warning`/-bg eklendi). Bu iş sırasında Button'ın
+`danger` varyantı eksik olduğu fark edildi (Bölüm 19.1: "primary/secondary/destructive action ayrımı") -
+`ConfirmDialog`'un `tone="danger"` ihtiyacıyla birlikte eklendi (mevcut `--color-danger`/-bg token'ları, Badge'in
+danger tonuyla aynı çift, yeniden kullanıldı).
+
+**Teknik kararlar:** Yeni npm bağımlılığı eklenmedi (icon library dahil - Dialog/Toast kapatma "×" karakteriyle
+çözüldü); shadcn/ui'dan kod kopyalanmadı, yalnızca Dialog/ConfirmDialog/Tabs/Toast'ın erişilebilirlik
+davranışı (role/aria/escape) referans alındı, projenin kendi CSS Modules idiomunda yazıldı. `BottomSheet`/
+`QuantityStepper` staff-web'e kopyalanmadı - şu an gerçek bir kullanım yeri yok (spekülatif component
+eklenmedi); ihtiyaç doğduğunda (staff mobile nav/drawer, adım 3) eklenecek.
+
+**Doğrulama:** her iki app'te `npm run lint` + `npm run build` (tsc dahil) temiz. Canlı Chrome testi
+yapılmadı (proje hafızası - browser testi bu projede kapalı). Component'ler henüz hiçbir mevcut sayfaya
+wiring edilmedi; bu iş roadmap'in sonraki adımlarında (sidebar/kasa-KDS/admin refactor/raporlama) yapılacak.
