@@ -1067,3 +1067,56 @@ küçük bir uygulama detayı olarak burada not ediliyor.
 projede kapalı). KDS (`/kitchen/[branchId]`) de AppShell'e sarıldı - Bölüm 19.3'ün "KDS normal admin CRUD
 ekranı gibi tasarlanmaz" gereksinimi bu adımın kapsamında değil, Adım 4'te (kasa + KDS operasyonel UX)
 ele alınacak.
+
+## UI/UX Productization Gate — Adım 4: Kasa + KDS Operasyonel UX — 🚧 IN PROGRESS
+
+`product-requirements.md` Bölüm 19.5'in "Cross-cutting" uygulama sırasının 4. adımı: Bölüm 19.3'ün "Kasa"
+ve "Kitchen Display System" alt-bölümleri. Mevcut `cashier/[branchId]` ve `kitchen/[branchId]` sayfaları
+AppShell'e sarılı (Adım 3) ama kart içerikleri spec'in istediği bilgileri (masa, ödeme doğrulama, bekleme
+süresi) taşımıyor ve KDS "büyük/dokunmatik/uzaktan okunabilir" değil - admin CRUD kartıyla aynı boyutta.
+
+**Eksik/mevcut karşılaştırması (Bölüm 19.3):**
+- Kasa kartı gereksinimi: masa ❌, sipariş no ✅, ödeme doğrulanmış bilgisi ❌, ne kadar süredir beklediği ❌,
+  toplam tutar ✅, ürün/adet özeti ✅, Kabul birincil / Reddet kontrollü confirm flow ✅ (zaten var).
+- KDS gereksinimi: büyük order/masa no ❌ (masa hiç yok, no küçük), sipariş yaşı ❌, yüksek okunabilir
+  ürün/adet ✅ (kısmen), opsiyonların görsel ayrımı ~ (zayıf), büyük touch actions ~ (Button size=md),
+  NEW/PREPARING/READY net grouping ❌ (item'lar API sırasıyla, aksiyon gerektiren en altta kalabiliyor),
+  realtime durumu dikkat dağıtmadan ✅ (zaten metin, küçültülebilir).
+
+**Backend — additive:** `CustomerOrder`'ın `tableVisitId`'i var ama iki DTO da (`OrderControlOrderResponse`,
+`KitchenOrderResponse`) masa etiketini hiç taşımıyor, ne de bir zaman damgası. Zincir: `tableVisitId` ->
+`TableVisit.tableId` (customersession) -> `RestaurantTable.label` (tenant) - ModuleBoundaryTest yalnızca
+`.repository` paketine dışarıdan erişimi yasaklıyor, servis üzerinden okumak serbest ve `OrderingService`
+zaten hem `CustomerSessionService` hem `TenantService`'a bağımlı. Eklenecekler:
+- `CustomerSessionService.findTableVisit(UUID tableVisitId): Optional<TableVisit>` - `getOwnedTableVisit`in
+  ownership kontrolsüz hali; çağıran zaten branch-yetkili personel, tableVisitId sır değil.
+- `TenantService.findTable(UUID businessId, UUID tableId): Optional<RestaurantTable>`.
+- `KitchenQueueOrderView`e `String tableLabel` eklenip `OrderingService.buildKitchenQueueView` içinde
+  yukarıdaki iki servisle resolve edilecek (mevcut kod zaten bu metotta sipariş başına 2 ayrı sorgu
+  yapıyor - items/options - aynı N+1 tarzına 2 sorgu daha eklemek tutarlı, batch optimizasyonu bu ölçekte
+  YAGNI).
+- `OrderControlOrderResponse`/`KitchenOrderResponse`'a `String tableLabel` + `Instant statusSince` (=
+  `order.getLastActivityAt()` - bu iki liste yalnızca sırasıyla AWAITING_STORE_ACCEPTANCE/IN_KITCHEN
+  durumundaki siparişleri döndürdüğü için `lastActivityAt` o duruma giriş anıyla aynı, ayrı bir immutable
+  kolon eklemeye gerek yok).
+- "Ödeme doğrulanmış" bilgisi için yeni alan **eklenmiyor**: `CustomerOrder.markAwaitingStoreAcceptance()`
+  yalnızca AWAITING_PAYMENT'tan (yani doğrulanmış ödeme sonrası) çağrılabiliyor - kasa ekranındaki her
+  sipariş zaten tanım gereği ödemesi doğrulanmış, statik bir rozet yeterli.
+
+**Frontend:**
+- `lib/api.ts`: `OrderControlOrder`/`KitchenOrder` tipine `tableLabel: string | null`, `statusSince: string`.
+- Yeni `lib/time.ts`: `formatElapsedMinutes(iso, nowMs)` - Türkçe göreli süre ("3 dk", "1 sa 12 dk").
+- Kasa: kart başlığına masa etiketi (büyük) + "Ödeme Alındı" (`Badge tone="success"`, statik - yukarıdaki
+  invariant nedeniyle) + bekleme süresi rozeti (nötr <5dk, `warning` 5-10dk, `danger` >10dk) - `now` state'i
+  15sn'de bir tick edip yalnız görünümü güncelliyor (refetch yok). Red formundaki çıplak `<select>`/`<input>`
+  shared `Select`/`Textarea`'ya geçiyor; boş/hata durumları `EmptyState`/`ErrorState`'e geçiyor.
+- KDS: masa+sipariş no büyük tipografi, sipariş yaşı rozeti (aynı eşik mantığı), opsiyonlar ürün adından
+  görsel olarak ayrı bir chip/indent bloğunda, aksiyon butonları `size="lg"`, item'lar durum önceliğine göre
+  sıralanıyor (PENDING_REVIEW/PREPARING üstte, READY/SERVED/REJECTED altta) - ayrı bir gruplama UI'ı
+  eklemeden "net grouping" gereksinimini karşılıyor. Bağlantı durumu metinden küçük bir renkli noktaya
+  düşüyor. `EmptyState`/`ErrorState` aynı şekilde entegre ediliyor.
+- Kabul/red/decide/ready/served API çağrıları ve SSE refetch deseni değişmiyor (Bölüm 19.5 kriter 10: mevcut
+  davranış bozulmaz).
+
+**Doğrulama planı:** her backend değişikliğinden sonra `mvn test`; frontend'de `npx tsc --noEmit` +
+`npx eslint .` + `npm run build`. Canlı Chrome testi yapılmayacak (proje hafızası).

@@ -85,10 +85,11 @@ public class OrderControlController {
         return staffAuthService.resolveStaffContextForBranch(StaffCookieSupport.parseSessionId(sessionCookie), permission, branchId);
     }
 
+    /** Accept/reject responses aren't rendered as cards (the frontend just refetches the list afterward), so tableLabel is skipped here. */
     private static OrderControlOrderResponse toResponse(CustomerOrder order) {
         return new OrderControlOrderResponse(
                 order.getId(), order.getOrderNumber(), order.getStatus().name(), order.getTotalMinorUnits(),
-                order.getRejectionReasonCode(), order.getRejectionNote(), List.of());
+                order.getRejectionReasonCode(), order.getRejectionNote(), null, order.getLastActivityAt(), List.of());
     }
 
     private static OrderControlOrderResponse toResponse(KitchenQueueOrderView view) {
@@ -102,6 +103,8 @@ public class OrderControlController {
                 view.order().getTotalMinorUnits(),
                 view.order().getRejectionReasonCode(),
                 view.order().getRejectionNote(),
+                view.tableLabel(),
+                view.order().getLastActivityAt(),
                 items);
     }
 

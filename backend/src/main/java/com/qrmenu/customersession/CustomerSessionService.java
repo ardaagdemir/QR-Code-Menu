@@ -6,6 +6,7 @@ import com.qrmenu.customersession.repository.TableVisitRepository;
 import com.qrmenu.tenant.TableReference;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -77,6 +78,17 @@ public class CustomerSessionService {
             throw new ResourceNotFoundException("Table visit not found: " + tableVisitId);
         }
         return visit;
+    }
+
+    /**
+     * Unlike getOwnedTableVisit, no ownership check: for staff-facing reads (Bölüm 19.3
+     * kasa/KDS kartlarındaki masa etiketi) where the caller is already branch-authorized
+     * staff, not an anonymous customer session - the tableVisitId isn't the access
+     * credential here, branch/permission checks upstream already are.
+     */
+    @Transactional(readOnly = true)
+    public Optional<TableVisit> findTableVisit(UUID tableVisitId) {
+        return tableVisitRepository.findById(tableVisitId);
     }
 
     /** Gap-analysis #7 chain comparison: non-financial table-visit volume per branch since a cutoff. */

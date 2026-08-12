@@ -106,7 +106,13 @@ public class KitchenController {
                 .map(item -> toItemResponse(item, view.optionsByItemId().getOrDefault(item.getId(), List.of())))
                 .toList();
         return new KitchenOrderResponse(
-                view.order().getId(), view.order().getOrderNumber(), view.order().getStatus().name(), view.order().getTotalMinorUnits(), items);
+                view.order().getId(),
+                view.order().getOrderNumber(),
+                view.order().getStatus().name(),
+                view.order().getTotalMinorUnits(),
+                view.tableLabel(),
+                view.order().getLastActivityAt(),
+                items);
     }
 
     private static KitchenOrderItemResponse toItemResponse(OrderItem item, List<OrderItemOption> options) {

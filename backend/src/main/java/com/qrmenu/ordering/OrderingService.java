@@ -21,6 +21,7 @@ import com.qrmenu.ordering.web.dto.AddCartItemRequest;
 import com.qrmenu.shared.Money;
 import com.qrmenu.shared.outbox.OutboxEventWriter;
 import com.qrmenu.tenant.DeliveryModel;
+import com.qrmenu.tenant.RestaurantTable;
 import com.qrmenu.tenant.TenantService;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -487,7 +488,16 @@ public class OrderingService {
                 .findAllByOrderItemIdIn(itemIds)
                 .stream()
                 .collect(Collectors.groupingBy(OrderItemOption::getOrderItemId));
-        return new KitchenQueueOrderView(order, items, optionsByItemId);
+        return new KitchenQueueOrderView(order, items, optionsByItemId, resolveTableLabel(order));
+    }
+
+    /** Bölüm 19.3 kasa/KDS kartlarındaki masa etiketi - iki hop'luk zincir çözülemezse null döner. */
+    private String resolveTableLabel(CustomerOrder order) {
+        return customerSessionService
+                .findTableVisit(order.getTableVisitId())
+                .flatMap(visit -> tenantService.findTable(order.getBusinessId(), visit.getTableId()))
+                .map(RestaurantTable::getLabel)
+                .orElse(null);
     }
 
     /**

@@ -44,6 +44,9 @@ class OrderControlFlowIntegrationTest extends AbstractIntegrationTest {
         assertThat(pending).hasSize(1);
         String orderId = pending.get(0).get("orderId").asText();
         assertThat(pending.get(0).get("status").asText()).isEqualTo("AWAITING_STORE_ACCEPTANCE");
+        // Bölüm 19.3 kasa kartı: masa etiketi ve "ne kadar süredir bekliyor" zaman damgası.
+        assertThat(pending.get(0).get("tableLabel").asText()).isEqualTo("Masa 1");
+        assertThat(pending.get(0).get("statusSince").asText()).isNotBlank();
 
         mockMvc.perform(post("/api/staff/branches/{branchId}/orders/{orderId}/accept", branchId, orderId).cookie(cashierCookie(cashierCookie)))
                 .andExpect(status().isOk())

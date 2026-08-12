@@ -50,6 +50,9 @@ class KitchenFlowIntegrationTest extends AbstractIntegrationTest {
         JsonNode order = queue.get(0);
         assertThat(order.get("status").asText()).isEqualTo("IN_KITCHEN");
         assertThat(order.get("orderNumber").asInt()).isGreaterThanOrEqualTo(1);
+        // Bölüm 19.3 KDS kartı: masa etiketi ve "sipariş yaşı" zaman damgası.
+        assertThat(order.get("tableLabel").asText()).isEqualTo("Masa 1");
+        assertThat(order.get("statusSince").asText()).isNotBlank();
         String orderItemId = order.get("items").get(0).get("id").asText();
         assertThat(order.get("items").get(0).get("status").asText()).isEqualTo("PENDING_REVIEW");
 

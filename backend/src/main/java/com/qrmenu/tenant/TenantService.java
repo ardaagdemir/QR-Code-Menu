@@ -14,6 +14,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -148,6 +149,12 @@ public class TenantService {
                 .findByIdAndBusinessId(branchId, businessId)
                 .orElseThrow(() -> new ResourceNotFoundException("Branch not found for business: " + branchId));
         return tableRepository.findAllByBranchIdOrderByLabelAsc(branchId);
+    }
+
+    /** Bölüm 19.3 kasa/KDS kartlarındaki masa etiketi için: tekil, tenant-scoped, throw etmeyen lookup. */
+    @Transactional(readOnly = true)
+    public Optional<RestaurantTable> findTable(UUID businessId, UUID tableId) {
+        return tableRepository.findByIdAndBusinessId(tableId, businessId);
     }
 
     /** Section 9, Milestone 8: BUSINESS_ADMIN/BRANCH_MANAGER can toggle ordering on/off for their branch. */
