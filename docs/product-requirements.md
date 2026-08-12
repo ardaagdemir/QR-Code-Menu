@@ -632,36 +632,237 @@ Bu özellik merkezi menü güncellemesi sonrası “Yeni menü/fiyat yayında”
 
 ---
 
-# 19. Frontend UX/UI Quality Baseline
+# 19. Frontend UX/UI Productization Baseline
 
-✅ `customer-web` mobil-first olmalıdır.
+Bu bölüm yalnızca görsel stil önerisi değil, **ürün gereksinimidir**. Mevcut çalışan business logic/API akışları korunur; frontend bu kurallara göre ürünleşmiş, tutarlı ve kullanıcı-dostu hale getirilir.
 
-Minimum kalite kriterleri:
+## 19.1 Ortak tasarım ilkeleri
 
-- 360–430px mobil ekran önceliği
-- desktop responsive
-- business/branch/table banner
-- sticky category navigation
-- product image/name/description/allergen/prep time/fiyat
-- ürün detay bottom-sheet/modal
-- option validation
-- quantity controls
-- cart drawer/sheet
-- checkout CTA
+✅ `customer-web` ve `staff-web` aynı temel design-token ailesini kullanır; ancak aynı ekran yoğunluğunu kullanmak zorunda değildir.
+
+✅ Tasarım dili:
+- modern, sade, güven veren
+- güçlü görsel hiyerarşi
+- tek bir tutarlı ikon seti
+- tutarlı spacing/radius/shadow/type scale
+- primary / secondary / destructive action ayrımı
+- native `alert/confirm` yerine ürün içi dialog/toast pattern'i
+- remote CDN'e bağımlı olmayan modern sans-serif typography
+
+✅ Otomatik OS dark-mode, ilk ürünleşme sürümünde zorunlu değildir. Customer ve staff arayüzlerinde öncelik **kontrollü ve tutarlı light theme** olmalıdır. Dark mode daha sonra bilinçli bir ürün özelliği olarak eklenebilir.
+
+✅ Temel reusable UI parçaları mümkün olduğunca ortak pattern'lerle oluşturulur:
+- Button
+- IconButton
+- Badge / StatusBadge
+- Card
+- Input / Select / Textarea / FormField
+- Modal / Dialog / Drawer / BottomSheet
+- Tabs / segmented controls
+- EmptyState / ErrorState / Skeleton
+- Toast/feedback
+- ConfirmDialog
+
+✅ Tek sayfada birden fazla bağımsız sorumluluk büyümeye başladığında page component parçalanır. Büyük CRUD sayfaları tek `page.tsx` içinde yüzlerce satır state/form/list mantığı taşımamalıdır.
+
+✅ Accessibility:
+- görünür `:focus-visible`
+- semantic HTML
+- yeterli contrast
+- minimum 44px touch target
+- form label/error ilişkileri
+- klavye ile kullanılabilir dialog/drawer
+- yalnız renkle anlam taşıyan durumlar kullanılmaz
+
+## 19.2 Customer Web — ürün deneyimi
+
+**Hedef:** QR okutulduğunda açılan ekran teknik bir web formu değil, modern bir restoranın mobil sipariş deneyimi gibi hissettirmelidir. Mobil kullanım birincildir.
+
+### App shell ve menü
+
+- 360–430px telefonlar birincil viewport'tur; 768px+ ekranlarda içerik gereksiz dar bir telefon kolonuna sıkıştırılmaz.
+- business / branch / table bilgisi üstte kompakt ve güven veren bir header'da gösterilir.
+- kategori navigasyonu sticky ve yatay kaydırılabilir chip/tab yapısında olur.
+- kategori başlıkları ve ürün grupları görsel olarak net ayrılır.
+- sepet boş değilse müşterinin bir sonraki aksiyonu kolay görülür; mobilde sticky cart CTA kullanılabilir.
+
+### Ürün kartları
+
+- ürün görseli menünün ana görsel öğelerinden biridir; mevcut küçük thumbnail yaklaşımı yerine mobilde yaklaşık 104–120px seviyesinde güçlü görsel alan kullanılır.
+- desktop/tablet'te kartlar gerekirse 2 kolonlu grid'e dönüşebilir.
+- ürün adı, kısa description ve fiyat ilk bakışta okunur.
+- prep time ve allergen bilgisi ikincil ama erişilebilir metadata olarak gösterilir.
+- `UNAVAILABLE` ürün açık biçimde “Tükendi” görünür ve seçilemez.
+- görsel yokken emoji yerine tasarım diliyle uyumlu nötr placeholder kullanılır.
+
+### Ürün detay / opsiyon
+
+- mobilde bottom sheet tercih edilir; geniş ekranda dialog/modal olabilir.
+- varsa büyük ürün görseli üst bölümde yer alır.
+- required/optional option grupları açıkça ayrılır.
+- validation hatası ilgili option grubunun yanında gösterilir.
+- quantity stepper kolay dokunulur olmalıdır.
+- alt bölümde sticky “Sepete Ekle · Toplam” CTA bulunur.
+
+### Sepet / ödeme / takip
+
+- sepet bottom sheet/drawer olarak çalışabilir; item, option, quantity ve ara/toplam tutarlar net ayrılır.
+- checkout aksiyonu görsel olarak birincil CTA'dır.
+- ödeme ve sipariş takibi salt status metni olmamalı; anlamlı durum kartı/timeline/progress pattern'i kullanılmalıdır.
+- müşteri aşağıdaki durumları teknik enum görmeden açık Türkçe mesajlarla anlamalıdır:
+  - ödeme işleniyor
+  - ödeme alındı / işletme onayı bekleniyor
+  - işletme kabul etti
+  - işletme reddetti
+  - iade işleniyor / tamamlandı / başarısız
+  - hazırlanıyor
+  - hazır
+  - tamamlandı
+
+### Durum ekranları
+
+Customer web'in her kritik ekranında tasarlanmış:
 - loading/skeleton
-- empty state
+- empty
 - API/network error + retry
-- invalid/revoked QR state
-- payment status states
-- store acceptance waiting state
-- refund state
-- preparing/ready tracking state
-- erişilebilir focus/contrast/semantic HTML
-- yeterli touch target
+- invalid/revoked QR
+- expired session/cart
+- payment failure
+- unavailable product
 
-✅ `staff-web` aynı design language/token setini kullanır fakat operasyonel ekranlar daha yoğun bilgi gösterebilir.
+durumları bulunmalıdır.
 
-✅ KDS büyük/dokunmatik ekranlarda yüksek okunabilirlikte olmalıdır.
+## 19.3 Staff Web — operasyon paneli
+
+**Hedef:** staff-web ham CRUD sayfaları toplamı değil, restoran operasyonlarının hızlı yönetildiği modern bir dashboard olmalıdır.
+
+### Application shell
+
+Desktop'ta üstte çok sayıda linkin wrap olduğu navigation kullanılmaz.
+
+✅ Ana shell:
+- desktop: kalıcı/collapsible sol sidebar + top bar
+- küçük ekran: drawer navigation
+- top bar: aktif şube/işletme bağlamı, kullanıcı/rol ve gerekli global aksiyonlar
+- aktif route açıkça görünür
+- navigation permission bazlı filtrelenir
+
+Önerilen bilgi mimarisi:
+
+**Operasyon**
+- Dashboard
+- Kasa
+- Mutfak
+- Pickup / Siparişler
+
+**Yönetim**
+- Menü
+- Şubeler / Masalar / QR
+- Personel
+
+**Finans**
+- Satış Raporları
+- Giderler
+- İadeler
+
+**Sistem**
+- Duyurular
+- Denetim Kaydı
+- İşletme Ayarları
+
+Rol/permission erişimi olmayan linkler gösterilmez; backend authorization her durumda otorite olmaya devam eder.
+
+### Dashboard
+
+Login sonrası rolün kullanım amacına uygun landing page gösterilmelidir. BUSINESS_ADMIN/BRANCH_MANAGER için dashboard en az:
+- bugünkü brüt/net satış
+- sipariş sayısı
+- ortalama sepet
+- refund özeti
+- en çok satan ürünler
+- aktif/bekleyen operasyon bilgileri
+- varsa şube karşılaştırması
+
+gibi özetleri güçlü KPI kartlarıyla sunmalıdır.
+
+### Kasa
+
+Kasa ekranında bir sipariş kartının ilk bakışta şu bilgileri vermesi gerekir:
+- masa
+- sipariş numarası
+- ödeme doğrulanmış bilgisi
+- siparişin ne kadar süredir onay beklediği
+- toplam tutar
+- ürün/adet özeti
+
+`Kabul Et` birincil aksiyondur. `Reddet` destructive/secondary aksiyon olarak ayrılır ve reason seçimi/not ile kontrollü confirm flow kullanır. Bekleme süresi uzayan siparişler görsel olarak fark edilir olmalıdır.
+
+### Kitchen Display System
+
+KDS normal admin CRUD ekranı gibi tasarlanmaz. Büyük/dokunmatik ekranlarda uzaktan okunabilir olmalıdır:
+- büyük order/table numarası
+- sipariş yaşı / geçen süre
+- yüksek okunabilirlikte ürün/adet
+- opsiyonların ana üründen görsel olarak ayrılması
+- büyük touch actions
+- NEW/PREPARING/READY gibi operasyonel ayrım veya eşdeğer net grouping
+- realtime bağlantı durumu dikkat dağıtmadan görünür
+
+KDS'de finansal bilgi yalnız gereksinim varsa ikincil gösterilir; mutfak aksiyonlarını gölgelememelidir.
+
+### Admin / CRUD ekranları
+
+- sayfa başlığında title + açıklama + primary action pattern'i kullanılır.
+- oluşturma/düzenleme için gereksiz inline uzun form + liste yığını yerine drawer/modal veya iyi bölünmüş form pattern'i tercih edilir.
+- liste ekranları uygun yerde searchable/filterable table/list kullanır.
+- destructive işlemler confirm dialog ister.
+- success/error feedback toast veya inline feedback ile tutarlı verilir.
+- büyük `menu`, `expenses` gibi sayfalar feature/component parçalarına ayrılır.
+
+### Raporlama
+
+Rapor ekranı yalnız tablo değildir. Veri mevcut olduğunda:
+- KPI cards
+- hızlı tarih presetleri: Bugün / Dün / Bu Hafta / Bu Ay / Özel
+- gelir trendi
+- ürün/kategori ranking
+- branch comparison
+- refund etkisi
+- Excel export
+
+aynı bilgi hiyerarşisinde sunulur. Grafik için ağır bir framework eklenmesi zorunlu değildir; küçük ve sürdürülebilir bir çözüm tercih edilir.
+
+## 19.4 Responsive davranış
+
+✅ Customer: 360, 390, 430, 768 ve desktop viewport'larda doğrulanır.
+
+✅ Staff:
+- >=1024px: sidebar + desktop layout
+- 768–1023px: compact/collapsible navigation
+- <768px: drawer navigation ve tek kolon kullanılabilir yönetim ekranları
+- KDS ayrıca büyük ekran/kiosk viewport'unda test edilir
+
+Hiçbir ana flow yatay overflow, üst üste binen sticky alan veya erişilemeyen CTA üretmemelidir.
+
+## 19.5 UI/UX Productization Gate — kabul kriterleri
+
+Bu gate sırasında **backend business logic yeniden yazılmaz**. API kontratında yalnız UI için gerçekten gerekli additive değişiklik varsa yapılabilir.
+
+Tamamlanmış sayılmak için:
+
+1. Customer menu → product → option → cart → payment → tracking akışı tek bir tutarlı ürün dili kullanır.
+2. Staff login sonrası top-link navigation yerine gerçek application shell/sidebar kullanır.
+3. Kasa ve KDS operasyonel kullanım için özel ekran hiyerarşisine sahiptir.
+4. Admin sayfalarında ortak PageHeader/Form/Table/Dialog/Feedback pattern'leri vardır.
+5. Menu/Expenses gibi büyük sayfalar anlamlı feature/component'lere ayrılmıştır.
+6. Rapor ekranı dashboard seviyesinde bilgi hiyerarşisine sahiptir.
+7. Loading/empty/error/success/confirm pattern'leri tutarlıdır.
+8. Customer ve staff frontend lint/build geçer.
+9. Gerçek Chrome'da customer için 390x844, staff için desktop ve KDS için büyük ekran viewport'unda kritik flow'lar manuel/E2E doğrulanır.
+10. Mevcut payment/order/refund/session/permission davranışları bozulmaz.
+
+💡 Hafif bir icon library (örn. Lucide) kullanılabilir; ağır bir UI framework yalnız ciddi gerekçe varsa eklenir.
+
 
 ---
 
@@ -907,6 +1108,19 @@ Minimum kalite kriterleri:
 - backup/restore expectations
 - observability
 - deployment hardening
+
+### Cross-cutting — UI/UX Productization Gate
+
+Bu bir milestone numarası değildir ve mevcut roadmap'i yeniden numaralandırmaz. Mevcut kritik domain/gap işi stabil hale geldikten sonra, yeni frontend-heavy geliştirmeler büyümeden önce Bölüm 19 uygulanır.
+
+Önerilen uygulama sırası:
+1. shared frontend token/component pattern'leri
+2. customer-web productization
+3. staff-web application shell/sidebar
+4. cashier + KDS operational UX
+5. admin CRUD component refactor
+6. reporting/dashboard visualization
+7. responsive/accessibility/browser E2E pass
 
 ---
 
