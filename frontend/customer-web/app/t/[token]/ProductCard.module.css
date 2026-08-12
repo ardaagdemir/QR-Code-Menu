@@ -33,7 +33,7 @@
 .media {
   position: relative;
   flex-shrink: 0;
-  width: 84px;
+  width: 112px;
   aspect-ratio: 1 / 1;
   border-radius: var(--radius-sm);
   overflow: hidden;
