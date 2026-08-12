@@ -83,6 +83,8 @@ export type KitchenOrder = {
   orderNumber: number | null;
   status: string;
   totalMinorUnits: number;
+  tableLabel: string | null;
+  statusSince: string;
   items: KitchenOrderItem[];
 };
 
@@ -196,6 +198,8 @@ export type OrderControlOrder = {
   totalMinorUnits: number;
   rejectionReasonCode: string | null;
   rejectionNote: string | null;
+  tableLabel: string | null;
+  statusSince: string;
   items: OrderControlItem[];
 };
 

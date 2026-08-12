@@ -1068,7 +1068,7 @@ projede kapalı). KDS (`/kitchen/[branchId]`) de AppShell'e sarıldı - Bölüm 
 ekranı gibi tasarlanmaz" gereksinimi bu adımın kapsamında değil, Adım 4'te (kasa + KDS operasyonel UX)
 ele alınacak.
 
-## UI/UX Productization Gate — Adım 4: Kasa + KDS Operasyonel UX — 🚧 IN PROGRESS
+## UI/UX Productization Gate — Adım 4: Kasa + KDS Operasyonel UX — ✅ COMPLETED
 
 `product-requirements.md` Bölüm 19.5'in "Cross-cutting" uygulama sırasının 4. adımı: Bölüm 19.3'ün "Kasa"
 ve "Kitchen Display System" alt-bölümleri. Mevcut `cashier/[branchId]` ve `kitchen/[branchId]` sayfaları
@@ -1120,3 +1120,24 @@ zaten hem `CustomerSessionService` hem `TenantService`'a bağımlı. Eklenecekle
 
 **Doğrulama planı:** her backend değişikliğinden sonra `mvn test`; frontend'de `npx tsc --noEmit` +
 `npx eslint .` + `npm run build`. Canlı Chrome testi yapılmayacak (proje hafızası).
+
+**Sonuç:** tasarım plana göre uygulandı, iki commit'te:
+
+1. **Backend**: `CustomerSessionService.findTableVisit` + `TenantService.findTable` eklendi,
+   `KitchenQueueOrderView`e `tableLabel` eklenip `OrderingService.buildKitchenQueueView` içinde resolve
+   edildi. `OrderControlOrderResponse`/`KitchenOrderResponse`e `tableLabel` + `statusSince` eklendi, her iki
+   controller'ın `toResponse` mapping'i güncellendi. `OrderControlFlowIntegrationTest` ve
+   `KitchenFlowIntegrationTest`e "Masa 1" etiketi ve dolu `statusSince` assertion'ları eklendi. Tam backend
+   suite (`mvn test`, tüm modüller) yeşil.
+2. **Frontend**: `lib/api.ts`'e `tableLabel`/`statusSince` alanları, yeni `lib/time.ts`
+   (`formatElapsedMinutes`/`waitingUrgency` - nötr <5dk, `warning` 5-10dk, `danger` >10dk, 15sn'lik tick ile
+   yalnız görünüm tazeleniyor, refetch yok). Kasa: masa etiketi + statik "Ödeme Alındı" rozeti + bekleme
+   süresi rozeti, red formu artık shared `Select`/`Textarea`, boş/hata durumları `EmptyState`/`ErrorState`
+   (Adım 1'in component kütüphanesinin staff-web'de ilk gerçek kullanımı - önceki adımlarda hiçbir sayfa
+   bunları kullanmıyordu). KDS: masa+sipariş no büyük tipografi (`--font-size-2xl`), aynı bekleme rozeti,
+   opsiyonlar ürün adından ayrı bir sol-border'lı chip'te, aksiyon butonları `size="lg"`, item'lar durum
+   önceliğine göre sıralanıyor (PENDING_REVIEW/PREPARING üstte), bağlantı durumu metinden küçük renkli
+   noktaya indirgendi. Kabul/red/decide/ready/served API sözleşmeleri ve SSE refetch deseni değişmedi.
+
+**Doğrulama:** backend `mvn test` (tüm modüller) yeşil. Frontend `npx tsc --noEmit` + `npx eslint .` +
+`npm run build` temiz. Canlı Chrome testi yapılmadı (proje hafızası - browser testi bu projede kapalı).

@@ -15,10 +15,14 @@ import {
   me,
   type KitchenFinancialSummary,
   type KitchenOrder,
+  type KitchenOrderItem,
 } from "@/lib/api";
+import { formatElapsedMinutes, waitingUrgency } from "@/lib/time";
 import AppShell from "@/components/layout/AppShell";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
+import EmptyState from "@/components/ui/EmptyState";
+import ErrorState from "@/components/ui/ErrorState";
 import styles from "./page.module.css";
 
 const ITEM_STATUS_LABELS: Record<string, string> = {
@@ -29,6 +33,23 @@ const ITEM_STATUS_LABELS: Record<string, string> = {
   SERVED: "Teslim edildi",
 };
 
+// Bölüm 19.3 KDS "net grouping": aksiyon gerektiren item'lar (PENDING_REVIEW/PREPARING)
+// her zaman kartın üstünde, tamamlanmış olanlar (READY/SERVED/REJECTED) altta - ayrı bir
+// gruplama bölümü eklemeden operasyonel önceliği görsel sıraya taşıyor.
+const ITEM_STATUS_PRIORITY: Record<string, number> = {
+  PENDING_REVIEW: 0,
+  PREPARING: 1,
+  READY: 2,
+  SERVED: 3,
+  REJECTED: 3,
+};
+
+const WAITING_BADGE_TONE = { normal: "neutral", warning: "warning", danger: "danger" } as const;
+
+function sortedItems(items: KitchenOrderItem[]): KitchenOrderItem[] {
+  return [...items].sort((a, b) => (ITEM_STATUS_PRIORITY[a.status] ?? 9) - (ITEM_STATUS_PRIORITY[b.status] ?? 9));
+}
+
 /**
  * The KDS board (Section 4, staff-web screen #5). Loads the current IN_KITCHEN queue
  * once via REST, then relies on the SSE stream purely as a "something changed, refetch"
@@ -37,6 +58,11 @@ const ITEM_STATUS_LABELS: Record<string, string> = {
  * server's actual state. Milestone 8: auth is the qrmenu_staff_session cookie (sent
  * automatically by fetch's credentials:'include' and EventSource's withCredentials)
  * instead of the old localStorage shared token.
+ *
+ * Bölüm 19.3 "Kitchen Display System": normal admin CRUD ekranı gibi değil - büyük/
+ * dokunmatik/uzaktan okunabilir. Masa+sipariş no büyük tipografi, sipariş yaşı rozetiyle
+ * (aynı eşik mantığı kasa ile paylaşılıyor - lib/time.ts), opsiyonlar üründen ayrı bir
+ * chip'te, aksiyonlar size="lg", bağlantı durumu metinden küçük bir noktaya indirgendi.
  */
 export default function KitchenBoardPage() {
   const params = useParams<{ branchId: string }>();
@@ -44,10 +70,12 @@ export default function KitchenBoardPage() {
   const router = useRouter();
 
   const [orders, setOrders] = useState<KitchenOrder[]>([]);
+  const [loading, setLoading] = useState(true);
   const [connectionStatus, setConnectionStatus] = useState<"connecting" | "live" | "reconnecting">("connecting");
   const [error, setError] = useState<string | null>(null);
   const [pendingItemId, setPendingItemId] = useState<string | null>(null);
   const [financialSummary, setFinancialSummary] = useState<KitchenFinancialSummary | null>(null);
+  const [now, setNow] = useState(() => Date.now());
   const acceptedInputRef = useRef<Record<string, number>>({});
   // Shared by reloadQueue (button handlers) and the SSE effect's own fetchQueue below
   // - two triggers (a manual mutation and an SSE "order-status" event firing almost
@@ -56,6 +84,12 @@ export default function KitchenBoardPage() {
   // one issued prevents a late, stale response from overwriting newer state.
   const latestRequestIdRef = useRef(0);
 
+  // Sipariş yaşı rozetlerini yalnızca görsel olarak tazeler - yeniden fetch tetiklemez.
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 15000);
+    return () => clearInterval(interval);
+  }, []);
+
   const reloadQueue = useCallback(async () => {
     const requestId = ++latestRequestIdRef.current;
     try {
@@ -63,6 +97,7 @@ export default function KitchenBoardPage() {
       if (requestId === latestRequestIdRef.current) {
         setOrders(data);
         setError(null);
+        setLoading(false);
       }
     } catch (err) {
       if (requestId !== latestRequestIdRef.current) {
@@ -73,6 +108,7 @@ export default function KitchenBoardPage() {
         return;
       }
       setError("Sipariş listesi yüklenemedi.");
+      setLoading(false);
     }
   }, [branchId, router]);
 
@@ -93,6 +129,7 @@ export default function KitchenBoardPage() {
         if (!cancelled && requestId === latestRequestIdRef.current) {
           setOrders(data);
           setError(null);
+          setLoading(false);
         }
       } catch (err) {
         if (cancelled || requestId !== latestRequestIdRef.current) {
@@ -103,6 +140,7 @@ export default function KitchenBoardPage() {
           return;
         }
         setError("Sipariş listesi yüklenemedi.");
+        setLoading(false);
       }
     }
 
@@ -192,12 +230,13 @@ export default function KitchenBoardPage() {
               İade İşlemleri
             </Link>
             <span className={styles.connectionStatus}>
+              <span className={[styles.connectionDot, styles[`connectionDot--${connectionStatus}`]].join(" ")} aria-hidden="true" />
               {connectionStatus === "live" ? "Canlı" : connectionStatus === "reconnecting" ? "Yeniden bağlanıyor…" : "Bağlanıyor…"}
             </span>
           </div>
         </div>
 
-        {error ? <p className={styles.connectionStatus}>{error}</p> : null}
+        {error ? <ErrorState message={error} onRetry={reloadQueue} /> : null}
 
         {financialSummary ? (
           <div className={styles.financialSummary}>
@@ -216,67 +255,78 @@ export default function KitchenBoardPage() {
           </div>
         ) : null}
 
-        {orders.length === 0 ? (
-          <p className={styles.connectionStatus}>Şu an mutfağa düşen sipariş yok.</p>
+        {loading ? (
+          <p className={styles.loading}>Yükleniyor…</p>
+        ) : orders.length === 0 ? (
+          <EmptyState title="Mutfağa düşen sipariş yok" description="Kasadan kabul edilen siparişler burada görünecek." />
         ) : (
           <div className={styles.grid}>
-            {orders.map((order) => (
-              <article key={order.orderId} className={styles.card}>
-                <div className={styles.cardHeader}>
-                  <span className={styles.orderNumber}>#{order.orderNumber ?? "—"}</span>
-                  <span className={styles.orderTotal}>{formatPriceMinorUnits(order.totalMinorUnits)}</span>
-                </div>
-
-                {order.items.map((item) => (
-                  <div key={item.id} className={styles.item}>
-                    <p className={styles.itemName}>
-                      {item.orderedQuantity}× {item.productName}
-                    </p>
-                    {item.options.length > 0 ? (
-                      <p className={styles.itemOptions}>{item.options.map((option) => option.name).join(", ")}</p>
-                    ) : null}
-                    <p className={styles.itemMeta}>
-                      <Badge tone={item.status === "REJECTED" ? "danger" : "neutral"}>{ITEM_STATUS_LABELS[item.status] ?? item.status}</Badge>
-                    </p>
-
-                    {item.status === "PENDING_REVIEW" ? (
-                      <div className={styles.itemActions}>
-                        <input
-                          type="number"
-                          className={styles.quantityInput}
-                          min={0}
-                          max={item.orderedQuantity}
-                          defaultValue={item.orderedQuantity}
-                          onChange={(event) => {
-                            acceptedInputRef.current[item.id] = Number(event.target.value);
-                          }}
-                          aria-label="Kabul edilen adet"
-                        />
-                        <Button size="md" disabled={pendingItemId === item.id} onClick={() => handleDecide(item.id, item.orderedQuantity)}>
-                          Onayla
-                        </Button>
-                      </div>
-                    ) : null}
-
-                    {item.status === "PREPARING" ? (
-                      <div className={styles.itemActions}>
-                        <Button size="md" disabled={pendingItemId === item.id} onClick={() => handleReady(item.id)}>
-                          Hazır
-                        </Button>
-                      </div>
-                    ) : null}
-
-                    {item.status === "READY" ? (
-                      <div className={styles.itemActions}>
-                        <Button size="md" variant="secondary" disabled={pendingItemId === item.id} onClick={() => handleServed(item.id)}>
-                          Teslim Edildi
-                        </Button>
-                      </div>
-                    ) : null}
+            {orders.map((order) => {
+              const urgency = waitingUrgency(order.statusSince, now);
+              return (
+                <article key={order.orderId} className={[styles.card, styles[`card--${urgency}`]].join(" ")}>
+                  <div className={styles.cardHeader}>
+                    <div className={styles.cardHeaderMain}>
+                      <span className={styles.tableLabel}>{order.tableLabel ?? "Masa —"}</span>
+                      <span className={styles.orderNumber}>#{order.orderNumber ?? "—"}</span>
+                    </div>
+                    <Badge tone={WAITING_BADGE_TONE[urgency]}>{formatElapsedMinutes(order.statusSince, now)}</Badge>
                   </div>
-                ))}
-              </article>
-            ))}
+                  <span className={styles.orderTotal}>{formatPriceMinorUnits(order.totalMinorUnits)}</span>
+
+                  {sortedItems(order.items).map((item) => (
+                    <div key={item.id} className={styles.item}>
+                      <div className={styles.itemTop}>
+                        <p className={styles.itemName}>
+                          {item.orderedQuantity}× {item.productName}
+                        </p>
+                        <Badge tone={item.status === "REJECTED" ? "danger" : item.status === "READY" ? "success" : "neutral"}>
+                          {ITEM_STATUS_LABELS[item.status] ?? item.status}
+                        </Badge>
+                      </div>
+                      {item.options.length > 0 ? (
+                        <p className={styles.itemOptions}>{item.options.map((option) => option.name).join(", ")}</p>
+                      ) : null}
+
+                      {item.status === "PENDING_REVIEW" ? (
+                        <div className={styles.itemActions}>
+                          <input
+                            type="number"
+                            className={styles.quantityInput}
+                            min={0}
+                            max={item.orderedQuantity}
+                            defaultValue={item.orderedQuantity}
+                            onChange={(event) => {
+                              acceptedInputRef.current[item.id] = Number(event.target.value);
+                            }}
+                            aria-label="Kabul edilen adet"
+                          />
+                          <Button size="lg" disabled={pendingItemId === item.id} onClick={() => handleDecide(item.id, item.orderedQuantity)}>
+                            Onayla
+                          </Button>
+                        </div>
+                      ) : null}
+
+                      {item.status === "PREPARING" ? (
+                        <div className={styles.itemActions}>
+                          <Button size="lg" disabled={pendingItemId === item.id} onClick={() => handleReady(item.id)}>
+                            Hazır
+                          </Button>
+                        </div>
+                      ) : null}
+
+                      {item.status === "READY" ? (
+                        <div className={styles.itemActions}>
+                          <Button size="lg" variant="secondary" disabled={pendingItemId === item.id} onClick={() => handleServed(item.id)}>
+                            Teslim Edildi
+                          </Button>
+                        </div>
+                      ) : null}
+                    </div>
+                  ))}
+                </article>
+              );
+            })}
           </div>
         )}
       </main>

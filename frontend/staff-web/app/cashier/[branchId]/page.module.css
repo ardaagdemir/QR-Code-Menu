@@ -18,8 +18,26 @@
 }
 
 .connectionStatus {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
   font-size: var(--font-size-xs);
   color: var(--color-fg-muted);
+}
+
+.connectionDot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--color-fg-muted);
+}
+
+.connectionDot--live {
+  background: var(--color-success);
+}
+
+.connectionDot--reconnecting {
+  background: var(--color-warning);
 }
 
 .headerActions {
@@ -34,6 +52,11 @@
   text-decoration: underline;
 }
 
+.loading {
+  font-size: var(--font-size-sm);
+  color: var(--color-fg-muted);
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -46,6 +69,15 @@
   border-radius: var(--radius-lg);
   padding: var(--space-4);
   box-shadow: var(--shadow-sm);
+  transition: border-color var(--transition-base);
+}
+
+.card--warning {
+  border-color: var(--color-warning);
+}
+
+.card--danger {
+  border-color: var(--color-danger);
 }
 
 .cardHeader {
@@ -57,14 +89,31 @@
   border-bottom: 1px solid var(--color-border);
 }
 
-.orderNumber {
+.cardHeaderMain {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.tableLabel {
   font-size: var(--font-size-lg);
   font-weight: var(--font-weight-bold);
+}
+
+.orderNumber {
+  font-size: var(--font-size-sm);
+  color: var(--color-fg-muted);
 }
 
 .orderTotal {
   font-size: var(--font-size-sm);
   color: var(--color-fg-muted);
+}
+
+.cardMeta {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
 }
 
 .item {
@@ -92,24 +141,3 @@
   gap: var(--space-2);
 }
 
-.select,
-.noteInput {
-  min-height: var(--tap-target-min);
-  padding: 0 var(--space-3);
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--color-border-strong);
-  background: var(--color-surface);
-  color: var(--color-fg);
-  font-size: var(--font-size-sm);
-}
-
-.empty {
-  font-size: var(--font-size-sm);
-  color: var(--color-fg-muted);
-}
-
-.error {
-  font-size: var(--font-size-sm);
-  color: var(--color-danger);
-  margin-bottom: var(--space-4);
-}
