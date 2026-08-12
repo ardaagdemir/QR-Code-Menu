@@ -36,12 +36,19 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json();
 }
 
+export type StaffBranchSummary = {
+  id: string;
+  name: string;
+};
+
 export type StaffContext = {
   staffUserId: string;
   businessId: string;
   email: string;
   role: "PLATFORM_ADMIN" | "BUSINESS_ADMIN" | "BRANCH_MANAGER" | "CASHIER" | "KITCHEN_STAFF";
   branchIds: string[];
+  businessName: string;
+  branches: StaffBranchSummary[];
 };
 
 export async function login(email: string, password: string): Promise<StaffContext> {
