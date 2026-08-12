@@ -10,9 +10,8 @@ import styles from "./page.module.css";
  * Real StaffUser login (Section 4, staff-web screen #1 - Milestone 8 replaces the
  * Milestone 6 "branch id + shared token" kiosk entry screen). On success the backend
  * sets the HttpOnly qrmenu_staff_session cookie itself; there is nothing for the
- * client to store. Every role lands on /branches - BUSINESS_ADMIN/PLATFORM_ADMIN see
- * the full admin nav there, BRANCH_MANAGER/KITCHEN_STAFF only what their permissions
- * allow (enforced server-side regardless of what the nav shows).
+ * client to store. Every role lands on /dashboard - AppShell's sidebar shows only what
+ * the role's permissions allow (enforced server-side regardless of what the nav shows).
  */
 export default function LoginPage() {
   const router = useRouter();
@@ -27,7 +26,7 @@ export default function LoginPage() {
     setSubmitting(true);
     try {
       await login(email.trim(), password);
-      router.push("/branches");
+      router.push("/dashboard");
     } catch {
       setError("E-posta veya şifre hatalı.");
     } finally {
