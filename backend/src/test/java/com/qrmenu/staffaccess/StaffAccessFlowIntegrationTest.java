@@ -34,7 +34,9 @@ class StaffAccessFlowIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.businessId").value(businessId))
                 .andExpect(jsonPath("$.email").value(email))
-                .andExpect(jsonPath("$.role").value("BUSINESS_ADMIN"));
+                .andExpect(jsonPath("$.role").value("BUSINESS_ADMIN"))
+                .andExpect(jsonPath("$.businessName").value("Auth Business"))
+                .andExpect(jsonPath("$.branches").isEmpty());
 
         mockMvc.perform(post("/api/staff/auth/logout").cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, cookie)))
                 .andExpect(status().isNoContent());
@@ -116,6 +118,14 @@ class StaffAccessFlowIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(status().isOk());
         mockMvc.perform(get("/api/kitchen/branches/{branchId}/orders", branchBId).cookie(kitchenMockCookie))
                 .andExpect(status().isForbidden());
+
+        // /me's branches list (used by staff-web's AppShell top bar context, Section 19.3) only
+        // reflects the staff user's own assigned branches, not every branch in the business.
+        mockMvc.perform(get("/api/staff/auth/me").cookie(kitchenMockCookie))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.branches", org.hamcrest.Matchers.hasSize(1)))
+                .andExpect(jsonPath("$.branches[0].id").value(branchAId))
+                .andExpect(jsonPath("$.branches[0].name").value("Branch A"));
     }
 
     @Test

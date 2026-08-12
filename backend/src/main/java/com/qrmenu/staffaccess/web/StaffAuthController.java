@@ -6,9 +6,12 @@ import com.qrmenu.staffaccess.StaffContext;
 import com.qrmenu.staffaccess.StaffCookieSupport;
 import com.qrmenu.staffaccess.web.dto.LoginRequest;
 import com.qrmenu.staffaccess.web.dto.StaffContextResponse;
+import com.qrmenu.staffaccess.web.dto.StaffContextResponse.BranchSummary;
+import com.qrmenu.tenant.TenantService;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import java.time.Duration;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
@@ -30,9 +33,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class StaffAuthController {
 
     private final StaffAuthService staffAuthService;
+    private final TenantService tenantService;
 
-    public StaffAuthController(StaffAuthService staffAuthService) {
+    public StaffAuthController(StaffAuthService staffAuthService, TenantService tenantService) {
         this.staffAuthService = staffAuthService;
+        this.tenantService = tenantService;
     }
 
     @PostMapping("/login")
@@ -56,9 +61,27 @@ public class StaffAuthController {
         return toResponse(context);
     }
 
-    private static StaffContextResponse toResponse(StaffContext context) {
+    /**
+     * businessName/branches back the top bar's "active business/branch context"
+     * (Section 19.3) - GET /business and GET /branches are permission-gated
+     * (BUSINESS_SETTINGS_MANAGE / BRANCH_MANAGE) and out of reach for CASHIER/
+     * KITCHEN_STAFF, so this reuses the already-unauthenticated-permission /me
+     * endpoint instead of opening a new permission surface.
+     */
+    private StaffContextResponse toResponse(StaffContext context) {
+        String businessName = tenantService.getBusiness(context.businessId()).getName();
+        List<BranchSummary> branches = tenantService.listBranches(context.businessId()).stream()
+                .filter(branch -> context.branchIds().contains(branch.getId()))
+                .map(branch -> new BranchSummary(branch.getId(), branch.getName()))
+                .toList();
         return new StaffContextResponse(
-                context.staffUserId(), context.businessId(), context.email(), context.role().name(), context.branchIds().stream().toList());
+                context.staffUserId(),
+                context.businessId(),
+                context.email(),
+                context.role().name(),
+                context.branchIds().stream().toList(),
+                businessName,
+                branches);
     }
 
     private ResponseCookie sessionCookie(UUID sessionId, Duration maxAge) {
