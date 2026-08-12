@@ -885,3 +885,31 @@ Yeni `TableVisitCleanupSchedulerIntegrationTest` (2): stale visit kapanıyor/fre
 (scheduler doğrudan çağrılıp `last_activity_at` SQL ile geriye tarihleniyor, `OrderCleanupSchedulerIntegrationTest`
 ile aynı desen), kapanmış bir visit üzerinden cart endpoint'ine istek 404 dönüyor. Tam backend suite yeşil
 (119 test, ilgisiz bir flaky `RateLimitFilterTest` testi izole çalıştırmada geçti - tekrar denemede geçti).
+
+---
+
+## Gap-Analysis #14 — Mutfak Ekranında Permission'a Bağlı Ciro Özeti — ✅ COMPLETED
+
+`docs/product-requirements.md`'yi (Gap-Analysis #1-13'ün üzerine, bölüm bölüm) yeniden kodla karşılaştıran bir
+taramada bulundu: Section 11'in 💡 notu ("Mutfak ekranında ciro/finansal veri gösterimi role sabitlenmez;
+`REPORT_FINANCIAL_SUMMARY_VIEW` permission'ı olan kullanıcıya gösterilir. Böylece işletme isterse mutfakta
+görünür, istemezse gizler.") hiç uygulanmamıştı - böyle bir permission yoktu, KDS ekranında da hiçbir ciro/
+finansal gösterim yoktu. `docs/gap-analysis.md` bunu hiç yakalamamıştı çünkü o dosyanın taraması modül-var-mı
+seviyesindeydi, bu kadar ince taneli bir permission-gated UI detayına inmemişti.
+
+Yeni `Permission.REPORT_FINANCIAL_SUMMARY_VIEW`: yalnızca `BUSINESS_ADMIN`/`BRANCH_MANAGER`'a verildi (ikisi de
+zaten `KITCHEN_DECIDE`'a sahip, KDS'i görebiliyor); `KITCHEN_STAFF` ve `CASHIER` almıyor - `CASHIER` düz
+`REPORT_VIEW`'a sahip olmasına rağmen bu ayrı permission'ı almıyor, spec'in "role sabitlenmez, ayrı bir izin"
+vurgusuyla uyumlu (aksi halde herhangi bir REPORT_VIEW sahibi otomatik görürdü). Yeni
+`GET /api/staff/branches/{branchId}/reports/kitchen-summary` (`StaffReportingController`), mevcut
+`ReportingService.getBranchReport`'u tekrar kullanıp brüt satış/net satış/sipariş sayısını dönen küçük bir DTO
+(`KitchenFinancialSummaryResponse`) - tam rapor değil, yalnızca KDS başlığına yetecek bir alt küme.
+
+`staff-web/app/kitchen`: sayfa `me()` ile kendi rolünü kontrol edip yalnızca BUSINESS_ADMIN/BRANCH_MANAGER ise
+özeti çekiyor (backend zaten permission'ı zorunlu kılıyor - bu yalnızca 403'e gidecek bir çağrıdan kaçınma
+niceliği, `StaffNav`'ın kendi `isAdmin` desenindeki gibi). KDS başlığının altına küçük bir brüt satış/net satış/
+sipariş sayısı bloğu eklendi (`page.module.css`'e `.financialSummary*` sınıfları).
+
+Yeni test: `ReportingFlowIntegrationTest.kitchenFinancialSummaryIsGatedToItsOwnPermissionNotPlainReportView` -
+BUSINESS_ADMIN özeti görebiliyor, CASHIER (REPORT_VIEW'a sahip olmasına rağmen) 403 alıyor. Tam backend suite
+yeşil (120 test). Frontend `tsc --noEmit` + `eslint` temiz.

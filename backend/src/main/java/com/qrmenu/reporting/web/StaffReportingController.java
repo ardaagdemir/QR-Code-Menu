@@ -11,6 +11,7 @@ import com.qrmenu.reporting.web.dto.BranchSalesReportResponse;
 import com.qrmenu.reporting.web.dto.CategorySalesResponse;
 import com.qrmenu.reporting.web.dto.ChainSalesReportResponse;
 import com.qrmenu.reporting.web.dto.HourlySalesResponse;
+import com.qrmenu.reporting.web.dto.KitchenFinancialSummaryResponse;
 import com.qrmenu.reporting.web.dto.OperatingResultResponse;
 import com.qrmenu.reporting.web.dto.ProductSalesResponse;
 import com.qrmenu.staffaccess.Permission;
@@ -73,6 +74,25 @@ public class StaffReportingController {
                 report.netSalesMinorUnits(),
                 approvedExpenses,
                 report.netSalesMinorUnits() - approvedExpenses);
+    }
+
+    /**
+     * Gap-analysis #14 (Section 11 💡): mutfak ekranında gösterilebilecek küçük bir ciro
+     * özeti - ayrı bir permission'la (REPORT_FINANCIAL_SUMMARY_VIEW) korunur, düz
+     * REPORT_VIEW'dan bağımsız, böylece işletme bunu KITCHEN_STAFF'a açmadan
+     * BRANCH_MANAGER/BUSINESS_ADMIN'e gösterebilir.
+     */
+    @GetMapping("/api/staff/branches/{branchId}/reports/kitchen-summary")
+    public KitchenFinancialSummaryResponse kitchenFinancialSummary(
+            @PathVariable UUID branchId,
+            @RequestParam LocalDate from,
+            @RequestParam LocalDate to,
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie) {
+        StaffContext context = staffAuthService.resolveStaffContextForBranch(
+                StaffCookieSupport.parseSessionId(sessionCookie), Permission.REPORT_FINANCIAL_SUMMARY_VIEW, branchId);
+        BranchSalesReportView report = reportingService.getBranchReport(context.businessId(), branchId, from, to);
+        return new KitchenFinancialSummaryResponse(
+                branchId, from, to, report.grossSalesMinorUnits(), report.netSalesMinorUnits(), report.orderCount());
     }
 
     /** Section 13.2: BUSINESS_ADMIN'in zincir görünümü - tüm şubeler için karşılaştırmalı ciro/refund/sipariş. */

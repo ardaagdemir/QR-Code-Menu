@@ -173,6 +173,61 @@ class ReportingFlowIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(status().isForbidden());
     }
 
+    /**
+     * Gap-analysis #14 (Section 11 💡): the kitchen financial summary is gated by its own
+     * REPORT_FINANCIAL_SUMMARY_VIEW permission, not plain REPORT_VIEW - a CASHIER has
+     * REPORT_VIEW (full reports) but must NOT see this, while BUSINESS_ADMIN/BRANCH_MANAGER
+     * (who both hold KITCHEN_DECIDE too) do.
+     */
+    @Test
+    void kitchenFinancialSummaryIsGatedToItsOwnPermissionNotPlainReportView() throws Exception {
+        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Report Business 4");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
+        String adminCookie = StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, "report-admin-4@example.com");
+        String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Kategori");
+        String productId = TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Kahve", 1500, 10);
+        TenantFixtures.upsertBranchProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, productId, "AVAILABLE", null);
+
+        String tableId = TenantFixtures.createTable(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, "Masa 1");
+        String qrToken = TenantFixtures.createQrToken(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, tableId);
+        CheckedInVisit visit = payAndAwaitStoreAcceptance(businessId, productId, qrToken, 1);
+        acceptAndDecideFullyInKitchen(branchId, adminCookie, visit, productId);
+
+        LocalDate today = LocalDate.now(ZoneOffset.UTC);
+
+        JsonNode summary = objectMapper.readTree(mockMvc.perform(get("/api/staff/branches/{branchId}/reports/kitchen-summary", branchId)
+                        .param("from", today.toString())
+                        .param("to", today.toString())
+                        .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, adminCookie)))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString());
+        assertThat(summary.get("grossSalesMinorUnits").asLong()).isEqualTo(1500);
+        assertThat(summary.get("orderCount").asInt()).isEqualTo(1);
+
+        String cashierEmail = "report-cashier-4@example.com";
+        mockMvc.perform(post("/internal/businesses/{businessId}/staff-users", businessId)
+                        .header("X-Internal-Admin-Token", TEST_ADMIN_TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"" + cashierEmail + "\",\"password\":\"" + StaffFixtures.DEFAULT_PASSWORD
+                                + "\",\"role\":\"CASHIER\",\"branchIds\":[\"" + branchId + "\"]}"))
+                .andExpect(status().isCreated());
+        String cashierCookie = StaffFixtures.login(mockMvc, cashierEmail);
+
+        // CASHIER has REPORT_VIEW (can see the full report) but not REPORT_FINANCIAL_SUMMARY_VIEW.
+        mockMvc.perform(get("/api/staff/branches/{branchId}/reports", branchId)
+                        .param("from", today.toString())
+                        .param("to", today.toString())
+                        .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, cashierCookie)))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/staff/branches/{branchId}/reports/kitchen-summary", branchId)
+                        .param("from", today.toString())
+                        .param("to", today.toString())
+                        .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, cashierCookie)))
+                .andExpect(status().isForbidden());
+    }
+
     private CheckedInVisit payAndAwaitStoreAcceptance(String businessId, String productId, String qrToken, int quantity)
             throws Exception {
         CheckedInVisit visit = TenantFixtures.checkIn(mockMvc, objectMapper, qrToken);

@@ -698,6 +698,22 @@ export async function getChainSalesReport(from: string, to: string): Promise<Cha
   return apiFetch(`/api/staff/reports/chain?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
 }
 
+export type KitchenFinancialSummary = {
+  branchId: string;
+  from: string;
+  to: string;
+  grossSalesMinorUnits: number;
+  netSalesMinorUnits: number;
+  orderCount: number;
+};
+
+/** Gap-analysis #14: gated server-side by REPORT_FINANCIAL_SUMMARY_VIEW, separate from REPORT_VIEW. */
+export async function getKitchenFinancialSummary(branchId: string, from: string, to: string): Promise<KitchenFinancialSummary> {
+  return apiFetch(
+    `/api/staff/branches/${encodeURIComponent(branchId)}/reports/kitchen-summary?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+  );
+}
+
 export type DailyCloseReport = {
   id: string;
   branchId: string;

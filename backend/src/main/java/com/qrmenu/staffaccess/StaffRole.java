@@ -39,6 +39,7 @@ public enum StaffRole {
                     Permission.ANNOUNCEMENT_MANAGE,
                     Permission.REPORT_VIEW,
                     Permission.REPORT_CHAIN_VIEW,
+                    Permission.REPORT_FINANCIAL_SUMMARY_VIEW,
                     Permission.EXPENSE_VIEW,
                     Permission.EXPENSE_MANAGE,
                     Permission.EXPENSE_APPROVE);
@@ -52,6 +53,7 @@ public enum StaffRole {
                     Permission.ORDER_ACCEPT,
                     Permission.ORDER_REJECT,
                     Permission.REPORT_VIEW,
+                    Permission.REPORT_FINANCIAL_SUMMARY_VIEW,
                     Permission.EXPENSE_VIEW,
                     Permission.EXPENSE_MANAGE);
             // Section 11: kasa - siparişi kabul/red eder, tam refund'u tetikler; mutfak/menü/personel yönetimine dokunmaz.

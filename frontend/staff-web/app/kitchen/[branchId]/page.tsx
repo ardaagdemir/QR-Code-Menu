@@ -8,9 +8,12 @@ import {
   buildKitchenStreamUrl,
   decideOrderItem,
   formatPriceMinorUnits,
+  getKitchenFinancialSummary,
   getKitchenQueue,
   markOrderItemReady,
   markOrderItemServed,
+  me,
+  type KitchenFinancialSummary,
   type KitchenOrder,
 } from "@/lib/api";
 import StaffNav from "@/components/layout/StaffNav";
@@ -44,6 +47,7 @@ export default function KitchenBoardPage() {
   const [connectionStatus, setConnectionStatus] = useState<"connecting" | "live" | "reconnecting">("connecting");
   const [error, setError] = useState<string | null>(null);
   const [pendingItemId, setPendingItemId] = useState<string | null>(null);
+  const [financialSummary, setFinancialSummary] = useState<KitchenFinancialSummary | null>(null);
   const acceptedInputRef = useRef<Record<string, number>>({});
   // Shared by reloadQueue (button handlers) and the SSE effect's own fetchQueue below
   // - two triggers (a manual mutation and an SSE "order-status" event firing almost
@@ -114,6 +118,30 @@ export default function KitchenBoardPage() {
     };
   }, [branchId, router]);
 
+  useEffect(() => {
+    let cancelled = false;
+    // Gap-analysis #14: REPORT_FINANCIAL_SUMMARY_VIEW is only granted to
+    // BUSINESS_ADMIN/BRANCH_MANAGER (see StaffRole) - checking the role here just
+    // avoids a call that would 403 for CASHIER/KITCHEN_STAFF; the backend enforces
+    // this regardless of what this check does.
+    me()
+      .then((context) => {
+        if (cancelled || (context.role !== "BUSINESS_ADMIN" && context.role !== "BRANCH_MANAGER")) {
+          return;
+        }
+        const today = new Date().toISOString().slice(0, 10);
+        return getKitchenFinancialSummary(branchId, today, today).then((summary) => {
+          if (!cancelled) {
+            setFinancialSummary(summary);
+          }
+        });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [branchId]);
+
   async function handleDecide(orderItemId: string, orderedQuantity: number) {
     const acceptedQuantity = acceptedInputRef.current[orderItemId] ?? orderedQuantity;
     setPendingItemId(orderItemId);
@@ -171,6 +199,23 @@ export default function KitchenBoardPage() {
         </div>
 
         {error ? <p className={styles.connectionStatus}>{error}</p> : null}
+
+        {financialSummary ? (
+          <div className={styles.financialSummary}>
+            <div className={styles.financialSummaryItem}>
+              <span className={styles.financialSummaryLabel}>Bugün brüt satış</span>
+              <span className={styles.financialSummaryValue}>{formatPriceMinorUnits(financialSummary.grossSalesMinorUnits)}</span>
+            </div>
+            <div className={styles.financialSummaryItem}>
+              <span className={styles.financialSummaryLabel}>Net satış</span>
+              <span className={styles.financialSummaryValue}>{formatPriceMinorUnits(financialSummary.netSalesMinorUnits)}</span>
+            </div>
+            <div className={styles.financialSummaryItem}>
+              <span className={styles.financialSummaryLabel}>Sipariş sayısı</span>
+              <span className={styles.financialSummaryValue}>{financialSummary.orderCount}</span>
+            </div>
+          </div>
+        ) : null}
 
         {orders.length === 0 ? (
           <p className={styles.connectionStatus}>Şu an mutfağa düşen sipariş yok.</p>

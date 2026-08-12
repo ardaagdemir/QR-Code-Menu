@@ -7,8 +7,11 @@
 > **Not (2026-08-12):** Bölüm 1'deki tablo dosyanın ilk yazıldığı andaki durumu (tespit anı) yansıtır ve
 > bilinçli olarak güncellenmemiştir. Bölüm 2'deki tablo ise 2026-08-12'de kod tabanıyla tek tek karşılaştırılıp
 > güncel duruma çekildi — o tarih itibarıyla açık kalan tek gerçek eksik "Session/TableVisit TTL" idi
-> (bkz. Gap-Analysis #13), o da bu güncellemeyle kapatıldı. Bölüm 3'teki 1-13 arası maddelerin tamamı ✅
-> COMPLETED; ayrıntı için `development-progress.md`'ye bakın.
+> (bkz. Gap-Analysis #13), o da bu güncellemeyle kapatıldı. Aynı gün ayrıca `product-requirements.md`'nin
+> kendisi de bölüm bölüm kodla karşılaştırıldı (bu dosyanın ✅/❌/🟡 taraması
+> daha kaba bir modül-var-mı seviyesindeydi); tek gerçek ek eksik Section 11'in mutfak ekranı ciro özeti 💡
+> notuydu, bkz. Gap-Analysis #14. Bölüm 3'teki 1-14 arası maddelerin tamamı ✅ COMPLETED; ayrıntı için
+> `development-progress.md`'ye bakın.
 
 ## 1. En Kritik CONFLICTING / PARTIAL Noktalar
 
@@ -79,6 +82,14 @@ log, pickup board, `DeliveryModel`, rate limiting, payment timeout scheduler.
     `getOwnedTableVisit` artık kapalı bir visit'i 404 olarak davranıyor (aynı ownership-mismatch deseniyle) —
     eski bir session cookie'siyle süresi dolmuş bir visit üzerinden sepete/sipariş akışına süresiz erişim
     engellendi. (Bkz. development-progress.md, Gap-Analysis #13.)
+14. ✅ **Mutfak ekranında permission'a bağlı ciro özeti** — `product-requirements.md` Section 11'in 💡
+    notu ("mutfak ekranında ciro gösterimi role sabitlenmez, `REPORT_FINANCIAL_SUMMARY_VIEW` olan görür")
+    hiç uygulanmamıştı; bu doküman taraması sırasında fark edildi. Yeni `Permission.
+    REPORT_FINANCIAL_SUMMARY_VIEW` (yalnızca BUSINESS_ADMIN/BRANCH_MANAGER'a verildi, KITCHEN_STAFF/CASHIER
+    almıyor — CASHIER'ın zaten sahip olduğu düz `REPORT_VIEW`'dan kasıtlı olarak ayrı), yeni
+    `GET /api/staff/branches/{branchId}/reports/kitchen-summary` uç noktası, `staff-web/app/kitchen`'a
+    küçük bir brüt/net satış + sipariş sayısı bloğu (yalnızca izinli role'lerde `me()` ile kontrol edilip
+    çağrılıyor). (Bkz. development-progress.md, Gap-Analysis #14.)
 
 Bu sıralama, dokümanın kendi M6→M13 planıyla ve Bölüm 25'teki "önce CONFLICTING düzelt, sonra sırayla eksikleri
 tamamla" kuralıyla birebir uyumlu.
