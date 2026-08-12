@@ -109,6 +109,49 @@ class DailyCloseFlowIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void kitchenStaffCannotExportDailyCloseExcel() throws Exception {
+        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Export Auth Business");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
+        String kitchenEmail = "export-auth-kitchen@example.com";
+        mockMvc.perform(post("/internal/businesses/{businessId}/staff-users", businessId)
+                        .header("X-Internal-Admin-Token", TEST_ADMIN_TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"" + kitchenEmail + "\",\"password\":\"" + StaffFixtures.DEFAULT_PASSWORD
+                                + "\",\"role\":\"KITCHEN_STAFF\",\"branchIds\":[\"" + branchId + "\"]}"))
+                .andExpect(status().isCreated());
+        String kitchenCookie = StaffFixtures.login(mockMvc, kitchenEmail);
+        LocalDate today = LocalDate.now(ZoneOffset.UTC);
+
+        mockMvc.perform(get("/api/staff/branches/{branchId}/daily-close/excel", branchId)
+                        .param("from", today.toString())
+                        .param("to", today.toString())
+                        .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, kitchenCookie)))
+                .andExpect(status().isForbidden());
+    }
+
+    /** BRANCH_MANAGER has REPORT_VIEW (branch-scoped) but not REPORT_CHAIN_VIEW - the chain export must still reject it. */
+    @Test
+    void branchManagerCannotExportChainDailyCloseExcel() throws Exception {
+        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Chain Export Auth Business");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
+        String managerEmail = "export-auth-manager@example.com";
+        mockMvc.perform(post("/internal/businesses/{businessId}/staff-users", businessId)
+                        .header("X-Internal-Admin-Token", TEST_ADMIN_TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"" + managerEmail + "\",\"password\":\"" + StaffFixtures.DEFAULT_PASSWORD
+                                + "\",\"role\":\"BRANCH_MANAGER\",\"branchIds\":[\"" + branchId + "\"]}"))
+                .andExpect(status().isCreated());
+        String managerCookie = StaffFixtures.login(mockMvc, managerEmail);
+        LocalDate today = LocalDate.now(ZoneOffset.UTC);
+
+        mockMvc.perform(get("/api/staff/daily-close/excel")
+                        .param("from", today.toString())
+                        .param("to", today.toString())
+                        .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, managerCookie)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void excelExportContainsTheGeneratedRow() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Close Business 3");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Excel Şube");

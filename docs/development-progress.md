@@ -826,3 +826,8 @@ backup/restore'un dahil edilip edilmeyeceği, sıralı-modül-modül vs önce-ta
 netleştirme sorusu + bölüm bölüm onay) kullanıcıyla netleştirildi ve onaylandı; kullanıcı talebiyle ayrı bir
 `docs/superpowers/specs/*.md` dosyası yerine doğrudan buraya yazıldı. Uygulama adımları ilerledikçe bu bölüm
 güncellenecek, tamamlandığında `✅ COMPLETED` olarak kapatılacak.
+
+**Export authorization tests — sonuç:** `daily-close/excel` (branch) ve `daily-close/excel`
+(chain) uç noktaları zaten doğru Permission kontrolünü yapıyordu (REPORT_VIEW / REPORT_CHAIN_VIEW)
+ama hiçbir test bunu doğrulamıyordu. `DailyCloseFlowIntegrationTest`'e iki yeni test eklendi:
+`kitchenStaffCannotExportDailyCloseExcel`, `branchManagerCannotExportChainDailyCloseExcel`.
