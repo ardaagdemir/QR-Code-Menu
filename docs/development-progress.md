@@ -770,3 +770,50 @@ REPORT_VIEW olmayan role 403; `ModuleBoundaryTest` +1).
 **Not:** Bu madde de canlı tarayıcı doğrulaması olmadan tamamlandı (bkz. proje hafızası - Chrome testi bu
 projede kapalı); doğrulama backend integration testleri (GreenMail in-memory SMTP dahil) +
 `npm run build`/`lint`/`tsc --noEmit` ile yapıldı.
+
+---
+
+## Gap-Analysis #12 — Security Hardening / RLS Reassessment — 🔄 TASARIM ONAYLANDI, UYGULAMA SÜRÜYOR
+
+Gap-analysis'in "Önerilen Geliştirme Sırası" #12 maddesi, product-requirements.md M13 (Section 24) ile aynı
+kapsam: complete security review, RLS reassessment, rate limiting, token/log redaction, upload security, export
+authorization tests, backup/restore expectations, observability, deployment hardening. Bu, roadmap'in son
+maddesi ("kapanışta").
+
+**Kapsam dışı bırakılanlar (ön-taramada gerekçelendirildi):**
+- **Rate limiting** — zaten var (`RateLimitFilter` + testleri), tekrar ele alınmayacak.
+- **Upload security** — projede gerçek dosya yükleme (`MultipartFile`) hiç yok, ürün görselleri yalnızca
+  `Product.imageUrl` string alanı; bu madde N/A.
+
+**Onaylanmış tasarım — 6 alt-alan, sırayla, her biri kendi tara→düzelt→test→commit döngüsüyle:**
+
+1. **RLS reassessment** — DB-seviyesi Postgres RLS **eklenmeyecek** (product-requirements.md Section 21'deki
+   bilinçli karar korunuyor: "RLS erken aşamada yok; açık business_id sorguları + servis ownership kontrolü +
+   integration test"). Bu adım yalnızca bu yaklaşımın hâlâ yeterli olduğunu doğrulayan bir **karar
+   dokümantasyonu**: tenant/ordering/menu/reporting/expense servislerinde business_id filtreleme + ownership-check
+   tutarlılığı kod taramasıyla doğrulanacak, eksik bulunursa düzeltilecek, sonuç bu bölüme eklenecek.
+2. **Complete security review** — kontrol listesi: (a) her staff endpoint'in doğru `Permission` kontrolü yaptığı,
+   (b) şube-scoping'in (staff yalnızca atandığı branch'lere erişebiliyor mu) tutarlı uygulandığı, (c)
+   `CorsConfig`'in gereksiz method/header açmadığı, (d) staff/customer session cookie'lerinin
+   `HttpOnly`/`Secure`/`SameSite` flag'leri, (e) DTO'larda Bean Validation (`@Valid`) tutarlılığı, (f)
+   native/manuel SQL varsa injection riski. Bulunan her açık ayrı bir küçük fix+commit olacak.
+3. **Token/log redaction** — `log.info/debug/warn/error` çağrılarında token/şifre/webhook-secret/kart verisi
+   sızıntısı olup olmadığı taranacak (ilk yüzeysel taramada bulunamadı, daha kapsamlı bakılacak), exception
+   handler'ların response'a stack trace/secret sızdırmadığı doğrulanacak.
+4. **Export authorization tests** — `dailyclose` Excel export + reporting export endpoint'lerine, yanlış
+   role/branch ile erişim denenince 403 döndüğünü doğrulayan entegrasyon testleri eklenecek (eksikse).
+5. **Deployment hardening + observability** — `.env.example`'da gerçek secret olmadığının doğrulanması, prod'da
+   cookie `Secure=true` zorunluluğunun kontrolü, mevcut log formatı/seviyesinin gözden geçirilmesi. Çoğunlukla
+   doğrulama + kısa öneri notu; büyük yeni altyapı kurulmayacak.
+6. **Backup/restore expectations** — kod değişikliği değil, Postgres `pg_dump`/Docker volume stratejisi için kısa
+   bir prosedür notu.
+
+**Doğrulama:** her alt-alan sonunda backend `mvn test` (+ yeni entegrasyon testleri varsa), frontend etkileniyorsa
+`npm run build`/`lint`/`tsc --noEmit`. Kritik davranış değişikliği (ör. cookie flag) olursa hızlı gerçek-tarayıcı
+doğrulaması (bkz. proje hafızası — Chrome testi bu projede kapalı, sadece gerekirse istisna).
+
+Bu tasarım superpowers:brainstorming akışıyla (RLS kapsamı, M13 alt-maddelerinden hangilerinin dahil edileceği,
+backup/restore'un dahil edilip edilmeyeceği, sıralı-modül-modül vs önce-tam-tarama yaklaşımı olmak üzere 4
+netleştirme sorusu + bölüm bölüm onay) kullanıcıyla netleştirildi ve onaylandı; kullanıcı talebiyle ayrı bir
+`docs/superpowers/specs/*.md` dosyası yerine doğrudan buraya yazıldı. Uygulama adımları ilerledikçe bu bölüm
+güncellenecek, tamamlandığında `✅ COMPLETED` olarak kapatılacak.
