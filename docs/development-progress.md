@@ -993,7 +993,7 @@ Canlı Chrome testi yapılmadı (proje hafızası - browser testi bu projede kap
 
 ---
 
-## UI/UX Productization Gate — Adım 3: Staff Web Application Shell/Sidebar — tasarım kaydı
+## UI/UX Productization Gate — Adım 3: Staff Web Application Shell/Sidebar — ✅ COMPLETED
 
 `product-requirements.md` Bölüm 19.5'in "Cross-cutting" uygulama sırasının 3. adımı: Bölüm 19.3'ün
 "Application shell" gereksinimi — desktop'ta üstte wrap olan link listesi yerine kalıcı sol sidebar +
@@ -1031,5 +1031,39 @@ collapse-toggle eklenmiyor (spec "kalıcı **veya** collapsible" diyor, kalıcı
 **Doğrulama planı:** her adımdan sonra backend `mvn test`, frontend `npm run lint` + `npm run build`.
 Canlı Chrome testi yapılmayacak (proje hafızası). Bu tasarım superpowers:brainstorming akışıyla (2
 netleştirme sorusu: dashboard kapsamı, şube bazlı nav) kullanıcıyla netleştirildi ve onaylandı; ayrı bir
-`docs/superpowers/specs/*.md` dosyası yerine doğrudan buraya yazıldı. Uygulama adımları ilerledikçe bu
-bölüm güncellenecek, tamamlandığında `✅ COMPLETED` olarak kapatılacak.
+`docs/superpowers/specs/*.md` dosyası yerine doğrudan buraya yazıldı.
+
+**Sonuç:** tasarım plana göre uygulandı, dört ayrı commit'te:
+
+1. **Backend** (`c4e0bb6`): `StaffContextResponse`'a `businessName`/`branches` eklendi,
+   `StaffAuthController` `TenantService` kullanarak `getBusiness`/`listBranches` (context.branchIds()'e
+   filtrelenmiş) ile dolduruyor. Yeni test: `StaffAccessFlowIntegrationTest`'te businessName/branches
+   assertion'ları + branch-scoped bir KITCHEN_STAFF'ın `branches` listesinin yalnızca kendi şubesini
+   içerdiğini doğrulayan bir kontrol. Tam backend suite yeşil (mvn test, tüm modüller).
+2. **AppShell component** (`5d54053`): `components/layout/AppShell.tsx` + `.module.css` - ≥1024px kalıcı
+   sidebar, <1024px hamburger→drawer (backdrop + kapatma), `lib/staffNav.ts`'e çıkarılan `NAV_GROUPS`
+   (Operasyon/Yönetim/Finans/Sistem) rol bazlı filtreleniyor. Şube bazlı linkler (Kasa/Mutfak/İadeler)
+   için `singleBranchHref`: business-wide rol (BUSINESS_ADMIN/PLATFORM_ADMIN) → `/branches`, değilse
+   ilk atanmış şubeye direkt. Raporlar için ayrı `reportsHref` - admin'in gerçek bir "tüm şubeler" ekranı
+   (`/reports`, `REPORT_CHAIN_VIEW`) olduğundan `/branches` üzerinden dolaşmıyor, doğrudan oraya gidiyor;
+   BRANCH_MANAGER/CASHIER (yalnızca `REPORT_VIEW`, `REPORT_CHAIN_VIEW` değil) `/reports/{branchId}`'e
+   gidiyor. Uygulama sırasında bulunan bir React lint hatası (`react-hooks/set-state-in-effect`, pathname
+   değiştiğinde drawer'ı kapatan bir effect) kaldırıldı - kapama artık Link'in kendi `onClick`'inde.
+3. **Dashboard** (`3853fb4`): minimal `/dashboard` - karşılama + `NAV_GROUPS`'un aynısından (Dashboard
+   hariç) türetilen rol bazlı kısayol kart grid'i, KPI yok. Login yönlendirmesi `/branches`'ten
+   `/dashboard`'a değişti.
+4. **Migrasyon** (`b19f4a3`): 14 dosyanın tamamı (~13 sayfa + `reports/page.tsx`) `<StaffNav />`'ı
+   `<AppShell>...</AppShell>` ile değiştirdi, dosya taşınmadı. Eski `StaffNav.tsx`/`.module.css` silindi.
+
+**Kapsam içi küçük bir sadeleştirme:** spec'in önerdiği "Pickup / Siparişler" nav öğesi ayrı bir kalıcı
+sidebar linki olarak eklenmedi - `app/pickup/[branchId]` bilinçli olarak kimliksiz/navsız bir kiosk board
+(`PickupBoardController`, halka açık uç nokta), zaten `/branches` sayfasındaki mevcut "Pickup Board"
+linkinden (yeni sekmede) erişiliyor ve hangi şubelerin `CUSTOMER_PICKUP` modelinde olduğunu AppShell'in
+ucuza bilmesinin bir yolu yok. Bu, kullanıcıyla netleştirilen 2 kapsam kararının bir parçası değildi;
+küçük bir uygulama detayı olarak burada not ediliyor.
+
+**Doğrulama:** backend `mvn test` (tüm modüller) yeşil. Frontend'de her adımdan sonra `npx tsc --noEmit` +
+`npx eslint .` + `npm run build` temiz. Canlı Chrome testi yapılmadı (proje hafızası - browser testi bu
+projede kapalı). KDS (`/kitchen/[branchId]`) de AppShell'e sarıldı - Bölüm 19.3'ün "KDS normal admin CRUD
+ekranı gibi tasarlanmaz" gereksinimi bu adımın kapsamında değil, Adım 4'te (kasa + KDS operasyonel UX)
+ele alınacak.
