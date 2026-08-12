@@ -4,9 +4,11 @@
 > yönetimi, zincir yönetimi vb. eklenen revizyon) ile mevcut kod tabanının karşılaştırmasıdır. Kod/migration
 > değişikliği içermez, yalnızca durum tespitidir.
 >
-> **Not (2026-08-12):** Aşağıdaki bölüm 1/2 tabloları dosyanın ilk yazıldığı andaki durumu (tespit anı)
-> yansıtır ve bilinçli olarak güncellenmemiştir — güncel durum için bölüm 3'teki ✅ işaretlerine ve
-> `development-progress.md`'ye bakın. Bölüm 3'teki 1-13 arası maddelerin tamamı artık ✅ COMPLETED.
+> **Not (2026-08-12):** Bölüm 1'deki tablo dosyanın ilk yazıldığı andaki durumu (tespit anı) yansıtır ve
+> bilinçli olarak güncellenmemiştir. Bölüm 2'deki tablo ise 2026-08-12'de kod tabanıyla tek tek karşılaştırılıp
+> güncel duruma çekildi — o tarih itibarıyla açık kalan tek gerçek eksik "Session/TableVisit TTL" idi
+> (bkz. Gap-Analysis #13), o da bu güncellemeyle kapatıldı. Bölüm 3'teki 1-13 arası maddelerin tamamı ✅
+> COMPLETED; ayrıntı için `development-progress.md`'ye bakın.
 
 ## 1. En Kritik CONFLICTING / PARTIAL Noktalar
 
@@ -23,18 +25,18 @@
 
 | Kategori | Durum | Not |
 |---|---|---|
-| **Kasa onayı (`ordercontrol`)** | ❌ MISSING | Modül, statüler, ACCEPT/REJECT uç noktaları, `reasonCode`+not, kasa dashboard ekranı — hiçbiri yok. |
-| **Roller/Permission** | ❌ MISSING | `CASHIER` rolü yok. `ORDER_ACCEPT/ORDER_REJECT/ORDER_VIEW/REPORT_*/EXPENSE_*/BUSINESS_SETTINGS_MANAGE` permission'larının hiçbiri yok. Mevcut `QR_MANAGE` yeni dokümanda `TABLE_QR_MANAGE` (kozmetik). |
-| **Menü yönetimi** | 🟡 PARTIAL | Category/Product/Option/BranchProduct/opt-in çalışıyor. `allergens`, `estimatedPreparationMinutes`, `active/passive` alanları **yok**. Toplu şubeye atama ("tüm şubelere ata" / "seçili şubelere ata") **yok**. |
-| **Şube/İşletme ayarları** | 🟡 PARTIAL | `Business`: yalnızca name+active var; `defaultCurrency`, `defaultTimeZone`, `BusinessContact` yok. `Branch`: `timezone`, `address`, haftalık saatler, geçici kapatma override'ı yok. |
-| **Zincir yönetimi** | 🟡 PARTIAL | Business→Branch çoklu şube yapısı zaten var (M2'den beri). Şube karşılaştırma dashboard'u, toplu ürün atama, `StaffAnnouncement` **yok**. |
-| **Raporlama/Analytics** | ❌ MISSING | Modül yok. Ciro/refund/sipariş sayısı/ürün-kategori kırılımı/saatlik dağılım/şube karşılaştırma — hiçbiri yok. |
-| **Gün sonu + Excel** | ❌ MISSING | `DailyBranchCloseReport`, PREVIEW/FINAL akışı, `.xlsx` export — hiçbiri yok. |
-| **Sahibine bildirim** | ❌ MISSING | `OwnerNotificationPort`, email/WhatsApp adapter — yok (spec bunu blocker saymıyor, opsiyonel). |
-| **Gider yönetimi** | ❌ MISSING | `expense` modülü, kategori, recurring template, onay akışı — hiçbiri yok. |
-| **Session/TableVisit TTL** | ✅ (2026-08-12) | ~~`AnonymousCustomerSession`/`TableVisit` var, `lastActivityAt` tutuluyor ama hiçbir scheduled job TableVisit'i süresi dolunca kapatmıyor (yalnızca DRAFT order 2 saatte cancel oluyor).~~ `TableVisitCleanupScheduler` eklendi (Gap-Analysis #13). |
-| **Frontend — customer-web** | 🟡 PARTIAL | Mobil-first temel, sepet, ödeme, tracking, receipt çalışıyor. Eksik: allergen/prep-time gösterimi (veri yok), **"işletme onayı bekleniyor" durumu**, refund durumu ekranı, kabul/red mesajları. |
-| **Frontend — staff-web** | 🟡 PARTIAL | Login, KDS, refund, branch/table/QR, menü, personel, audit, pickup board var. Eksik: kasa dashboard, raporlama ekranı, Excel indirme, gider ekranı, business hours/contact yönetimi, staff announcement. |
+| **Kasa onayı (`ordercontrol`)** | ✅ | `OrderControlController` (ACCEPT/REJECT), `AWAITING_STORE_ACCEPTANCE`/`REJECTED_BY_STORE` + `rejectionReasonCode`/`rejectionNote`, `staff-web/app/cashier` dashboard — tamamı var (Gap-Analysis #1). |
+| **Roller/Permission** | ✅ | `StaffRole.CASHIER` + `Permission.ORDER_ACCEPT/ORDER_REJECT/ORDER_VIEW` (#1), `REPORT_*` (#8), `EXPENSE_*` (#10), `BUSINESS_SETTINGS_MANAGE` (#6) — hepsi eklendi. `QR_MANAGE` adı `TABLE_QR_MANAGE`'e yeniden adlandırılmadı — bilinçli olarak atlandı, dokümanın kendi notuyla ("kozmetik") uyumlu, fonksiyonel etkisi yok. |
+| **Menü yönetimi** | ✅ | `allergens`/`estimatedPreparationMinutes`/`active` alanları + customer-web `ProductCard`'da gösterimi var; toplu şubeye atama `BulkAssignBranchesFlowIntegrationTest` ile kapsanıyor (Gap-Analysis #7, "Product Alanları"). |
+| **Şube/İşletme ayarları** | ✅ | `Business.defaultCurrency/defaultTimeZone`, `BusinessContact`, `Branch.timezone/address`, `BranchBusinessHours` (haftalık) — `staff-web/app/business-settings` ekranıyla birlikte var (Gap-Analysis #6). |
+| **Zincir yönetimi** | ✅ | Şube karşılaştırma dashboard'u `staff-web/app/chain-comparison`, toplu ürün atama, `StaffAnnouncement` (+ `staff-web/app/announcements`) — hepsi var (Gap-Analysis #7). |
+| **Raporlama/Analytics** | ✅ | `staff-web/app/reports` (+ `[branchId]`) — ciro/refund/sipariş sayısı/ürün-kategori/saatlik/şube karşılaştırma metrikleri var (Gap-Analysis #8). |
+| **Gün sonu + Excel** | ✅ | `DailyBranchCloseReport`, PREVIEW/FINAL akışı, `.xlsx` export (yetkilendirme testleriyle) — var (Gap-Analysis #9, #12). |
+| **Sahibine bildirim** | ✅ (email) | `OwnerNotificationPort` + email adapter + `owner_notification_log` — var (Gap-Analysis #11). WhatsApp adapter spec'in kendisinde blocker sayılmadığı için bilinçli olarak ertelendi, eklenmedi. |
+| **Gider yönetimi** | ✅ | `expense` modülü, kategori, recurring template (`RecurringExpenseScheduler`), onay akışı — `staff-web/app/expenses` ile birlikte var (Gap-Analysis #10). |
+| **Session/TableVisit TTL** | ✅ (2026-08-12) | `TableVisitCleanupScheduler` eklendi; `getOwnedTableVisit` artık kapalı bir visit'i 404 sayıyor (Gap-Analysis #13). |
+| **Frontend — customer-web** | ✅ | Sepet/ödeme/tracking/receipt + allergen/prep-time gösterimi (`ProductCard`), "işletme onayı bekleniyor"/red mesajları ve refund durumu (`latestRefundStatus`) tracking sayfasında var (Gap-Analysis #1, #4/#6). |
+| **Frontend — staff-web** | ✅ | Kasa dashboard (`/cashier`), raporlama (`/reports`), Excel indirme, gider ekranı (`/expenses`), business settings (`/business-settings`), staff announcement (`/announcements`), zincir karşılaştırma (`/chain-comparison`) — hepsi var. |
 
 **IMPLEMENTED olarak doğrulananlar** (yeniden yazılmamalı): QR→TableVisit→session, Business-level katalog +
 BranchProduct opt-in, DRAFT sepet + backend revalidasyon, mock ödeme+webhook+idempotency+outbox, KDS item-bazlı
