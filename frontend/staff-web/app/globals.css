@@ -21,6 +21,8 @@
   --color-danger-bg: rgba(197, 48, 48, 0.08);
   --color-success: #1a7f37;
   --color-success-bg: rgba(26, 127, 55, 0.1);
+  --color-warning: #b45309;
+  --color-warning-bg: rgba(180, 83, 9, 0.1);
   --color-badge-bg: rgba(22, 24, 28, 0.08);
   --color-overlay: rgba(15, 15, 17, 0.55);
   --color-skeleton: rgba(22, 24, 28, 0.08);
@@ -97,6 +99,8 @@
     --color-danger-bg: rgba(239, 106, 106, 0.12);
     --color-success: #4ade80;
     --color-success-bg: rgba(74, 222, 128, 0.14);
+    --color-warning: #fbbf24;
+    --color-warning-bg: rgba(251, 191, 36, 0.14);
     --color-badge-bg: rgba(255, 255, 255, 0.1);
     --color-overlay: rgba(0, 0, 0, 0.65);
     --color-skeleton: rgba(255, 255, 255, 0.08);
