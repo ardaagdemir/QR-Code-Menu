@@ -1141,3 +1141,65 @@ zaten hem `CustomerSessionService` hem `TenantService`'a bağımlı. Eklenecekle
 
 **Doğrulama:** backend `mvn test` (tüm modüller) yeşil. Frontend `npx tsc --noEmit` + `npx eslint .` +
 `npm run build` temiz. Canlı Chrome testi yapılmadı (proje hafızası - browser testi bu projede kapalı).
+
+## UI/UX Productization Gate — Adım 5: Admin CRUD Component Refactor — ✅ COMPLETED
+
+`product-requirements.md` Bölüm 19.5'in "Cross-cutting" uygulama sırasının 5. adımı: Bölüm 19.3'ün
+"Admin / CRUD ekranları" alt-bölümü (kriter 4 ve 5). ~9 admin sayfası (branches, branches/[branchId],
+staff, business-settings, announcements, audit, chain-comparison, refunds/[branchId], + menu/expenses)
+hâlâ `admin.module.css`'in gayri-resmi `.header`/`.title` (PageHeader), `.list`/`.row` (Table) ve
+`.form`/`.field`/`.input`/`.select` (Form) deseninde - Adım 1'de kurulan gerçek FormField/Input/Select/
+Dialog/ConfirmDialog/EmptyState/ErrorState/Toast component'leri bu sayfalarda hiç kullanılmıyordu.
+`menu`/`expenses` sayfaları da tek `page.tsx`'te 545/555 satır state+form+list mantığı taşıyordu.
+
+Kullanıcıyla iki kapsam kararı netleştirildi:
+1. **Kapsam:** Kasa/KDS (Adım 4'te ele alındı) ve Raporlar (Adım 6'da ele alınacak) hariç, admin CRUD
+   yüzeyinin tamamı (~9 sayfa + menu/expenses split) bu adımda kapatıldı - kısmi bir geçiş bırakılmadı.
+2. **Table tasarımı:** gerçek `<table>` semantiği (thead/tbody/th/td + `overflow-x:auto` wrapper) seçildi -
+   mevcut `reports.module.css`'teki `.tableWrap`/`.table` deseniyle tutarlı, div-row listesinden daha
+   erişilebilir (screen reader).
+
+**Yeni shared component'ler (staff-web, `components/ui/`):** `PageHeader` (title+açıklama+primary action
+slot - Bölüm 19.3: "sayfa başlığında title + açıklama + primary action pattern'i"), `Table` (yalnızca
+`overflow-x:auto` wrapper + ortak th/td stili sağlayan ince bir sarmalayıcı - `<thead>`/`<tbody>` çağıran
+sayfa tarafından yazılır, rijit bir `columns` prop API'si dayatılmadı çünkü ürün satırındaki genişleyen
+düzenle/ata panelleri gibi durumlar `colSpan` sub-row gerektiriyor), `TableSkeleton` (Table yüklenirken
+gösterilen 4 satırlık iskelet - 8+ sayfada tekrar ettiği için Adım 1'in tekil `Skeleton`'ından ayrı, küçük
+bir component).
+
+**Sayfa bazlı değişiklikler:**
+- `audit`, `chain-comparison`: salt okunur, en basit sayfalar - yalnızca PageHeader + Table +
+  EmptyState/ErrorState/TableSkeleton'a geçirildi, dialog/form yok.
+- `branches`, `branches/[branchId]`, `staff`, `business-settings`, `announcements`: oluşturma formları
+  artık PageHeader'ın primary action'ından açılan `Dialog` içinde (Bölüm 19.3: "gereksiz inline uzun form
+  + liste yığını yerine drawer/modal"); listeler gerçek `Table`; tüm action feedback `Toast`'a taşındı
+  (Adım 1'de kurulan ama o zamana kadar hiç kullanılmayan `ToastProvider`'ın ilk gerçek kullanımı).
+  `branches/[branchId]`'daki şube ayarları (adres/saat dilimi/çalışma saatleri) düzenleme formu olduğu
+  için Dialog'a taşınmadı, inline "iyi bölünmüş form pattern'i" olarak kaldı (spec'in izin verdiği
+  alternatif). **ConfirmDialog** yalnızca gerçekten geri dönüşü olmayan aksiyonlara eklendi: QR kod iptali
+  (fiziksel etiketi anında geçersiz kılıyor), personel devre dışı bırakma (`deactivateStaffUser`'ın
+  reaktive uç noktası yok). İki yönlü toggle'lar (sipariş açık/kapalı, teslimat modeli, rapor alıcısı
+  aktif/pasif, duyuru sonlandırma) confirm'süz kaldı - düşük risk.
+- `refunds/[branchId]`: sipariş kartı düzeni gerçek bir liste olmadığı için Table'a zorlanmadı (tekil bir
+  "makbuz" görünümü); yalnızca PageHeader + shared Input + Toast'a geçirildi. "İade Başlat" gerçek para
+  hareketi yapan geri alınamaz bir işlem olduğu için ConfirmDialog arkasına alındı; "Teslim Edildi/Alındı"
+  destructive olmadığı için değişmedi.
+- `menu` (545 → 68 satır) ve `expenses` (555 → 69 satır) feature/component'lere bölündü:
+  - `menu/features/`: `CategoriesSection` (Table+Dialog), `ProductsSection` (Table+Dialog+şube seçici),
+    `ProductRow` (müsaitlik/aktiflik toggle'ları + düzenle/şubelere-ata genişleyen `colSpan` panelleri,
+    kendi API çağrılarını yönetip günceli parent'a callback ile bildiriyor).
+  - `expenses/features/`: `ExpenseCategories`, `ExpenseForm` (Dialog'lu oluşturma), `ExpenseList` (filtre
+    formu + Table + gönder/onayla/reddet), `RecurringTemplates` (Dialog'lu oluşturma + Table). Gider
+    ekleme sonrası `ExpenseList`'in tazelenmesi, sayfa orkestratöründen geçilen bir `refreshToken` sayaç
+    prop'uyla sağlanıyor (state'i tam yukarı taşımak yerine YAGNI bir çözüm). Kategori/şablon devre dışı
+    bırakma ConfirmDialog ister (reaktive uç noktası yok).
+  - Her iki `page.tsx` da artık yalnızca üst düzey seçim/context state'ini tutan ince bir orkestratör.
+
+**Teknik not:** `react-hooks/set-state-in-effect` lint kuralı, `useEffect` içinde senkron `setState`
+çağrısına izin vermiyor - birkaç sayfada (`audit`, `chain-comparison`, `menu`/`ProductsSection`) mount
+effect'inin başındaki `setLoading(true)`/`setError(null)` sıfırlamaları bu yüzden kaldırıldı; `loading`
+zaten `useState(true)` ile başlıyor, `error` yalnızca `.catch`'te set ediliyor - retry'da skeleton tekrar
+görünmüyor ama bu, kod tabanındaki mevcut (`cashier`) davranışla tutarlı.
+
+**Doğrulama:** backend değişikliği yok (bu adım tamamen staff-web frontend). Her commit'ten sonra
+`npx tsc --noEmit` + `npx eslint .` + `npm run build` temiz. Canlı Chrome testi yapılmadı (proje hafızası).
