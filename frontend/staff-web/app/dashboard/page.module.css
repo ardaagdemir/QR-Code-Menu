@@ -21,3 +21,28 @@
 .cardLink:hover .card {
   border-color: var(--color-border-strong);
 }
+
+.kpiGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.subsection {
+  margin-bottom: var(--space-4);
+}
+
+.subsectionTitle {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-fg-muted);
+  margin-bottom: var(--space-3);
+}
+
+.moreLink {
+  display: inline-block;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-primary);
+}

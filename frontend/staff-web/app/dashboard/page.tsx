@@ -2,28 +2,74 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { me, type StaffContext } from "@/lib/api";
-import { NAV_GROUPS, ROLE_LABELS } from "@/lib/staffNav";
+import {
+  formatPriceMinorUnits,
+  getBranchSalesReport,
+  getChainSalesReport,
+  getPendingAcceptanceOrders,
+  me,
+  type BranchSalesReport,
+  type ChainSalesReport,
+  type StaffContext,
+} from "@/lib/api";
+import { NAV_GROUPS, ROLE_LABELS, isBusinessWide } from "@/lib/staffNav";
 import AppShell from "@/components/layout/AppShell";
 import Card from "@/components/ui/Card";
+import KpiCard from "@/components/ui/KpiCard";
+import BarList from "@/components/ui/BarList";
 import Skeleton from "@/components/ui/Skeleton";
 import adminStyles from "@/styles/admin.module.css";
 import styles from "./page.module.css";
 
+function todayIsoDate(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/** Permission.REPORT_VIEW (StaffRole.java) - KITCHEN_STAFF has no report visibility. */
+const REPORT_ROLES: StaffContext["role"][] = ["PLATFORM_ADMIN", "BUSINESS_ADMIN", "BRANCH_MANAGER", "CASHIER"];
+
 /**
- * Bölüm 19.3 "Dashboard" - minimal placeholder (karşılama + role göre kısayollar).
- * Gerçek KPI içeriği (bugünkü ciro, sipariş sayısı, en çok satan ürünler vb.) UI/UX
- * Productization Gate Adım 6'da (raporlama/dashboard görselleştirme) eklenecek; bu
- * sayfa yalnızca login sonrası landing + AppShell'in "Dashboard" linkinin hedefi.
- * Kısayol kartları NAV_GROUPS'un aynısını kullanır (Dashboard hariç) - link/rol/href
- * mantığı tek yerde (lib/staffNav.ts) kalır.
+ * Bölüm 19.3 "Dashboard": login sonrası rolün kullanım amacına uygun landing page -
+ * BUSINESS_ADMIN/BRANCH_MANAGER için bugünkü brüt/net satış, sipariş sayısı, ortalama
+ * sepet, refund özeti, en çok satan ürünler, aktif/bekleyen operasyon bilgisi ve şube
+ * karşılaştırması. Zincir genelinde rol (BUSINESS_ADMIN/PLATFORM_ADMIN) zincir raporunu,
+ * tek şubeye bağlı rol (BRANCH_MANAGER/CASHIER) kendi şubesinin raporunu görür; ilk
+ * ekranda yalnızca "bugün" (from=to=today) - tarih aralığı seçimi /reports'ta.
  */
 export default function DashboardPage() {
   const [context, setContext] = useState<StaffContext | null>(null);
+  const [chainReport, setChainReport] = useState<ChainSalesReport | null>(null);
+  const [branchReport, setBranchReport] = useState<BranchSalesReport | null>(null);
+  const [pendingCount, setPendingCount] = useState<number | null>(null);
+  const [reportsLoading, setReportsLoading] = useState(false);
 
   useEffect(() => {
     me()
-      .then(setContext)
+      .then((staffContext) => {
+        setContext(staffContext);
+        if (!REPORT_ROLES.includes(staffContext.role)) {
+          return;
+        }
+        setReportsLoading(true);
+        const today = todayIsoDate();
+        if (isBusinessWide(staffContext.role)) {
+          getChainSalesReport(today, today)
+            .then(setChainReport)
+            .catch(() => undefined)
+            .finally(() => setReportsLoading(false));
+        } else if (staffContext.branches.length > 0) {
+          const branchId = staffContext.branches[0].id;
+          getBranchSalesReport(branchId, today, today)
+            .then(setBranchReport)
+            .catch(() => undefined)
+            .finally(() => setReportsLoading(false));
+          getPendingAcceptanceOrders(branchId)
+            .then((orders) => setPendingCount(orders.length))
+            .catch(() => undefined);
+        } else {
+          setReportsLoading(false);
+        }
+      })
       .catch(() => undefined);
   }, []);
 
@@ -36,6 +82,11 @@ export default function DashboardPage() {
           .filter((item): item is { key: string; label: string; href: string } => item.href !== null),
       })).filter((group) => group.items.length > 0)
     : [];
+
+  const topProducts = branchReport
+    ? [...branchReport.productBreakdown].sort((a, b) => b.revenueMinorUnits - a.revenueMinorUnits).slice(0, 5)
+    : [];
+  const branchesByGross = chainReport ? [...chainReport.branches].sort((a, b) => b.grossSalesMinorUnits - a.grossSalesMinorUnits) : [];
 
   return (
     <AppShell>
@@ -53,18 +104,102 @@ export default function DashboardPage() {
             <Skeleton height="96px" />
           </div>
         ) : (
-          shortcutGroups.map((group) => (
-            <div key={group.title} className={adminStyles.section}>
-              <h2 className={adminStyles.sectionTitle}>{group.title}</h2>
-              <div className={styles.grid}>
-                {group.items.map((item) => (
-                  <Link key={item.key} href={item.href} className={styles.cardLink}>
-                    <Card className={styles.card}>{item.label}</Card>
-                  </Link>
-                ))}
+          <>
+            {REPORT_ROLES.includes(context.role) ? (
+              <section className={adminStyles.section}>
+                <h2 className={adminStyles.sectionTitle}>Bugün</h2>
+                {reportsLoading ? (
+                  <div className={styles.grid}>
+                    <Skeleton height="88px" />
+                    <Skeleton height="88px" />
+                    <Skeleton height="88px" />
+                    <Skeleton height="88px" />
+                  </div>
+                ) : chainReport ? (
+                  <>
+                    <div className={styles.kpiGrid}>
+                      <KpiCard label="Toplam brüt satış" value={formatPriceMinorUnits(chainReport.totalGrossSalesMinorUnits)} />
+                      <KpiCard label="Toplam net satış" value={formatPriceMinorUnits(chainReport.totalNetSalesMinorUnits)} />
+                      <KpiCard
+                        label="Toplam refund"
+                        value={formatPriceMinorUnits(chainReport.totalRefundMinorUnits)}
+                        tone={chainReport.totalRefundMinorUnits > 0 ? "danger" : "neutral"}
+                      />
+                      <KpiCard label="Toplam sipariş" value={String(chainReport.totalOrderCount)} />
+                    </div>
+                    {branchesByGross.length > 0 ? (
+                      <div className={styles.subsection}>
+                        <h3 className={styles.subsectionTitle}>Şube Sıralaması</h3>
+                        <BarList
+                          items={branchesByGross.map((branch) => ({
+                            key: branch.branchId,
+                            label: branch.branchName,
+                            value: branch.grossSalesMinorUnits,
+                            valueLabel: formatPriceMinorUnits(branch.grossSalesMinorUnits),
+                          }))}
+                        />
+                      </div>
+                    ) : null}
+                    <Link href="/reports" className={styles.moreLink}>
+                      Tüm satış raporlarını gör →
+                    </Link>
+                  </>
+                ) : branchReport ? (
+                  <>
+                    <div className={styles.kpiGrid}>
+                      <KpiCard label="Brüt satış" value={formatPriceMinorUnits(branchReport.grossSalesMinorUnits)} />
+                      <KpiCard label="Net satış" value={formatPriceMinorUnits(branchReport.netSalesMinorUnits)} />
+                      <KpiCard
+                        label="Refund toplamı"
+                        value={formatPriceMinorUnits(branchReport.refundTotalMinorUnits)}
+                        tone={branchReport.refundTotalMinorUnits > 0 ? "danger" : "neutral"}
+                      />
+                      <KpiCard label="Sipariş sayısı" value={String(branchReport.orderCount)} />
+                      <KpiCard label="Ortalama sepet" value={formatPriceMinorUnits(branchReport.averageOrderValueMinorUnits)} />
+                      {pendingCount !== null ? (
+                        <KpiCard
+                          label="Onay bekleyen sipariş"
+                          value={String(pendingCount)}
+                          tone={pendingCount > 0 ? "danger" : "success"}
+                        />
+                      ) : null}
+                    </div>
+                    {topProducts.length > 0 ? (
+                      <div className={styles.subsection}>
+                        <h3 className={styles.subsectionTitle}>En Çok Satan Ürünler</h3>
+                        <BarList
+                          items={topProducts.map((row) => ({
+                            key: row.productId,
+                            label: row.productName,
+                            value: row.revenueMinorUnits,
+                            valueLabel: `${formatPriceMinorUnits(row.revenueMinorUnits)} · ${row.quantitySold} adet`,
+                          }))}
+                        />
+                      </div>
+                    ) : null}
+                    <Link href={`/reports/${context.branches[0]?.id ?? ""}`} className={styles.moreLink}>
+                      Şube raporunu gör →
+                    </Link>
+                  </>
+                ) : (
+                  <p className={adminStyles.empty}>Bugün için henüz veri yok.</p>
+                )}
+              </section>
+            ) : null}
+
+            {shortcutGroups.map((group) => (
+              <div key={group.title} className={adminStyles.section}>
+                <h2 className={adminStyles.sectionTitle}>{group.title}</h2>
+                <div className={styles.grid}>
+                  {group.items.map((item) => (
+                    <Link key={item.key} href={item.href} className={styles.cardLink}>
+                      <Card className={styles.card}>{item.label}</Card>
+                    </Link>
+                  ))}
+                </div>
               </div>
-            </div>
-          ))
+            ))}
+          </>
         )}
       </main>
     </AppShell>
