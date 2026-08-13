@@ -1,5 +1,6 @@
 package com.qrmenu.ordering.web;
 
+import com.qrmenu.notification.sse.SseOrderStatusNotifier;
 import com.qrmenu.ordering.CustomerOrder;
 import com.qrmenu.ordering.KitchenQueueOrderView;
 import com.qrmenu.ordering.OrderItem;
@@ -25,16 +26,29 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
- * Gap-analysis #1 / product-requirements.md Section 6: the cashier acceptance gate.
- * A verified payment webhook lands an order in AWAITING_STORE_ACCEPTANCE (see
- * OrderingService.markOrderAwaitingStoreAcceptance) - it never reaches the kitchen
- * queue on its own anymore. This controller is the only way out of that state:
+ * Gap-analysis #1 / product-requirements.md Section 6: the cashier acceptance gate,
+ * and (product decision: no separate Mutfak/KDS screen) the single operational
+ * surface for every order-lifecycle action a business role performs. A verified
+ * payment webhook lands an order in AWAITING_STORE_ACCEPTANCE (see
+ * OrderingService.markOrderAwaitingStoreAcceptance) - it never reaches the
+ * in-progress queue on its own. This controller is the only way out of that state:
  * ACCEPT (-> IN_KITCHEN) or REJECT (-> REJECTED_BY_STORE + full refund). REJECT
  * orchestrates ordering + refund from here (not from inside OrderingService) so
  * ordering never has to depend on the refund module - same module-cycle-avoidance
  * reasoning as the Milestone 7 decision this supersedes (see RefundService Javadoc).
+ * The in-progress/stream endpoints below used to live on a separate KitchenController
+ * (/api/kitchen/**, Permission.KITCHEN_DECIDE) - that screen and role no longer exist,
+ * so they were folded in here under Permission.ORDER_VIEW (read) / Permission.
+ * ORDER_PREPARE (advance), the same business roles (BUSINESS_ADMIN/BRANCH_MANAGER/
+ * CASHIER) that accept/reject. Product decision: there is no item-level kitchen
+ * decision step anymore either - ACCEPT auto-accepts every item (OrderingService.
+ * acceptOrder), and READY is a single order-level action below (/ready), not a
+ * per-item ready/served rollup. The flow is exactly AWAITING_STORE_ACCEPTANCE -> ACCEPT
+ * -> PREPARING -> READY -> COMPLETED (COMPLETED via RefundController's /complete,
+ * unchanged).
  */
 @RestController
 @RequestMapping("/api/staff/branches/{branchId}/orders")
@@ -44,13 +58,19 @@ public class OrderControlController {
     private final RefundService refundService;
     private final StaffAuthService staffAuthService;
     private final TenantService tenantService;
+    private final SseOrderStatusNotifier sseOrderStatusNotifier;
 
     public OrderControlController(
-            OrderingService orderingService, RefundService refundService, StaffAuthService staffAuthService, TenantService tenantService) {
+            OrderingService orderingService,
+            RefundService refundService,
+            StaffAuthService staffAuthService,
+            TenantService tenantService,
+            SseOrderStatusNotifier sseOrderStatusNotifier) {
         this.orderingService = orderingService;
         this.refundService = refundService;
         this.staffAuthService = staffAuthService;
         this.tenantService = tenantService;
+        this.sseOrderStatusNotifier = sseOrderStatusNotifier;
     }
 
     /** Section 10.1: kasa dashboard'un "yeni ödenmiş/onay bekleyen siparişler" listesi. */
@@ -86,6 +106,48 @@ public class OrderControlController {
         refundService.requestFullRefund(branchId, orderId, context.staffUserId());
         CustomerOrder order = orderingService.getOrderInBranch(branchId, orderId);
         return toResponse(order, tenantService.getStoreAcceptanceTimeoutSeconds(branchId));
+    }
+
+    /** Every ACCEPTed order still being prepared (Section 6/8: PREPARING -> READY). */
+    @GetMapping("/in-progress")
+    public List<OrderControlOrderResponse> getInProgress(
+            @PathVariable UUID branchId,
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie) {
+        requireOrderAccess(sessionCookie, branchId, Permission.ORDER_VIEW);
+        int timeoutSeconds = tenantService.getStoreAcceptanceTimeoutSeconds(branchId);
+        return orderingService.getKitchenQueue(branchId).stream().map(view -> toResponse(view, timeoutSeconds)).toList();
+    }
+
+    /** Every READY order awaiting hand-off/pickup (Section 6/8: "Hazır - Teslim Bekliyor"). */
+    @GetMapping("/ready")
+    public List<OrderControlOrderResponse> getReady(
+            @PathVariable UUID branchId,
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie) {
+        requireOrderAccess(sessionCookie, branchId, Permission.ORDER_VIEW);
+        int timeoutSeconds = tenantService.getStoreAcceptanceTimeoutSeconds(branchId);
+        return orderingService.getReadyOrders(branchId).stream().map(view -> toResponse(view, timeoutSeconds)).toList();
+    }
+
+    /**
+     * Initial connect delivers no backlog - the caller already loaded pending/in-progress
+     * orders via the GET endpoints above; this is purely a "something changed, refetch"
+     * signal (staff-web's Kasa page uses it for both lists).
+     */
+    @GetMapping("/stream")
+    public SseEmitter stream(
+            @PathVariable UUID branchId, @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie) {
+        requireOrderAccess(sessionCookie, branchId, Permission.ORDER_VIEW);
+        return sseOrderStatusNotifier.subscribeToBranchKitchen(branchId);
+    }
+
+    /** PREPARING -> READY, the whole order at once (Section 6/8) - no item-level decision step. */
+    @PostMapping("/{orderId}/ready")
+    public OrderControlOrderResponse markReady(
+            @PathVariable UUID branchId,
+            @PathVariable UUID orderId,
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie) {
+        requireOrderAccess(sessionCookie, branchId, Permission.ORDER_PREPARE);
+        return toResponse(orderingService.markOrderReady(branchId, orderId), tenantService.getStoreAcceptanceTimeoutSeconds(branchId));
     }
 
     private StaffContext requireOrderAccess(String sessionCookie, UUID branchId, Permission permission) {

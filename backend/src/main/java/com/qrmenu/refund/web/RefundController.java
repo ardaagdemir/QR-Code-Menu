@@ -28,14 +28,16 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Staff-facing refund API (Section 4, screen #6: "tam/kısmi iade başlatma"). Stayed
- * nested under /api/kitchen/** even after Milestone 8 dropped the shared-prefix filter
- * that originally motivated it (StaffAccessAuthFilter, Milestone 6) - renaming a
- * working, already-tested URL for cosmetic reasons alone isn't worth the churn.
- * Permission.REFUND_ISSUE, scoped to this branchId, replaces the old shared secret.
+ * Staff-facing refund API (Section 4, screen #6: "tam/kısmi iade başlatma"). Moved off
+ * /api/kitchen/** (product decision: no separate Mutfak/KDS concept survives anywhere,
+ * including in URLs) onto /api/staff/branches/{branchId}/orders, the same base path as
+ * OrderControlController - the two controllers' route suffixes don't overlap (this one
+ * owns /search, /{orderId}/refunds, /{orderId}/complete; OrderControlController owns
+ * everything else under this prefix), so both can coexist under the shared prefix.
+ * Permission.REFUND_ISSUE, scoped to this branchId, guards access.
  */
 @RestController
-@RequestMapping("/api/kitchen/branches/{branchId}/orders")
+@RequestMapping("/api/staff/branches/{branchId}/orders")
 public class RefundController {
 
     private final OrderingService orderingService;

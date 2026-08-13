@@ -64,9 +64,9 @@ public class StaffAuthController {
     /**
      * businessName/branches back the top bar's "active business/branch context"
      * (Section 19.3) - GET /business and GET /branches are permission-gated
-     * (BUSINESS_SETTINGS_MANAGE / BRANCH_MANAGE) and out of reach for CASHIER/
-     * KITCHEN_STAFF, so this reuses the already-unauthenticated-permission /me
-     * endpoint instead of opening a new permission surface.
+     * (BUSINESS_SETTINGS_MANAGE / BRANCH_MANAGE) and out of reach for CASHIER,
+     * so this reuses the already-unauthenticated-permission /me endpoint instead
+     * of opening a new permission surface.
      */
     private StaffContextResponse toResponse(StaffContext context) {
         String businessName = tenantService.getBusiness(context.businessId()).getName();

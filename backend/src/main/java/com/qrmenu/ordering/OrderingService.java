@@ -31,7 +31,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
@@ -47,8 +46,6 @@ import org.springframework.transaction.annotation.Transactional;
 public class OrderingService {
 
     private static final List<OrderStatus> PAYABLE_STATUSES = List.of(OrderStatus.DRAFT, OrderStatus.PAYMENT_FAILED);
-    private static final List<OrderItemStatus> UNDECIDED_OR_PREPARING_STATUSES =
-            List.of(OrderItemStatus.PENDING_REVIEW, OrderItemStatus.PREPARING);
 
     /**
      * Gap-analysis #8 reporting (Section 13.4: "Payment + immutable Order/OrderItem
@@ -243,15 +240,23 @@ public class OrderingService {
     }
 
     /**
-     * Section 6: kasa ACCEPT - AWAITING_STORE_ACCEPTANCE -> IN_KITCHEN. Every KDS entry
-     * point (getKitchenQueue, below) only ever reads IN_KITCHEN orders, so this is the
-     * one and only door into the kitchen queue now.
+     * Section 6: kasa ACCEPT - AWAITING_STORE_ACCEPTANCE -> IN_KITCHEN. Every in-progress
+     * queue entry point (getKitchenQueue, below) only ever reads IN_KITCHEN orders, so
+     * this is the one and only door into that queue now. Product decision: there is no
+     * separate item-level kitchen decision anymore - accepting the order auto-accepts
+     * the full ordered quantity of every item (OrderItem.acceptFully), since the cashier
+     * ACCEPT is the single decision point in the flow (Section 6:
+     * AWAITING_STORE_ACCEPTANCE -> ACCEPT -> PREPARING -> READY -> COMPLETED).
      */
     @Transactional
     public CustomerOrder acceptOrder(UUID branchId, UUID orderId, UUID actorStaffUserId) {
         CustomerOrder order = requireOrderInBranch(branchId, orderId);
         order.markInKitchen();
         orderRepository.save(order);
+        for (OrderItem item : orderItemRepository.findAllByOrderId(order.getId())) {
+            item.acceptFully();
+            orderItemRepository.save(item);
+        }
         auditService.record(order.getBusinessId(), actorStaffUserId, "Order", order.getId(), "ACCEPTED_BY_STORE", null);
         notifyOrderStatusChanged(order);
         return order;
@@ -307,6 +312,21 @@ public class OrderingService {
     }
 
     /**
+     * Section 6/8: Kasa'nın "Hazır - Teslim Bekliyor" bölümü - branch teslimat
+     * modelinden bağımsız (WAITER_DELIVERY dahil) her READY sipariş, item detayıyla
+     * birlikte. Kasa'nın kabul ettiği bir sipariş PREPARING -> READY olunca
+     * getKitchenQueue'dan (yalnızca IN_KITCHEN) düşer - bu metot olmadan READY bir
+     * sipariş, teslim/tamamlama işaretlenene kadar Kasa ekranında hiçbir yerde
+     * görünmezdi.
+     */
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public List<KitchenQueueOrderView> getReadyOrders(UUID branchId) {
+        tenantService.requireBusinessIdForBranch(branchId);
+        List<CustomerOrder> orders = orderRepository.findAllByBranchIdAndStatusOrderByOrderNumberAsc(branchId, OrderStatus.READY);
+        return buildKitchenQueueViews(orders);
+    }
+
+    /**
      * Section 4, screen #8 "Pickup board": every READY order for a CUSTOMER_PICKUP
      * branch, oldest first - only what a kiosk display needs (order numbers), never
      * item/price detail. Public/unauthenticated like the menu endpoint (Section 5's
@@ -324,42 +344,38 @@ public class OrderingService {
     }
 
     /**
-     * The kitchen's one-time per-item accept/reject decision (Section 6). Recomputes
-     * the order-level rollup afterward - a fully-rejected order (acceptedQuantity == 0
-     * on every item) reaches READY exactly like a fully-accepted one, see
-     * CustomerOrder.markReady Javadoc.
+     * IN_KITCHEN -> READY (Section 6/8): a single order-level action, not an item-by-item
+     * rollup - product decision removed the separate per-item ready/served steps, so the
+     * cashier marks the whole order ready at once and every item moves with it.
      */
     @Transactional
-    public KitchenQueueOrderView decideOrderItem(UUID branchId, UUID orderItemId, int acceptedQuantity) {
-        OrderItem item = orderItemRepository
-                .findById(orderItemId)
-                .orElseThrow(() -> new ResourceNotFoundException("Order item not found: " + orderItemId));
-        CustomerOrder order = requireOrderInBranch(branchId, item.getOrderId());
-        item.decide(acceptedQuantity);
-        orderItemRepository.save(item);
-        recalculateOrderReadiness(order);
+    public KitchenQueueOrderView markOrderReady(UUID branchId, UUID orderId) {
+        CustomerOrder order = requireOrderInBranch(branchId, orderId);
+        for (OrderItem item : orderItemRepository.findAllByOrderId(order.getId())) {
+            item.markReady();
+            orderItemRepository.save(item);
+        }
+        order.markReady();
+        orderRepository.save(order);
         notifyOrderStatusChanged(order);
         return buildKitchenQueueView(order);
-    }
-
-    @Transactional
-    public KitchenQueueOrderView markOrderItemReady(UUID branchId, UUID orderItemId) {
-        return transitionOrderItem(branchId, orderItemId, OrderItem::markReady, true);
-    }
-
-    @Transactional
-    public KitchenQueueOrderView markOrderItemServed(UUID branchId, UUID orderItemId) {
-        return transitionOrderItem(branchId, orderItemId, OrderItem::markServed, false);
     }
 
     /**
      * READY -> COMPLETED (Section 6, Milestone 9): staff confirms the order was
      * delivered (WAITER_DELIVERY) or picked up (CUSTOMER_PICKUP). Removes it from the
-     * pickup board and the branch's active-orders views.
+     * pickup board and the branch's active-orders views. Every item moves to SERVED in
+     * lockstep (same "single order-level action" reasoning as markOrderReady) so
+     * customer-facing tracking (OrderTrackingController) stays accurate without a
+     * separate per-item staff step.
      */
     @Transactional
     public CustomerOrder completeOrder(UUID branchId, UUID orderId) {
         CustomerOrder order = requireOrderInBranch(branchId, orderId);
+        for (OrderItem item : orderItemRepository.findAllByOrderId(order.getId())) {
+            item.markServed();
+            orderItemRepository.save(item);
+        }
         order.markCompleted();
         orderRepository.save(order);
         notifyOrderStatusChanged(order);
@@ -367,35 +383,12 @@ public class OrderingService {
     }
 
     /**
-     * Shared by markOrderItemReady/markOrderItemServed - deliberately not
-     * @Transactional itself (only called from those two already-@Transactional public
-     * methods): annotating a method only reachable via an internal `this.` call would
-     * be silently ignored, since Spring's proxy-based @Transactional only intercepts
-     * calls that go through the bean proxy from outside the class (same pitfall as
-     * @Async - see MockPaymentSimulationDispatcher's Javadoc from Milestone 5).
-     */
-    private KitchenQueueOrderView transitionOrderItem(
-            UUID branchId, UUID orderItemId, Consumer<OrderItem> transition, boolean recomputeReadiness) {
-        OrderItem item = orderItemRepository
-                .findById(orderItemId)
-                .orElseThrow(() -> new ResourceNotFoundException("Order item not found: " + orderItemId));
-        CustomerOrder order = requireOrderInBranch(branchId, item.getOrderId());
-        transition.accept(item);
-        orderItemRepository.save(item);
-        if (recomputeReadiness) {
-            recalculateOrderReadiness(order);
-        }
-        notifyOrderStatusChanged(order);
-        return buildKitchenQueueView(order);
-    }
-
-    /**
      * Section 5: read-only, cookie/session-independent order lookup by
      * orderTrackingToken - the raw token is never stored, only its hash (Section 2).
      * REPEATABLE_READ: this reads the order and its items as two separate SELECTs:
-     * under the default READ COMMITTED, a kitchen decision committing in the gap
-     * between them (e.g. a KDS "ready" click) could be reflected in one SELECT but not
-     * the other, producing an internally inconsistent response - an order still
+     * under the default READ COMMITTED, a concurrent order-level mutation committing in
+     * the gap between them (e.g. markOrderReady) could be reflected in one SELECT but
+     * not the other, producing an internally inconsistent response - an order still
      * reported IN_KITCHEN whose item is already READY. Confirmed live while manually
      * testing the SSE-driven tracking page: the customer-facing status badge lagged
      * behind the item-level status it was rendered alongside in the very same response.
@@ -456,20 +449,6 @@ public class OrderingService {
             throw new ResourceNotFoundException("Order not found: " + orderId);
         }
         return order;
-    }
-
-    /** IN_KITCHEN -> READY once no item is still PENDING_REVIEW/PREPARING (Section 6). */
-    private void recalculateOrderReadiness(CustomerOrder order) {
-        if (order.getStatus() != OrderStatus.IN_KITCHEN) {
-            return;
-        }
-        boolean stillInProgress = orderItemRepository.findAllByOrderId(order.getId()).stream()
-                .map(OrderItem::getStatus)
-                .anyMatch(UNDECIDED_OR_PREPARING_STATUSES::contains);
-        if (!stillInProgress) {
-            order.markReady();
-            orderRepository.save(order);
-        }
     }
 
     private void notifyOrderStatusChanged(CustomerOrder order) {

@@ -16,8 +16,11 @@ import java.util.UUID;
  * add-to-cart time, not a live reference to Product (Section 5: "Product'a canlı
  * referans değil"; a later menu edit must not retroactively change this order).
  *
- * acceptedQuantity/rejectedQuantity exist in the confirmed domain model (Section 5);
- * Milestone 6's kitchen accept/reject decision (decide()) is what actually sets them.
+ * acceptedQuantity/rejectedQuantity exist in the confirmed domain model (Section 5).
+ * Product decision (superseding Milestone 6's per-item kitchen decision): the cashier's
+ * order-level ACCEPT (OrderingService.acceptOrder) is the only decision point now -
+ * acceptFully() auto-accepts the full ordered quantity for every item, so
+ * rejectedQuantity stays 0 unless the whole order is rejected pre-acceptance (Section 6).
  */
 @Entity
 @Table(name = "order_item")
@@ -82,22 +85,18 @@ public class OrderItem {
     }
 
     /**
-     * PENDING_REVIEW -> PREPARING (acceptedQuantity > 0) or REJECTED (acceptedQuantity
-     * == 0, tam red) - the kitchen's one-time decision (Section 6 invariant:
-     * "acceptedQuantity + rejectedQuantity = orderedQuantity ... karar anında set
-     * edilir, sonradan değişmez").
+     * PENDING_REVIEW -> PREPARING, full ordered quantity accepted. Called once per item
+     * from OrderingService.acceptOrder when the cashier accepts the whole order - there
+     * is no separate per-item kitchen decision anymore (product decision, see class
+     * Javadoc).
      */
-    public void decide(int acceptedQuantity) {
+    public void acceptFully() {
         if (status != OrderItemStatus.PENDING_REVIEW) {
-            throw new IllegalStateException("Cannot decide an order item in status " + status);
+            throw new IllegalStateException("Cannot accept an order item in status " + status);
         }
-        if (acceptedQuantity < 0 || acceptedQuantity > orderedQuantity) {
-            throw new IllegalArgumentException(
-                    "acceptedQuantity must be between 0 and " + orderedQuantity + ": " + acceptedQuantity);
-        }
-        this.acceptedQuantity = acceptedQuantity;
-        this.rejectedQuantity = orderedQuantity - acceptedQuantity;
-        this.status = acceptedQuantity == 0 ? OrderItemStatus.REJECTED : OrderItemStatus.PREPARING;
+        this.acceptedQuantity = this.orderedQuantity;
+        this.rejectedQuantity = 0;
+        this.status = OrderItemStatus.PREPARING;
     }
 
     public void markReady() {

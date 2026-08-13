@@ -77,10 +77,13 @@ public class StaffReportingController {
     }
 
     /**
-     * Gap-analysis #14 (Section 11 💡): mutfak ekranında gösterilebilecek küçük bir ciro
+     * Gap-analysis #14 (Section 11 💡): Kasa ekranında gösterilebilecek küçük bir ciro
      * özeti - ayrı bir permission'la (REPORT_FINANCIAL_SUMMARY_VIEW) korunur, düz
-     * REPORT_VIEW'dan bağımsız, böylece işletme bunu KITCHEN_STAFF'a açmadan
-     * BRANCH_MANAGER/BUSINESS_ADMIN'e gösterebilir.
+     * REPORT_VIEW'dan bağımsız, böylece işletme bunu CASHIER'a açmadan
+     * BRANCH_MANAGER/BUSINESS_ADMIN'e gösterebilir. Endpoint yolu (/kitchen-summary) ve
+     * DTO adı, ayrı bir Mutfak/KDS ekranı kaldırıldıktan sonra da bilinçli olarak
+     * değiştirilmedi - çalışan, test edilmiş bir URL'yi kozmetik nedenle yeniden
+     * adlandırmak gereksiz churn olurdu (bkz. RefundController'ın aynı gerekçesi).
      */
     @GetMapping("/api/staff/branches/{branchId}/reports/kitchen-summary")
     public KitchenFinancialSummaryResponse kitchenFinancialSummary(

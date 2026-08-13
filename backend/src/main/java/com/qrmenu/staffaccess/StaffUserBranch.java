@@ -9,7 +9,7 @@ import jakarta.persistence.Table;
 import java.util.UUID;
 
 /**
- * Section 5: "StaffUser *-* Branch (yalnızca BRANCH_MANAGER/KITCHEN_STAFF için
+ * Section 5: "StaffUser *-* Branch (yalnızca BRANCH_MANAGER/CASHIER için
  * scoping)". A plain join entity (not a JPA @ManyToMany collection), same "every id
  * visible in code" convention as TableQrToken/BranchProduct. BUSINESS_ADMIN has no
  * rows here - their scope is every branch in their business, checked via businessId.

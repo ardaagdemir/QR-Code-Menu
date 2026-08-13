@@ -11,7 +11,7 @@ public enum Permission {
     BRANCH_MANAGE,
     QR_MANAGE,
     STAFF_MANAGE,
-    KITCHEN_DECIDE,
+    ORDER_PREPARE,
     REFUND_ISSUE,
     ORDER_HISTORY_VIEW,
     AUDIT_VIEW,
