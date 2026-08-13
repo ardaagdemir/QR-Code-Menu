@@ -9,6 +9,7 @@
  * sidebar+topbar+içerik zincirinin tamamını yeniden temalar - başka hiçbir route bu class'ı
  * almadığından "Tide" kimliği geri kalan her ekranda birebir korunur. */
 .warm {
+  --font-family-display: var(--font-display-warm), var(--font-family);
   --color-bg: #fbf1e6;
   --color-surface: #f1e0c8;
   --color-surface-raised: #ffffff;
