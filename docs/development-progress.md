@@ -9,9 +9,10 @@ dikkat" özetidir.
 **Genel durum:** Backend `com.qrmenu` modüler monolit (Spring Boot 3.5.3, Java 21, Maven, PostgreSQL 16, Flyway
 V1–V11). İki frontend uygulaması var: `customer-web` (Next.js 16, `app/t/[token]`, `app/order/track/[token]`) ve
 `staff-web` (Next.js 16, port 3002 — gerçek StaffUser login + admin ekranları + pickup board, Milestone 8/9). 10
-modül var: `tenant`, `customersession`, `menu`, `ordering`, `payment`, `kitchen`, `notification`, `refund`,
-`staffaccess`, `audit` (+ modül-olmayan `shared`/`shared.outbox`). Tüm milestone'lar (1-9) tamamlandı. Git deposu
-hâlâ **başlatılmadı** — hiçbir commit yok.
+modül var: `tenant`, `customersession`, `menu`, `ordering`, `payment`, `notification`, `refund`,
+`staffaccess`, `audit` (+ modül-olmayan `shared`/`shared.outbox`) — ayrı bir `kitchen` modülü/ekranı yok, sipariş
+hazırlama akışı `ordering`/Kasa altında (bkz. bu dosyanın alt kısımlarındaki "Mutfak/KDS kaldırıldı" kararları).
+Tüm milestone'lar (1-9) tamamlandı.
 
 ---
 
@@ -2027,3 +2028,215 @@ değişti. Local `docker compose up` akışı değişmeden çalışıyor (aşağ
   loud-fail verdiği ayrıca doğrulandı (`INTERNAL_ADMIN_TOKEN` deseniyle tutarlı). İzole test stack'i ve imajları
   doğrulama sonrası temizlendi.
 - Kapsam dışı bırakılanlar (kullanıcı talimatıyla): backup, scheduler isolation, logging, CI, resource limits.
+
+---
+
+## Ürün Kararı — Ayrı Mutfak/KDS Ekranı ve `KITCHEN_STAFF` Rolü Kaldırıldı — ✅ COMPLETED
+
+Kullanıcı kararı: sipariş operasyon modeli sadeleştirildi. Ayrı bir Mutfak/KDS bölümü artık yok;
+`KITCHEN_STAFF` rolü kaldırıldı; sipariş operasyonunun tamamı (görüntüleme, kabul/red,
+PREPARING → READY → COMPLETED akışı) **Kasa** ekranından, `BUSINESS_ADMIN`/`BRANCH_MANAGER`/
+`CASHIER` (işletme sahibi/müdürü/çalışanı) tarafından yürütülüyor.
+
+**Tasarım (uygulamadan önce):** Ayrı bir `kitchen` backend modülü/controller'ı yerine, mevcut
+`OrderControlController` (ordering modülü, `/api/staff/branches/{branchId}/orders`) genişletildi -
+eski `KitchenController`'ın (`/api/kitchen/**`, `Permission.KITCHEN_DECIDE`) sorgu/komut
+uçları (queue/decide/ready/served/stream) buraya taşındı, `Permission.KITCHEN_DECIDE` →
+`Permission.ORDER_PREPARE` olarak yeniden adlandırılıp CASHIER'a da verildi (önceden yalnızca
+BUSINESS_ADMIN/BRANCH_MANAGER'da vardı). `OrderingService`'in preparation state machine'i
+(`getKitchenQueue`/`decideOrderItem`/`markOrderItemReady`/`markOrderItemServed`, `OrderStatus.
+IN_KITCHEN`, `OrderItemStatus.PENDING_REVIEW/PREPARING/READY/SERVED`) bilinçli olarak
+**değiştirilmedi** - bunlar hâlâ gerçekten ihtiyaç duyulan iş mantığı, yalnızca web katmanı
+sadeleşti. `RefundController`'ın `/api/kitchen/branches/{branchId}/orders/{search,refunds,
+complete}` uçları da bilinçli olarak **taşınmadı** - zaten kendi javadoc'unda "çalışan test
+edilmiş bir URL'yi kozmetik nedenle yeniden adlandırmak gereksiz churn olurdu" diye belgelenmiş
+bir önceki karar, aynı gerekçe burada da geçerli.
+
+**Uygulama:**
+
+- **Backend:** `Permission.KITCHEN_DECIDE` → `ORDER_PREPARE` (rename). `StaffRole.KITCHEN_STAFF`
+  enum değeri tamamen kaldırıldı; `CASHIER` artık `ORDER_PREPARE`'ı da alıyor. `com.qrmenu.kitchen`
+  paketi (`KitchenController` + 4 DTO) silindi; `OrderControlController`'a yeni uçlar eklendi:
+  `GET /orders/in-progress` (eski `getKitchenQueue`, ORDER_VIEW), `GET /orders/ready` (yeni -
+  aşağıya bkz.), `GET /orders/stream` (eski kitchen SSE kanalı, artık ORDER_VIEW ile - önceden
+  CASHIER bu kanala KITCHEN_DECIDE eksikliğinden 403 alıyordu, fark edilmemiş bir hataydı, bu
+  değişiklikle kendiliğinden düzeldi), `POST /orders/items/{id}/{decide,ready,served}`
+  (ORDER_PREPARE). `DecideOrderItemRequest` DTO'su `ordering.web.dto`'ya taşındı;
+  `KitchenOrderResponse`/`KitchenOrderItemResponse` yerine zaten var olan (superset)
+  `OrderControlOrderResponse`/`OrderControlOrderItemResponse` reuse edildi. Yeni `V23__remove_
+  kitchen_staff_role.sql` migration: var olabilecek `role='KITCHEN_STAFF'` satırlarını
+  `CASHIER`'a taşıyıp `staff_user_role_check` constraint'ini daraltıyor.
+- **Backend (Kasa'nın "Hazır" gap'i - uygulama sırasında bulunan tasarım eksiği):**
+  `getKitchenQueue` (in-progress) yalnızca `IN_KITCHEN` durumundaki siparişleri döndürüyor - bir
+  sipariş son kalemi de "Hazır" işaretlenince otomatik `READY`'e yükselip bu listeden düşüyor
+  (mevcut, değiştirilmeyen davranış). Eski ayrı KDS ekranında da aynı durum vardı ve "teslim
+  edildi" asıl tamamlama işlemi zaten ayrı bir ekrandan (İadeler/sipariş arama) yapılıyordu - ama
+  kullanıcının "Kasa, PREPARING → READY → COMPLETED akışının **tek** operasyon ekranı olsun"
+  talimatıyla bu yeterli değildi. Yeni `OrderingService.getReadyOrders` + `GET /orders/ready`
+  eklendi (branch teslimat modelinden bağımsız, pickup board'un aksine WAITER_DELIVERY dahil her
+  READY sipariş) - Kasa'daki üçüncü bölüm ("Hazır · Teslim Bekliyor") artık `Permission.
+  ORDER_COMPLETE` ile korunan mevcut complete uç noktasını (RefundController, değişmedi)
+  çağırarak siparişi tek ekrandan tamamlayabiliyor.
+- **Frontend (staff-web):** `app/kitchen/[branchId]` route'u tamamen silindi. `app/cashier/
+  [branchId]/page.tsx` üç bölümlü tek ekrana genişletildi: "Onay Bekleyen Siparişler" (mevcut) +
+  "Hazırlanıyor" (eski KDS board, item bazlı decide/ready/served) + "Hazır · Teslim Bekliyor"
+  (yeni, complete butonu). Tek SSE bağlantısı (`buildOrderStreamUrl`, eski `buildKitchenStreamUrl`
+  yerine) her üç listeyi de "bir şey değişti, yeniden çek" sinyaliyle tazeliyor. `lib/staffNav.ts`
+  içinden "Mutfak" nav item'ı ve `KITCHEN_STAFF` rol referansları kaldırıldı. `lib/api.ts`:
+  `StaffContext.role`/`StaffRole` tiplerinden `KITCHEN_STAFF` düşürüldü; `KitchenOrderItem`/
+  `KitchenOrder` tipleri kaldırılıp `OrderControlItem`/`OrderControlOrder` tek tip ailesi olarak
+  birleştirildi (`KitchenOrderItemOption` → `OrderItemOptionSummary`); `getKitchenQueue`/
+  `decideOrderItem`/`markOrderItemReady`/`markOrderItemServed`/`buildKitchenStreamUrl` yeni
+  endpoint'lere taşındı, yeni `getReadyOrders` eklendi. `app/staff/page.tsx` (personel oluşturma
+  formu), `app/refunds/[branchId]`, `app/branches` sayfalarındaki "Mutfak" linkleri/seçenekleri
+  kaldırıldı; `app/page.tsx` (login) ve `app/pickup/[branchId]` yorumlarındaki "mutfak" referansı
+  düzeltildi. `getKitchenFinancialSummary` çağrısı (Gap-Analysis #14 ciro özeti) Kasa ekranına
+  taşındı - endpoint/DTO adı (`kitchen-summary`/`KitchenFinancialSummaryResponse`) RefundController
+  ile aynı "çalışan URL'yi kozmetik nedenle değiştirme" gerekçesiyle bilinçli olarak değiştirilmedi.
+- **Testler:** `KitchenFlowIntegrationTest` silinip yerine `OrderPreparationFlowIntegrationTest`
+  (yeni uç noktalarla, + yeni `aReadyOrderAppearsInTheReadyListUntilCompleted` testi) yazıldı.
+  `OrderControlFlowIntegrationTest`, `StaffAccessFlowIntegrationTest`, `ReportingFlowIntegrationTest`,
+  `RefundFlowIntegrationTest`, `DailyCloseFlowIntegrationTest`, `PickupToCompletionEndToEndTest`,
+  `CrossTenantBranchAccessIntegrationTest` yeni endpoint'lere güncellendi.
+  `Announcement`/`ChainComparison`/`Expense`/`MediaUpload`/`BulkAssignBranches`/`BusinessSettings`
+  Flow testlerindeki "KITCHEN_STAFF izni yok" senaryoları CASHIER'a çevrildi (CASHIER de aynı
+  permission'lardan yoksun). **Dört test tamamen silindi** (`DailyCloseFlowIntegrationTest.
+  kitchenStaffCannotAccessDailyClose/kitchenStaffCannotExportDailyCloseExcel`,
+  `ReportingFlowIntegrationTest.kitchenStaffCannotViewReports`,
+  `OwnerNotificationFlowIntegrationTest.kitchenStaffCannotAccessNotificationEndpoints`,
+  `OrderControlFlowIntegrationTest.kitchenStaffCannotAcceptOrRejectOrders`) - bunların test ettiği
+  sınır ("REPORT_VIEW/ORDER_* iznine sahip olmayan bir personel rolü") KITCHEN_STAFF kaldırıldıktan
+  sonra artık **imkansız**: kalan üç rolün (BUSINESS_ADMIN/BRANCH_MANAGER/CASHIER) hepsi zaten
+  REPORT_VIEW + tüm ORDER_* izinlerine sahip - bu doğrudan kullanıcının "üç rol de sipariş
+  operasyonunu tamamen yapabilsin" talimatının bir sonucu, test eksikliği değil.
+- **`product-requirements.md` güncellendi:** Bölüm 1 (dört kullanıcı grubu → üç), Bölüm 8
+  ("Mutfak Akışı" → "Sipariş Hazırlama Akışı (Kasa üzerinden)"), Bölüm 11 (`KITCHEN_STAFF` satırı
+  kaldırıldı, `KITCHEN_VIEW`/`KITCHEN_UPDATE` örnek permission'ları `ORDER_PREPARE` ile
+  değiştirildi), Bölüm 19.3 (nav bilgi mimarisinden "Mutfak" kaldırıldı, "Kitchen Display System"
+  alt bölümü Kasa'nın üçüncü bölümü olarak yeniden yazıldı), modül tablosu (`kitchen` satırı
+  `ordercontrol` ile birleşti), M7 roadmap notuna sonradan-kaldırıldı notu eklendi, Bölüm 28'e
+  19. madde eklendi.
+
+**Doğrulama:**
+
+- Backend `mvn test`: tüm suite **131/131 yeşil** (0 hata/0 başarısız - önceki 130'dan +9 yeni/
+  değişen `OrderPreparationFlowIntegrationTest` testi, -8 silinen obsolete test = net +1).
+- `staff-web`: `next build` (tsc + Turbopack) ve `eslint .` temiz; route tablosunda `/kitchen`
+  artık hiç yok.
+- **Gerçek Docker Compose + Chrome doğrulaması (uçtan uca):** Yeni bir business/branch/masa/QR/
+  ürün + `BUSINESS_ADMIN` staff user internal API ile oluşturuldu. `customer-web`'de gerçek QR
+  check-in → sepete ekle → mock ödeme akışı çalıştırılıp sipariş `AWAITING_STORE_ACCEPTANCE`'a
+  düştü. `staff-web`'de giriş yapılıp **Kasa** ekranına gidildi: sol navigasyonda "Mutfak" linki
+  yok (yalnızca "Kasa"); Kasa ekranı üç bölümlü (Onay Bekleyen / Hazırlanıyor / Hazır · Teslim
+  Bekliyor) tek sayfa olarak doğrulandı. Sırasıyla: **Kabul Et** → sipariş anlık (SSE, "Canlı"
+  göstergesi) "Hazırlanıyor" bölümüne düştü; **Onayla** (item decide) → "Hazırlanıyor" rozetine
+  geçti; **Hazır** → sipariş "Hazırlanıyor" bölümünden kayboldu (READY'e yükseldiği için, beklenen
+  davranış) ve "Hazır · Teslim Bekliyor" bölümünde göründü (yeni eklenen üçüncü bölüm); **Teslim
+  Edildi / Tamamlandı** → sipariş oradan da kayboldu (`COMPLETED`). Şube/staff listelerinde
+  "Mutfak" kısayolu yok, yalnızca "Kasa"/"İadeler"/"Raporlar". Personel oluşturma formunda rol
+  seçenekleri: İşletme Yöneticisi/Şube Sorumlusu/Kasa (Mutfak Personeli yok).
+- **Kapsam dışı, ayrıca bulunan (düzeltilmedi):** customer-web'in ödeme başarı ekranı hâlâ eski
+  "Siparişiniz mutfağa iletildi" metnini gösteriyor - bu, Gap-Analysis #1'in (kasa kabul/red
+  kapısı) customer-web tarafında hiç güncellenmemiş bir kalıntı kopya metni, bu revizyonun
+  kapsamına girmiyor (customer tracking/SSE akışını bozmama talimatı + "başka feature'a geçme").
+- Git commit/push kullanıcı istemedikçe yapılmadı.
+
+---
+
+## Ürün Kararı — Item Bazlı Kitchen Decision Adımı Kaldırıldı + Son `/api/kitchen/**` Kalıntıları Taşındı — ✅ COMPLETED
+
+Bir önceki revizyon (yukarıda) ayrı Mutfak/KDS ekranını ve `KITCHEN_STAFF` rolünü
+kaldırmıştı ama iki kalıntı bırakmıştı: (1) Kasa'nın "Hazırlanıyor" bölümünde hâlâ
+item bazlı bir "Onayla" (decide) + ayrı "Hazır"/"Teslim Edildi" adımları vardı, (2)
+`RefundController` (search/refunds/complete) hâlâ `/api/kitchen/**` altındaydı, kendi
+javadoc'unda bilinçli olarak taşınmadığı belirtilmişti. Kullanıcı bu ikisini de
+kapsam dışı bırakmadı, açıkça kaldırılmasını istedi; ayrıca customer-web'in ödeme
+başarı ekranındaki eski "Siparişiniz mutfağa iletildi" metni de bu revizyonun kapsamına
+alındı.
+
+**Tasarım (uygulamadan önce):** Akış artık tam olarak `AWAITING_STORE_ACCEPTANCE →
+ACCEPT → PREPARING → READY → COMPLETED` - PREPARING iç adı hâlâ `IN_KITCHEN` (DB
+constraint + tüm mevcut kod, kozmetik enum rename'i gereksiz churn olurdu, aynı
+gerekçe `RefundController`/`kitchen-summary` kalıntı isimlerinde zaten kullanılmıştı).
+Kasa ACCEPT ettiğinde her `OrderItem` otomatik ve tam adette kabul edilir
+(`OrderItem.acceptFully()`, eski `decide(int)`'in yerine) - artık `acceptedQuantity`
+her zaman `orderedQuantity`'ye eşit, `rejectedQuantity` her zaman 0 (item bazlı kısmi
+red imkansız hale geldi, yalnızca kasa REJECT ile tüm sipariş reddedilebilir).
+PREPARING → READY, item bazlı bir rollup değil, tek bir sipariş bazlı Kasa aksiyonu
+(`OrderingService.markOrderReady` - tüm item'ları da bulk `READY`'e taşır).
+`completeOrder` (READY → COMPLETED) de aynı şekilde tüm item'ları bulk `SERVED`'a
+taşır - böylece customer tracking'in item bazlı status'ü (`OrderTrackingController`)
+hâlâ doğru bilgi veriyor, sadece artık manuel bir personel adımı değil, otomatik bir
+yan etki. `OrderItemStatus.REJECTED`/`SERVED` değerleri DB constraint'te kalıyor
+(kullanılmaya devam ediyor, sadece artık kimin tetiklediği değişti) - enum'dan
+kaldırmak gereksiz migration churn'ü olurdu.
+
+**Uygulama:**
+
+- **Backend:** `OrderItem.decide(int)` → `acceptFully()` (parametresiz, her zaman tam
+  kabul). `OrderingService.acceptOrder` artık order'ı `IN_KITCHEN`'a taşırken tüm
+  item'ları da `acceptFully()` ile geçiriyor. `decideOrderItem`/`markOrderItemReady`/
+  `markOrderItemServed`/`transitionOrderItem`/`recalculateOrderReadiness` silindi;
+  yerine tek `markOrderReady(branchId, orderId)` geldi (order + tüm item'lar bulk
+  READY). `completeOrder` tüm item'ları bulk SERVED'a taşıyacak şekilde genişledi.
+  `OrderControlController`: `POST /items/{id}/decide` ve `POST /items/{id}/ready`/
+  `/served` kaldırıldı; yerine `POST /{orderId}/ready` geldi (Permission.ORDER_PREPARE,
+  değişmedi). `DecideOrderItemRequest` DTO'su silindi. `RefundController`'ın
+  `@RequestMapping`'i `/api/kitchen/branches/{branchId}/orders` →
+  `/api/staff/branches/{branchId}/orders` (OrderControlController ile aynı prefix,
+  route suffix'leri çakışmıyor - search/{orderId}/refunds/{orderId}/complete vs.
+  pending-acceptance/accept/reject/in-progress/ready/stream/{orderId}/ready). Artık
+  hiçbir backend endpoint'i `/api/kitchen/**` altında değil.
+- **Frontend (customer-web):** `PaymentSheet.tsx`'teki "Ödeme başarılı. Siparişiniz
+  mutfağa iletildi." → "Ödeme başarılı. Siparişiniz işletmeye iletildi, onay
+  bekleniyor." (gerçek durum `AWAITING_STORE_ACCEPTANCE`, doğrudan `IN_KITCHEN` değil).
+- **Frontend (staff-web):** `lib/api.ts`: `decideOrderItem`/`markOrderItemReady`/
+  `markOrderItemServed` kaldırıldı, yerine tek `markOrderReady(branchId, orderId)`
+  (`POST /{orderId}/ready`); `searchOrderByNumber`/`createRefund`/`completeOrder`
+  `/api/kitchen/**` → `/api/staff/**`. `cashier/[branchId]/page.tsx`: "Hazırlanıyor"
+  bölümündeki item bazlı Onayla/Hazır/Teslim Edildi UI'ı (adet input'u, per-item
+  status badge/sıralama) tamamen kaldırıldı - artık item'lar salt okunur listeleniyor,
+  kart başına tek bir "Hazır" butonu var (aynı "Onay Bekleyen"/"Hazır · Teslim
+  Bekliyor" bölümlerindeki sade item listesi deseniyle tutarlı). Kullanılmayan
+  `.itemTop`/`.itemName`/`.itemActions`/`.quantityInput` CSS sınıfları silindi.
+- **Testler:** `OrderPreparationFlowIntegrationTest`: decide/ready/served item
+  çağrıları kaldırılıp tek `POST /{orderId}/ready` ile değiştirildi;
+  `aFullyRejectedSingleItemOrderStillRollsUpToReady` testi tamamen silindi (test ettiği
+  senaryo - item bazlı kısmi red - artık imkansız). `RefundFlowIntegrationTest`,
+  `PickupToCompletionEndToEndTest`, `DailyCloseFlowIntegrationTest`,
+  `ReportingFlowIntegrationTest`, `CrossTenantBranchAccessIntegrationTest`: kalan
+  `/api/kitchen/**` çağrıları `/api/staff/**`'e taşındı, decide adımları kaldırıldı
+  (accept zaten otomatik tam kabul ediyor).
+- **`product-requirements.md` güncellendi:** Bölüm 6 (akış diyagramı `ACCEPT →
+  PREPARING → READY → COMPLETED`), Bölüm 7.1 (Order state diyagramı), Bölüm 7.3 (item
+  bazlı red artık kısmi refund önkoşulu değil, ayrı bir kasiyer aksiyonu), Bölüm 8
+  (item bazlı kabul/red modelinin kaldırıldığı açıkça belirtildi), Bölüm 9 (müşteri
+  bildirim listesinden "mutfakta" kaldırıldı), Bölüm 11 (`ORDER_PREPARE` açıklaması),
+  Bölüm 19.3 (Kasa "Hazırlanıyor" bölümü açıklaması), M7 roadmap notu, Bölüm 28'e 20.
+  madde eklendi.
+
+**Doğrulama:**
+
+- Backend `mvn test`: tüm suite **130/130 yeşil** (0 hata/0 başarısız - önceki
+  131'den net -1: bir obsolete test silindi, hiçbiri eklenmedi).
+- `staff-web`: `tsc --noEmit`, `eslint .`, `next build` temiz. `customer-web`:
+  `tsc --noEmit`, `eslint .` temiz.
+- **Gerçek Docker Compose + Chrome doğrulaması (uçtan uca, iki ayrı sipariş):**
+  Backend/staff-web/customer-web image'ları yeniden build edilip container'lar
+  yeniden başlatıldı. Yeni bir business/branch/masa/QR/ürün + `BUSINESS_ADMIN` staff
+  user internal API ile oluşturuldu. **Sipariş #1:** `customer-web`'de QR check-in →
+  sepete ekle → mock ödeme; ödeme başarı ekranında yeni metin doğrulandı ("işletmeye
+  iletildi, onay bekleniyor", eski "mutfağa iletildi" yok). `staff-web`'de giriş
+  yapılıp Kasa'ya gidildi - sol navda "Mutfak" yok. **Kabul Et** → sipariş anında
+  (SSE) "Hazırlanıyor" bölümüne düştü, **item bazlı hiçbir Onayla/karar adımı
+  olmadan** doğrudan tek "Hazır" butonuyla göründü. **Hazır** → "Hazır · Teslim
+  Bekliyor"e geçti. **Teslim Edildi / Tamamlandı** → sipariş tüm listelerden kayboldu.
+  Müşterinin takip sayfasında (`/order/track/{token}`) 5 adımlı timeline (Ödeme →
+  İşletme onayı → Hazırlanıyor → Hazır → Tamamlandı) hepsi ✓ ve item satırında
+  "Teslim edildi" doğru göründü (bulk-served otomasyonu doğrulandı). **Sipariş #2:**
+  aynı akışla ödenip Kabul Et'e kadar götürüldü, ardından **İadeler** ekranından
+  (`/api/staff/branches/{id}/orders/search`, artık `/api/kitchen/**` değil) sipariş
+  numarasıyla arandı ve 1 adet kısmi refund başlatıldı (`/api/staff/.../refunds`) -
+  "İade tamamlandı: ₺150,00" ve "Geçmiş İadeler" listesinde doğru göründü; taşınan
+  uç noktaların gerçek tarayıcıda çalıştığı doğrulandı.
+- Git commit/push kullanıcı istemedikçe yapılmadı.

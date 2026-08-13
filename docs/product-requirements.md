@@ -16,12 +16,11 @@
 
 # 1. Ürün Vizyonu
 
-✅ **CONFIRMED:** Platform yalnızca QR menü değildir. Aşağıdaki dört kullanıcı grubunun aynı operasyon üzerinde çalışmasını sağlayan restoran işletim platformudur:
+✅ **CONFIRMED:** Platform yalnızca QR menü değildir. Aşağıdaki üç kullanıcı grubunun aynı operasyon üzerinde çalışmasını sağlayan restoran işletim platformudur (revize karar: ayrı bir Mutfak kullanıcı grubu/ekranı yok — sipariş operasyonunun tamamı Kasa'dan yürütülür):
 
 1. **Müşteri:** QR → menü → sepet → online ödeme → canlı sipariş takibi.
-2. **Kasa / şube operasyonu:** Ödenmiş siparişi görür, kabul eder veya tamamını reddeder/iptal eder.
-3. **Mutfak:** Kabul edilmiş siparişi anlık görür, hazırlar, durumunu günceller.
-4. **İşletme sahibi / yönetici:** Menü, şube, masa, QR, çalışan, satış, rapor, gider ve zincir görünümünü yönetir.
+2. **Kasa / şube operasyonu:** Ödenmiş siparişi görür, kabul eder veya tamamını reddeder/iptal eder; kabul edilen siparişi hazırlama/hazır/tamamlandı akışında ilerletir.
+3. **İşletme sahibi / yönetici:** Menü, şube, masa, QR, çalışan, satış, rapor, gider ve zincir görünümünü yönetir.
 
 ✅ Tek şubeli işletmeler ve çok şubeli zincir işletmeler aynı ürün modelini kullanır.
 
@@ -161,7 +160,7 @@ DRAFT
 AWAITING_PAYMENT
   ↓ verified payment webhook
 AWAITING_STORE_ACCEPTANCE
-  ├─ ACCEPT → IN_KITCHEN
+  ├─ ACCEPT → PREPARING → READY → COMPLETED
   └─ REJECT → REJECTED_BY_STORE → FULL REFUND
 ```
 
@@ -169,8 +168,8 @@ AWAITING_STORE_ACCEPTANCE
 
 ✅ Yetkili kasa kullanıcısı siparişin tamamını:
 
-- **Kabul edebilir** → sipariş mutfağa gider.
-- **Reddedebilir/iptal edebilir** → sipariş mutfağa gitmez ve tam iade süreci başlar.
+- **Kabul edebilir** → sipariş hazırlanmaya başlar (`PREPARING`), her kalem tam adette otomatik kabul edilmiş sayılır - ayrı bir item bazlı karar adımı yoktur.
+- **Reddedebilir/iptal edebilir** → sipariş hazırlanmaya başlamaz ve tam iade süreci başlar.
 
 ✅ Red nedeni tutulmalıdır (`reasonCode` + optional note).
 
@@ -191,7 +190,7 @@ DRAFT
   → AWAITING_PAYMENT
   → PAYMENT_FAILED → AWAITING_PAYMENT
   → AWAITING_STORE_ACCEPTANCE
-      → IN_KITCHEN
+      → PREPARING (iç adı IN_KITCHEN)
       → REJECTED_BY_STORE
   → READY
   → COMPLETED
@@ -221,29 +220,33 @@ REQUESTED → PROCESSING → COMPLETED
 
 ✅ Kasa tarafından ödenmiş sipariş reddi tam refund üretir.
 
-✅ Mutfak kaynaklı kısmi red desteklenirse `RefundItem` üzerinden kısmi refund üretilebilir.
+✅ Kasa, kabul edilmiş bir sipariş içinde tek tek kalemler için de (`RefundItem` üzerinden) kısmi refund başlatabilir - bu, item bazlı bir kabul/red kararı değil, tamamen ayrı bir kasiyer aksiyonudur (Bölüm 8: item bazlı bir kabul/red adımı artık yok).
 
 ---
 
-# 8. Mutfak Akışı
+# 8. Sipariş Hazırlama Akışı (Kasa üzerinden — ayrı Mutfak/KDS bölümü yok)
 
-✅ Mutfak yalnızca **kasa tarafından kabul edilmiş** siparişleri görür.
+✅ **CONFIRMED (revize karar):** Ayrı bir Mutfak/KDS ekranı ve `KITCHEN_STAFF` rolü yoktur.
+Sipariş operasyonunun tamamı — kabul/red kapısından tamamlanmaya kadar — **Kasa**
+ekranından yürütülür.
 
-✅ KDS anlık çalışır.
+✅ Kasa yalnızca **kendisinin kabul ettiği** siparişleri hazırlama listesinde görür.
 
-✅ Mutfak siparişi hazırlayıp durumunu günceller.
+✅ Kabul edilen sipariş Kasa'dan anlık (SSE) olarak PREPARING → READY akışında ilerletilir - **tek bir sipariş
+bazlı aksiyon** olarak (`Hazır` butonu); ayrı bir item bazlı kabul/red veya hazır/teslim adımı yoktur.
 
 ✅ Sipariş hazır olduğunda Order `READY` olur ve müşteriye bildirim olayı üretilir.
 
-✅ Teslim/alım sonrası `COMPLETED` olur.
+✅ Teslim/alım sonrası `COMPLETED` olur (Kasa'dan tek tıkla).
 
-✅ Önceden kararlaştırılan item/adet bazlı kabul-red modeli korunabilir:
-
-- orderedQuantity
-- acceptedQuantity
-- rejectedQuantity
-
-💡 Bu mekanizma kasa kabulünün yerine geçmez; kasa siparişin tamamını kabul/red eder, mutfak ise kabul edilmiş sipariş içindeki operasyonel istisnaları yönetebilir.
+✅ **Revize karar (bu doküman revizyonu):** Kasa ACCEPT ettiğinde her kalem otomatik ve
+tam adette kabul edilmiş sayılır - eski "item bazlı kabul/red kararı" adımı kaldırıldı.
+orderedQuantity/acceptedQuantity/rejectedQuantity alanları veri modelinde kalır (rapor/
+refund/müşteri takibi bunları okur) ama artık kasa ACCEPT'inin bir yan etkisidir, ayrı
+bir kasiyer kararı değildir. Kasa yine de kabul edilmiş bir siparişte tek tek kalemler
+için manuel kısmi refund başlatabilir (Bölüm 7.3) - bu ayrı bir aksiyondur, hazırlama
+akışının bir adımı değildir. `BUSINESS_ADMIN`/`BRANCH_MANAGER`/`CASHIER` (işletme
+sahibi/müdürü/çalışanı) bu akışın tamamına erişebilir.
 
 ---
 
@@ -258,7 +261,7 @@ REQUESTED → PROCESSING → COMPLETED
 - işletme siparişi kabul etti
 - işletme siparişi reddetti
 - refund başlatıldı / tamamlandı / başarısız
-- mutfakta hazırlanıyor
+- hazırlanıyor
 - sipariş hazır
 - sipariş tamamlandı
 
@@ -308,22 +311,22 @@ REQUESTED → PROCESSING → COMPLETED
 
 ✅ Kritik işlemler role-name yerine permission ile korunur.
 
-Önerilen roller:
+✅ **CONFIRMED (revize karar):** Ayrı bir `KITCHEN_STAFF` rolü yoktur — kaldırılmıştır.
+Sipariş operasyonuna (görüntüleme, kabul/red, hazırlama/hazır/tamamlandı) erişen roller:
 
 - `PLATFORM_ADMIN`
 - `BUSINESS_ADMIN` — işletme sahibi / merkez yönetim
-- `BRANCH_MANAGER`
-- `CASHIER`
-- `KITCHEN_STAFF`
+- `BRANCH_MANAGER` — işletme müdürü
+- `CASHIER` — işletme çalışanı / kasa
 
 Örnek permission'lar:
 
+- `ORDER_VIEW`
 - `ORDER_ACCEPT`
 - `ORDER_REJECT`
-- `ORDER_VIEW`
+- `ORDER_PREPARE` — kabul edilmiş siparişi PREPARING → READY'e ilerletme (tek, sipariş bazlı aksiyon; item bazlı bir karar adımı yok); eski `KITCHEN_DECIDE`'ın yerini alır
+- `ORDER_COMPLETE`
 - `REFUND_ISSUE`
-- `KITCHEN_VIEW`
-- `KITCHEN_UPDATE`
 - `MENU_MANAGE`
 - `BRANCH_MANAGE`
 - `TABLE_QR_MANAGE`
@@ -336,7 +339,7 @@ REQUESTED → PROCESSING → COMPLETED
 - `EXPENSE_VIEW`
 - `BUSINESS_SETTINGS_MANAGE`
 
-💡 Mutfak ekranında ciro/finansal veri gösterimi role sabitlenmez; `REPORT_FINANCIAL_SUMMARY_VIEW` permission'ı olan kullanıcıya gösterilir. Böylece işletme isterse mutfakta görünür, istemezse gizler.
+💡 Kasa ekranında ciro/finansal veri gösterimi role sabitlenmez; `REPORT_FINANCIAL_SUMMARY_VIEW` permission'ı olan kullanıcıya gösterilir. Böylece işletme isterse kasada görünür, istemezse gizler.
 
 ---
 
@@ -751,8 +754,7 @@ Desktop'ta üstte çok sayıda linkin wrap olduğu navigation kullanılmaz.
 
 **Operasyon**
 - Dashboard
-- Kasa
-- Mutfak
+- Kasa (kabul/red + hazırlama/hazır/tamamlandı akışının tek operasyon ekranı — ayrı Mutfak/KDS ekranı yok)
 - Pickup / Siparişler
 
 **Yönetim**
@@ -785,9 +787,14 @@ Login sonrası rolün kullanım amacına uygun landing page gösterilmelidir. BU
 
 gibi özetleri güçlü KPI kartlarıyla sunmalıdır.
 
-### Kasa
+### Kasa (kabul/red + hazırlama/hazır/tamamlandı — tek operasyon ekranı)
 
-Kasa ekranında bir sipariş kartının ilk bakışta şu bilgileri vermesi gerekir:
+✅ **CONFIRMED (revize karar):** Ayrı bir Kitchen Display System (KDS) ekranı yoktur. Kasa,
+sipariş operasyonunun tamamını (kabul/red kapısı + kabul edilen siparişin hazırlama →
+hazır → tamamlandı akışı) tek ekranda barındırır. BUSINESS_ADMIN/BRANCH_MANAGER/CASHIER
+(işletme sahibi/müdürü/çalışanı) bu ekranın tamamına erişebilir.
+
+Onay bekleyen bölümde bir sipariş kartının ilk bakışta şu bilgileri vermesi gerekir:
 - masa
 - sipariş numarası
 - ödeme doğrulanmış bilgisi
@@ -797,18 +804,15 @@ Kasa ekranında bir sipariş kartının ilk bakışta şu bilgileri vermesi gere
 
 `Kabul Et` birincil aksiyondur. `Reddet` destructive/secondary aksiyon olarak ayrılır ve reason seçimi/not ile kontrollü confirm flow kullanır. Bekleme süresi uzayan siparişler görsel olarak fark edilir olmalıdır.
 
-### Kitchen Display System
-
-KDS normal admin CRUD ekranı gibi tasarlanmaz. Büyük/dokunmatik ekranlarda uzaktan okunabilir olmalıdır:
+Kabul edilen sipariş aynı ekranda ayrı bir "Hazırlanıyor / Hazır" bölümüne düşer:
 - büyük order/table numarası
 - sipariş yaşı / geçen süre
 - yüksek okunabilirlikte ürün/adet
 - opsiyonların ana üründen görsel olarak ayrılması
-- büyük touch actions
-- NEW/PREPARING/READY gibi operasyonel ayrım veya eşdeğer net grouping
+- tek bir "Hazır" aksiyonu (PREPARING → READY, sipariş bazlı - item bazlı bir karar adımı yok)
 - realtime bağlantı durumu dikkat dağıtmadan görünür
 
-KDS'de finansal bilgi yalnız gereksinim varsa ikincil gösterilir; mutfak aksiyonlarını gölgelememelidir.
+Kasada finansal bilgi yalnız gereksinim varsa (`REPORT_FINANCIAL_SUMMARY_VIEW`) ikincil gösterilir; sipariş aksiyonlarını gölgelememelidir.
 
 ### Admin / CRUD ekranları
 
@@ -840,7 +844,7 @@ aynı bilgi hiyerarşisinde sunulur. Grafik için ağır bir framework eklenmesi
 - >=1024px: sidebar + desktop layout
 - 768–1023px: compact/collapsible navigation
 - <768px: drawer navigation ve tek kolon kullanılabilir yönetim ekranları
-- KDS ayrıca büyük ekran/kiosk viewport'unda test edilir
+- Kasa ayrıca büyük ekran/kiosk viewport'unda test edilir
 
 Hiçbir ana flow yatay overflow, üst üste binen sticky alan veya erişilemeyen CTA üretmemelidir.
 
@@ -852,13 +856,13 @@ Tamamlanmış sayılmak için:
 
 1. Customer menu → product → option → cart → payment → tracking akışı tek bir tutarlı ürün dili kullanır.
 2. Staff login sonrası top-link navigation yerine gerçek application shell/sidebar kullanır.
-3. Kasa ve KDS operasyonel kullanım için özel ekran hiyerarşisine sahiptir.
+3. Kasa, sipariş operasyonunun tamamı (kabul/red + hazırlama/hazır/tamamlandı) için özel ekran hiyerarşisine sahiptir.
 4. Admin sayfalarında ortak PageHeader/Form/Table/Dialog/Feedback pattern'leri vardır.
 5. Menu/Expenses gibi büyük sayfalar anlamlı feature/component'lere ayrılmıştır.
 6. Rapor ekranı dashboard seviyesinde bilgi hiyerarşisine sahiptir.
 7. Loading/empty/error/success/confirm pattern'leri tutarlıdır.
 8. Customer ve staff frontend lint/build geçer.
-9. Gerçek Chrome'da customer için 390x844, staff için desktop ve KDS için büyük ekran viewport'unda kritik flow'lar manuel/E2E doğrulanır.
+9. Gerçek Chrome'da customer için 390x844, staff için desktop ve Kasa için büyük ekran viewport'unda kritik flow'lar manuel/E2E doğrulanır.
 10. Mevcut payment/order/refund/session/permission davranışları bozulmaz.
 
 💡 Hafif bir icon library (örn. Lucide) kullanılabilir; ağır bir UI framework yalnız ciddi gerekçe varsa eklenir.
@@ -877,8 +881,7 @@ Tamamlanmış sayılmak için:
 | `customersession` | AnonymousCustomerSession, TableVisit |
 | `ordering` | Order/DRAFT cart, OrderItem snapshots, state machine, tracking token |
 | `payment` | PaymentProviderPort, attempts, webhook, idempotency |
-| `ordercontrol` | Kasa accept/reject gate ve reject reason |
-| `kitchen` | KDS, preparation/item decisions |
+| `ordercontrol` | Kasa accept/reject gate + preparation/item decisions (tek operasyon ekranı, ayrı Mutfak/KDS modülü yok) |
 | `refund` | Full/partial refund |
 | `notification` | Customer SSE/push abstractions + staff notifications |
 | `reporting` | Sales queries, daily close snapshots, Excel export |
@@ -1036,7 +1039,13 @@ Tamamlanmış sayılmak için:
 
 ## M7 — Kitchen + Ready Flow + Partial Operational Rejection
 
-- KDS
+> Not: M7'de eklenen ayrı KDS ekranı ve `KITCHEN_STAFF` rolü, sonraki bir revizyonda
+> kaldırıldı — preparation akışı artık Kasa ekranından, `ordercontrol` altında
+> yürütülüyor (bkz. Bölüm 8/11, Bölüm 28). Daha sonraki bir revizyonda item bazlı
+> accept/reject karar adımı da kaldırıldı: kasa ACCEPT ettiğinde her kalem otomatik tam
+> adette kabul edilir, PREPARING → READY tek bir sipariş bazlı aksiyondur (bkz. Bölüm 8).
+
+- KDS (sonradan Kasa'ya taşındı — yukarıdaki not)
 - item/quantity accept/reject if retained
 - preparing/ready/completed
 - customer live tracking
@@ -1189,3 +1198,5 @@ Yeni roadmap mevcut çalışan koddan sonra uygulanırken:
 16. Expense + recurring expense + receipt upload roadmap'e eklendi.
 17. “Ciro/kâr/zarar” raporu muhasebesel kâr yerine yönetimsel net sonuç olarak doğru isimlendirildi.
 18. Roadmap 13 milestone'a genişletildi ve mevcut uygulamanın gap analysis ile devam etmesi tanımlandı.
+19. **Ayrı Mutfak/KDS ekranı ve `KITCHEN_STAFF` rolü kaldırıldı** — sipariş operasyonunun tamamı (kabul/red + PREPARING/READY/COMPLETED) artık Kasa'dan, `BUSINESS_ADMIN`/`BRANCH_MANAGER`/`CASHIER` tarafından yürütülüyor; `KITCHEN_DECIDE` permission'ı `ORDER_PREPARE` olarak yeniden adlandırılıp bu üç role verildi (Bölüm 8/11).
+20. **Item bazlı kabul/red kararı kaldırıldı** — kasa ACCEPT ettiğinde her kalem otomatik ve tam adette kabul edilmiş sayılır; PREPARING → READY tek bir sipariş bazlı Kasa aksiyonudur, ayrı bir "hazır"/"teslim edildi" item adımı yoktur (Bölüm 6/8). `/api/kitchen/**` altında kalan son uçlar (`RefundController`: search/refunds/complete) `/api/staff/branches/{branchId}/orders/**` altına taşındı - artık hiçbir uç `/api/kitchen/**` altında değil.
