@@ -10,6 +10,7 @@ import {
   getCart,
   getMenu,
   removeCartItem,
+  setGuestCount as setGuestCountRequest,
   type Cart,
   type Menu,
   type MenuProduct,
@@ -21,12 +22,19 @@ import EmptyState from "@/components/ui/EmptyState";
 import ErrorState from "@/components/ui/ErrorState";
 import CartDrawer from "./CartDrawer";
 import CategoryNav from "./CategoryNav";
+import GuestCountSheet from "./GuestCountSheet";
 import MenuSection from "./MenuSection";
 import MenuSkeleton from "./MenuSkeleton";
 import PaymentSheet from "./PaymentSheet";
 import ProductOptionsSheet from "./ProductOptionsSheet";
 import VisitHeader from "./VisitHeader";
 import styles from "./page.module.css";
+
+/** Gap-analysis #17: once skipped, don't re-interrupt the same visit with the same
+ * automatic prompt again - the header control stays available to add it later. */
+function guestCountPromptDismissedKey(tableVisitId: string): string {
+  return `qrmenu.guestCountPromptDismissed.${tableVisitId}`;
+}
 
 type LoadState =
   | { status: "loading" }
@@ -98,6 +106,9 @@ export default function TableVisitPage() {
   // order (Section 2) - captured here so it's still available after later cart/payment
   // responses stop including it, for the post-payment shareable tracking link.
   const [trackingToken, setTrackingToken] = useState<string | null>(null);
+  const [guestCountSheetOpen, setGuestCountSheetOpen] = useState(false);
+  const [guestCountSubmitting, setGuestCountSubmitting] = useState(false);
+  const [guestCountError, setGuestCountError] = useState<string | null>(null);
 
   const retry = useCallback(() => {
     setState({ status: "loading" });
@@ -117,6 +128,11 @@ export default function TableVisitPage() {
           setState({ status: "ready", visit, menu });
           setCart(initialCart);
           setActiveCategoryId(menu.categories[0]?.id ?? null);
+          // Gap-analysis #17: ask once per visit, low-friction - not if already answered
+          // (visit.guestCount set) and not if the customer already skipped it this visit.
+          if (visit.guestCount == null && sessionStorage.getItem(guestCountPromptDismissedKey(visit.tableVisitId)) == null) {
+            setGuestCountSheetOpen(true);
+          }
         }
       } catch (error) {
         if (!cancelled) {
@@ -268,10 +284,30 @@ export default function TableVisitPage() {
     }
   }
 
+  function handleGuestCountSkip() {
+    sessionStorage.setItem(guestCountPromptDismissedKey(visit.tableVisitId), "1");
+    setGuestCountError(null);
+    setGuestCountSheetOpen(false);
+  }
+
+  async function handleGuestCountConfirm(guestCount: number) {
+    setGuestCountSubmitting(true);
+    setGuestCountError(null);
+    try {
+      await setGuestCountRequest(visit.tableVisitId, guestCount);
+      setState({ status: "ready", visit: { ...visit, guestCount }, menu });
+      setGuestCountSheetOpen(false);
+    } catch {
+      setGuestCountError("Kaydedilemedi. Lütfen tekrar deneyin.");
+    } finally {
+      setGuestCountSubmitting(false);
+    }
+  }
+
   return (
     <main className={styles.page}>
       <div className={styles.stickyTop}>
-        <VisitHeader visit={visit} />
+        <VisitHeader visit={visit} onEditGuestCount={() => setGuestCountSheetOpen(true)} />
         <CategoryNav categories={menu.categories} activeCategoryId={activeCategoryId} onSelect={scrollToCategory} />
       </div>
 
@@ -320,6 +356,16 @@ export default function TableVisitPage() {
           trackingToken={trackingToken}
           onClose={() => setPaymentIntent(null)}
           onOrderPaid={handleOrderPaid}
+        />
+      ) : null}
+
+      {guestCountSheetOpen ? (
+        <GuestCountSheet
+          initialValue={visit.guestCount}
+          onClose={handleGuestCountSkip}
+          onConfirm={handleGuestCountConfirm}
+          submitting={guestCountSubmitting}
+          errorMessage={guestCountError}
         />
       ) : null}
     </main>

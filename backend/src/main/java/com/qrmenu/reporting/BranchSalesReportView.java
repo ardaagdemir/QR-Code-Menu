@@ -10,7 +10,9 @@ import java.util.UUID;
  * timezone). grossSales is the sum of paid order totals (Section 13.4: derived from the
  * immutable Order/OrderItem snapshot, not live Product prices); netSales subtracts
  * completed refunds. averageOrderValue is grossSales / orderCount (0 when orderCount is
- * 0).
+ * 0). Gap-analysis #17 (Section 13.3): guestCountTotal/guestCountRecordedVisitCount are
+ * deliberately separate from tableVisitCount, not derived from it - they only sum visits
+ * where a real headcount was actually entered, never defaulting an unset visit to 1.
  */
 public record BranchSalesReportView(
         UUID branchId,
@@ -25,6 +27,8 @@ public record BranchSalesReportView(
         int rejectedOrderCount,
         long averageOrderValueMinorUnits,
         long tableVisitCount,
+        long guestCountTotal,
+        long guestCountRecordedVisitCount,
         List<ProductSalesView> productBreakdown,
         List<CategorySalesView> categoryBreakdown,
         List<HourlySalesView> hourlyDistribution) {

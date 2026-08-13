@@ -16,6 +16,26 @@
   color: var(--color-fg-muted);
 }
 
+.guestCountButton {
+  margin-top: var(--space-1);
+  margin-left: calc(var(--space-3) * -1);
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap-target-min);
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  background: none;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-primary);
+  cursor: pointer;
+}
+
+.guestCountButton:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
 /* Tide line: the header's signature mark - a shoreline-like accent that recedes from
  * the business name, carrying the "Tide" identity into the first screen a guest sees. */
 .tideLine {

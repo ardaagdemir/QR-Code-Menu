@@ -17,6 +17,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 import static com.qrmenu.support.AbstractIntegrationTest.TEST_ADMIN_TOKEN;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -41,6 +42,12 @@ class ReportingFlowIntegrationTest extends AbstractIntegrationTest {
         String qrA = TenantFixtures.createQrToken(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, tableA);
         CheckedInVisit visitA = payAndAwaitStoreAcceptance(businessId, productId, qrA, 2);
         String orderIdA = acceptAndDecideFullyInKitchen(branchId, adminCookie, visitA, productId);
+        // Gap-analysis #17: only visitA records a headcount - visitB stays unset (never
+        // defaulted to 1), so guestCountTotal must reflect just the one recorded visit.
+        mockMvc.perform(withCookie(patch("/api/table-visits/{tableVisitId}/guest-count", visitA.tableVisitId()), visitA)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"guestCount\":3}"))
+                .andExpect(status().isOk());
 
         // Order B: paid, cashier REJECT -> full refund; still counts toward gross+orderCount+rejectedOrderCount,
         // but nets back out via refundTotal and never reaches the product breakdown (acceptedQuantity stays 0).
@@ -67,6 +74,10 @@ class ReportingFlowIntegrationTest extends AbstractIntegrationTest {
         assertThat(report.get("acceptedOrderCount").asInt()).isEqualTo(1);
         assertThat(report.get("rejectedOrderCount").asInt()).isEqualTo(1);
         assertThat(report.get("averageOrderValueMinorUnits").asLong()).isEqualTo(4500);
+        // Gap-analysis #17: tableVisitCount (2 visits) and guestCountTotal (only visitA's 3) are separate metrics.
+        assertThat(report.get("tableVisitCount").asLong()).isEqualTo(2);
+        assertThat(report.get("guestCountTotal").asLong()).isEqualTo(3);
+        assertThat(report.get("guestCountRecordedVisitCount").asLong()).isEqualTo(1);
 
         JsonNode products = report.get("productBreakdown");
         assertThat(products).hasSize(1);

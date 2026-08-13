@@ -120,6 +120,8 @@ public class StaffReportingController {
                 view.rejectedOrderCount(),
                 view.averageOrderValueMinorUnits(),
                 view.tableVisitCount(),
+                view.guestCountTotal(),
+                view.guestCountRecordedVisitCount(),
                 view.productBreakdown().stream().map(StaffReportingController::toResponse).toList(),
                 view.categoryBreakdown().stream().map(StaffReportingController::toResponse).toList(),
                 view.hourlyDistribution().stream().map(StaffReportingController::toResponse).toList());

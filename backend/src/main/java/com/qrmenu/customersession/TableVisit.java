@@ -43,6 +43,9 @@ public class TableVisit {
     @Column(name = "closed_at")
     private Instant closedAt;
 
+    @Column(name = "guest_count")
+    private Integer guestCount;
+
     protected TableVisit() {
         // JPA
     }
@@ -68,6 +71,22 @@ public class TableVisit {
 
     public boolean isClosed() {
         return closedAt != null;
+    }
+
+    /**
+     * Gap-analysis #17 (Section 13.3): opt-in real footfall. Null means "not entered" and
+     * must never be treated as 1 by reporting - only >=1 is a meaningful headcount, so
+     * anything else (0/negative) is rejected rather than silently clamped.
+     */
+    public void setGuestCount(Integer guestCount) {
+        if (guestCount != null && guestCount < 1) {
+            throw new IllegalArgumentException("Guest count must be at least 1");
+        }
+        this.guestCount = guestCount;
+    }
+
+    public Integer getGuestCount() {
+        return guestCount;
     }
 
     public UUID getId() {

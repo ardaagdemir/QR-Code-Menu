@@ -177,6 +177,15 @@ export default function BranchReportPage() {
                 <KpiCard label="Reddedilen" value={String(report.rejectedOrderCount)} tone={report.rejectedOrderCount > 0 ? "danger" : "neutral"} />
                 <KpiCard label="Ortalama sepet" value={formatPriceMinorUnits(report.averageOrderValueMinorUnits)} />
                 <KpiCard label="Masa ziyareti" value={String(report.tableVisitCount)} />
+                <KpiCard
+                  label="Misafir sayısı"
+                  value={report.guestCountRecordedVisitCount > 0 ? String(report.guestCountTotal) : "-"}
+                  hint={
+                    report.guestCountRecordedVisitCount > 0
+                      ? `${report.guestCountRecordedVisitCount} ziyarette girildi`
+                      : "Henüz girilmedi"
+                  }
+                />
               </div>
             </div>
 

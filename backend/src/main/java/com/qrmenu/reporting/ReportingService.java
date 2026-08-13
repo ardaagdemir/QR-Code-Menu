@@ -98,6 +98,9 @@ public class ReportingService {
         long netSales = grossSales - refundTotal;
 
         long tableVisitCount = customerSessionService.countTableVisitsBetween(branch.getId(), fromInstant, toInstant);
+        long guestCountTotal = customerSessionService.sumGuestCountBetween(branch.getId(), fromInstant, toInstant);
+        long guestCountRecordedVisitCount =
+                customerSessionService.countVisitsWithGuestCountBetween(branch.getId(), fromInstant, toInstant);
 
         List<ProductSalesView> productBreakdown = buildProductBreakdown(orders);
         List<CategorySalesView> categoryBreakdown = buildCategoryBreakdown(orders, branch.getBusinessId());
@@ -116,6 +119,8 @@ public class ReportingService {
                 rejectedOrderCount,
                 averageOrderValue,
                 tableVisitCount,
+                guestCountTotal,
+                guestCountRecordedVisitCount,
                 productBreakdown,
                 categoryBreakdown,
                 hourlyDistribution);

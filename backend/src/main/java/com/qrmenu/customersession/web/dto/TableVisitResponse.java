@@ -11,5 +11,6 @@ public record TableVisitResponse(
         String businessName,
         String branchName,
         String tableLabel,
-        Instant startedAt) {
+        Instant startedAt,
+        Integer guestCount) {
 }

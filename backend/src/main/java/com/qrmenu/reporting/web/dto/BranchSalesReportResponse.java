@@ -17,6 +17,8 @@ public record BranchSalesReportResponse(
         int rejectedOrderCount,
         long averageOrderValueMinorUnits,
         long tableVisitCount,
+        long guestCountTotal,
+        long guestCountRecordedVisitCount,
         List<ProductSalesResponse> productBreakdown,
         List<CategorySalesResponse> categoryBreakdown,
         List<HourlySalesResponse> hourlyDistribution) {

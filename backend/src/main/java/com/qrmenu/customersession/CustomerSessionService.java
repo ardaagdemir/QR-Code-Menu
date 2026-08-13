@@ -102,4 +102,28 @@ public class CustomerSessionService {
     public long countTableVisitsBetween(UUID branchId, Instant from, Instant to) {
         return tableVisitRepository.countByBranchIdAndStartedAtBetween(branchId, from, to);
     }
+
+    /**
+     * Gap-analysis #17 (Section 13.3): records/updates/clears the real headcount for a
+     * visit the caller owns. Same ownership rule as every other table-visit action - the
+     * session cookie is the credential, not the tableVisitId.
+     */
+    @Transactional
+    public TableVisit setGuestCount(UUID tableVisitId, UUID callerSessionId, Integer guestCount) {
+        TableVisit visit = getOwnedTableVisit(tableVisitId, callerSessionId);
+        visit.setGuestCount(guestCount);
+        return tableVisitRepository.save(visit);
+    }
+
+    /** Gap-analysis #17 reporting: sum of only the visits where a headcount was actually entered. */
+    @Transactional(readOnly = true)
+    public long sumGuestCountBetween(UUID branchId, Instant from, Instant to) {
+        return tableVisitRepository.sumGuestCountByBranchIdAndStartedAtBetween(branchId, from, to);
+    }
+
+    /** Gap-analysis #17 reporting: how many of the range's visits actually recorded a headcount. */
+    @Transactional(readOnly = true)
+    public long countVisitsWithGuestCountBetween(UUID branchId, Instant from, Instant to) {
+        return tableVisitRepository.countByBranchIdAndStartedAtBetweenAndGuestCountIsNotNull(branchId, from, to);
+    }
 }

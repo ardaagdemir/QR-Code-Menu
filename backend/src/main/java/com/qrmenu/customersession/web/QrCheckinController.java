@@ -60,7 +60,8 @@ public class QrCheckinController {
                 tableReference.businessName(),
                 tableReference.branchName(),
                 tableReference.tableLabel(),
-                visit.getStartedAt()));
+                visit.getStartedAt(),
+                visit.getGuestCount()));
     }
 
     private ResponseCookie sessionCookie(UUID sessionId) {

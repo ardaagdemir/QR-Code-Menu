@@ -11,6 +11,7 @@ export type TableVisit = {
   branchName: string;
   tableLabel: string;
   startedAt: string;
+  guestCount: number | null;
 };
 
 export type MenuOption = {
@@ -111,6 +112,20 @@ export async function checkInWithQrToken(token: string): Promise<TableVisit> {
   const response = await fetch(`${getApiBaseUrl()}/api/qr/${encodeURIComponent(token)}/visit`, {
     method: "POST",
     credentials: "include",
+  });
+  if (!response.ok) {
+    await parseErrorOrThrow(response);
+  }
+  return response.json();
+}
+
+/** Gap-analysis #17: records/changes/clears (guestCount: null) the real headcount for a visit. */
+export async function setGuestCount(tableVisitId: string, guestCount: number | null): Promise<{ tableVisitId: string; guestCount: number | null }> {
+  const response = await fetch(`${getApiBaseUrl()}/api/table-visits/${encodeURIComponent(tableVisitId)}/guest-count`, {
+    method: "PATCH",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ guestCount }),
   });
   if (!response.ok) {
     await parseErrorOrThrow(response);
