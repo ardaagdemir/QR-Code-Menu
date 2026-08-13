@@ -1495,3 +1495,40 @@ hata yok. Test sonunda seed edilen sipariş/masa ziyareti/anonim oturum satırla
 `design-verify@qrmenu.local` hesabı + session'ı DB'den silindi, yerel `next dev` kapatıldı,
 `infra-staff-web-1` container'ı yeniden başlatıldı. Işık temasında ayrı doğrulama yapılmadı (Adım 1/2/3
 ile aynı düşük-risk gerekçesi). Backend değişikliği yok.
+
+## UI/UX Productization Gate — Adım 5 Tasarım Yenilemesi: admin CRUD component library — 🔄 Tasarım tamamlandı, uygulama sürüyor
+
+Gate'in "Cross-cutting" sırasının 5. adımı (admin CRUD component refactor). Adım 5'in işlevsel kapsamı
+(PageHeader/Table/TableSkeleton/Dialog/ConfirmDialog/EmptyState/ErrorState + Toast'un ~9 admin sayfası +
+menu/expenses'te kullanılması - bkz. yukarıdaki "Adım 5: Admin CRUD Component Refactor") daha önce
+tamamlanmıştı; Adım 1 Tasarım Yenilemesi'nin token değişikliği bu component'lere otomatik cascade etti
+(hepsi %100 token-driven), ama Adım 2/3/4'te olduğu gibi bilinçli, sayfaya özgü bir imza öğesi hiç
+eklenmemişti. Bu adımda `frontend-design` skill süreciyle (Adım 1-4 ile aynı yöntem) yalnızca
+`components/ui/Dialog.{tsx,module.css}`, `ConfirmDialog.tsx` ve `Table.module.css`'e restrained bir
+tasarım geçişi uygulanıyor. Kapsam bilinçli olarak yalnızca bu paylaşılan component'lerle sınırlı - hiçbir
+admin sayfasına (`page.tsx`) veya sayfa-seviyesi `.module.css`'e dokunulmuyor (Adım 5'in wiring'i korunur).
+
+**Tasarım kararı - imza öğesi: "gate stripe".** Admin CRUD akışının duygusal karşılığı, sipariş takibindeki
+pulse halkası veya kasa/KDS'teki tide-edge'in aksine tek bir an değil - her `Dialog`/`ConfirmDialog`
+açıldığında (bir veri değişikliğine "kapı açılıyor" anı). Dialog yüzeyinin üst kenarına 3px'lik bir gradient
+şerit eklendi: rutin aksiyonlarda (oluştur/düzenle) sakin Tide gradient'i (`--color-primary` →
+`--color-primary-strong`), geri dönüşü olmayan aksiyonlarda (`ConfirmDialog tone="danger"` - QR iptali,
+personel devre dışı bırakma, iade başlatma, kategori/şablon devre dışı bırakma) `--color-danger` → koyulaştırılmış
+kırmızı gradient'i (Adım 4'ün tide-edge'indeki "renk = risk" dilinin CRUD'a çevirisi - kullanıcı metni
+okumadan önce, dialog'un rengi zaten "bu geri alınamaz" sinyalini veriyor). `Dialog` component'ine yeni
+opsiyonel `tone?: "default" | "danger"` prop'u eklendi, `ConfirmDialog` kendi `tone` prop'unu olduğu gibi
+alt bileşene iletiyor - sıradan `Dialog` kullanımları (create/edit formları) hiçbir şey geçmediği için
+otomatik `default` kalıyor.
+
+**İkinci, sakin dokunuş - Table row hover.** Sidebar'ın "tide marker" imzasını (Adım 3 Tasarım Yenilemesi)
+yeni bir motif icat etmeden tabloya taşıyan ince bir sol kenar çubuğu: `tbody tr:hover`'da 2px
+`--color-primary` kenarlık + `color-mix()` ile hafif zemin tonu - çoğu admin tablosunun satır-içi aksiyonlar
+taşıdığı düşünülürse (düzenle/sil/genişlet), "hangi satırla etkileşimdesin" wayfinding'i shell'deki "buradasın"
+diliyle tutarlı hale geliyor. `PageHeader`/`EmptyState`/`ErrorState`/`Toast` bilinçli olarak sakin bırakıldı -
+zaten Adım 1'in token cascade'iyle display font + renk kimliğini taşıyorlar, ek bir öğe Chanel prensibini
+ihlal eder.
+
+**Uygulama planı:** (1) `Dialog.module.css`'e `.dialog::before` ile gradient şerit + `.danger::before`
+override, `Dialog.tsx`'e `tone` prop; (2) `ConfirmDialog.tsx`'te bu prop'u `Dialog`'a ilet; (3)
+`Table.module.css`'e hover kuralı; (4) `npx tsc --noEmit` + `npx eslint .` + `npm run build`; (5) canlı
+Chrome testi (bir admin sayfasında dialog + confirm dialog + table hover).
