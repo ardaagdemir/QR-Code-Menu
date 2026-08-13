@@ -1259,3 +1259,67 @@ alınabilir.
 **Doğrulama:** backend değişikliği yok (bu adım tamamen staff-web frontend, yalnızca mevcut API'ları farklı
 şekilde birleştirdi). Her commit'ten sonra `npx tsc --noEmit` + `npx eslint <path>` + `npm run build`
 temiz. Canlı Chrome testi yapılmadı (proje hafızası).
+
+## UI/UX Productization Gate — Adım 7: Responsive/Accessibility/Browser E2E Pass — ✅ COMPLETED
+
+`product-requirements.md` Bölüm 19.5'in "Cross-cutting" sırasının son adımı: Bölüm 19.4 (Responsive
+davranış) ve kriter 9 ("Gerçek Chrome'da customer için 390x844, staff için desktop ve KDS için büyük
+ekran viewport'unda kritik flow'lar manuel/E2E doğrulanır"). Bu adımdan itibaren canlı Chrome testi
+kullanıcı onayıyla tekrar açıldı (önceki oturumlarda token tasarrufu için kapatılmıştı).
+
+**Test ortamı:** `infra/docker-compose.yml` container'ları (backend/customer-web/staff-web) Adım 6 ve
+öncesi bazı backend commit'lerinden (`tableLabel`/`statusSince`) daha eskiydi - `docker compose up -d
+--build` ile üçü de güncel koda göre yeniden build edilip ayağa kaldırıldı. E2E için `/internal/
+businesses/{id}/staff-users` bootstrap endpoint'i ile geçici bir `BUSINESS_ADMIN` test hesabı
+(`e2e-test@qrmenu.local`) oluşturuldu; test verisi olarak zaten DB'de bulunan "Test Restoran / Merkez
+Şube" (3 ürünlü) kullanıldı.
+
+**Viewport metodolojisi:** Chrome uzantısının `resize_window` aracı bu ortamda pencereyi 390px gibi dar
+genişliklere indiremedi (gözlenen minimum ~1024px) - bu yüzden dar viewport'lar (360/390/414/430/768)
+için sayfa içine tam istenen CSS genişliğinde (`width:390px` vb.) bağımsız bir `<iframe>` enjekte edilip
+o iframe içinde gezinildi; iframe kendi `window.innerWidth`'ine sahip olduğundan gerçek Chrome'da gerçek
+bir responsive viewport'u temsil ediyor (aynı origin, aynı çerezler/oturum). >=1024px gerektiren desktop
+ve kiosk testleri gerçek pencerede (o an ~1800px genişlik) doğrudan yapıldı.
+
+**Customer (Bölüm 19.4 + kriter 9):**
+- 390x844'te tam akış uçtan uca doğrulandı: menü → ürün detay bottom-sheet → sepete ekle → sepet →
+  ödeme (mock provider) → "Ödeme başarılı" → sipariş takip (durum zaman çizelgesi) → makbuz. Her adımda
+  yatay overflow yok, tüm CTA'lar (Sepete Ekle/Ödemeye Geç/Ödemeyi Onayla/Sipariş durumunu takip et)
+  erişilebilir.
+- 360/390/430/768/1280 genişliklerinde hem menü hem tracking/makbuz sayfaları için otomatik
+  `scrollWidth > clientWidth` taraması yapıldı - hiçbirinde yatay overflow bulunmadı.
+
+**Staff desktop (kriter 9):** gerçek pencerede (~1800px, >=1024px eşiğini karşılıyor) login →
+dashboard (Adım 6 KPI içeriği canlı veriyle doğrulandı) → Kasa (tableLabel "Masa 1" + statusSince "2 dk
+bekliyor" doğru render edildi, Kabul Et çalıştı) → Mutfak/KDS (financial summary + Onayla akışı
+çalıştı) → Satış Raporları (zincir) → Şube Raporu → Menü Yönetimi akışları tek tek gezildi, hepsi sidebar
++ desktop layout ile bekleneni verdi.
+
+**Staff 768-1023px (kriter: "compact/collapsible navigation"):** sidebar hamburger ikonuna daralıyor,
+tıklanınca backdrop'lu bir overlay olarak açılıyor - `AppShell.module.css`'teki `@media (max-width:
+1023px)` kuralıyla tutarlı, ayrı bir doğrulama gerektirmedi.
+
+**Staff <768px (kriter: "drawer navigation ve tek kolon kullanılabilir yönetim ekranları"):** 414px'te
+dashboard/reports/menu/cashier/kitchen/expenses/branches sayfalarının hepsi tek kolona düşüyor, sayfa
+genelinde yatay overflow yok. Menü yönetimi tablosunda (ve diğer geniş tablolarda) aksiyon butonları
+(Kaldır/Pasif Yap/Düzenle/Şubelere Ata) dar ekranda görünür alanın dışına taşıyor ama bu, Adım 1/5'te
+kurulan shared `Table` component'inin kendi `overflow-x: auto` wrapper'ı sayesinde - sayfa değil, yalnızca
+tablo yatay kaydırılarak erişiliyor; bilinçli/mevcut bir pattern, kriterin aradığı "erişilemeyen CTA"
+durumu değil.
+
+**KDS kiosk/büyük ekran (kriter 9 + Bölüm 19.4: "KDS ayrıca büyük ekran/kiosk viewport'unda test edilir")
+- bulunan sorun ve düzeltme:** Mutfak sayfası diğer admin sayfalarıyla aynı `--container-width-desktop`
+(1080px) üst sınırını paylaşıyordu; 1920px'lik bir kiosk ekranında bile sipariş kartı grid'i yalnızca
+~3 sütuna sığıyor, ekranın geri kalanı boş kalıyordu - kalabalık bir mutfakta aynı anda görülebilecek
+sipariş sayısını gereksiz kısıtlıyordu. **Düzeltme:** `app/globals.css`'e yalnızca bu sayfa için
+kullanılan `--container-width-kiosk: 1920px` token'ı eklendi, `app/kitchen/[branchId]/page.module.css`
+`.page`'in `max-width`'i buna çekildi. 1920px'te grid artık 4 sütuna kadar genişleyebiliyor (DOM'a geçici
+kart klonları eklenerek görsel olarak doğrulandı). Kasa (cashier) sayfası aynı deseni kullanıyor ama
+kriter yalnızca KDS'i kiosk için özel olarak işaret ettiğinden kapsam dışı bırakıldı.
+
+**Diğer bulgular:** Yok - customer ve staff akışlarının geri kalanında yatay overflow, üst üste binen
+sticky alan veya erişilemeyen CTA gözlenmedi.
+
+**Doğrulama:** KDS düzeltmesi sonrası `npx tsc --noEmit` + `npm run build` (staff-web) temiz;
+`docker compose up -d --build` ile container yeniden oluşturulup değişiklik gerçek Chrome'da tekrar
+doğrulandı. Backend değişikliği yok.
