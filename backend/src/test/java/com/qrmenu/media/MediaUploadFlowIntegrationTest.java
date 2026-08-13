@@ -14,6 +14,7 @@ import org.springframework.mock.web.MockMultipartFile;
 
 import static com.qrmenu.support.AbstractIntegrationTest.TEST_ADMIN_TOKEN;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -75,7 +76,13 @@ class MediaUploadFlowIntegrationTest extends AbstractIntegrationTest {
                 .andReturn()
                 .getResponse()
                 .getContentAsString());
-        assertThat(uploadResult.get("url").asText()).contains("/media/receipts/").endsWith(".pdf");
+        String receiptUrl = uploadResult.get("url").asText();
+        assertThat(receiptUrl).contains("/media/receipts/").endsWith(".pdf");
+
+        // Unlike product images, receipts must not be reachable on the public /media/** path.
+        mockMvc.perform(get(receiptUrl.replaceFirst("^https?://[^/]+", ""))
+                        .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, staffCookie)))
+                .andExpect(status().isNotFound());
     }
 
     @Test

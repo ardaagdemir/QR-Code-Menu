@@ -5,6 +5,7 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -14,10 +15,15 @@ import org.springframework.stereotype.Component;
  * Files are written under a local directory keyed by a server-generated UUID filename -
  * the original filename is never trusted (no path traversal / extension-spoofing
  * surface), and the detected (sniffed, not declared) file type decides the extension.
- * Served back out via MediaResourceConfig's static resource handler at /media/**.
+ * Product images are served back out via MediaResourceConfig's public static resource
+ * handler at /media/product-images/**; receipts are not on any public path and are only
+ * readable through {@link #load}, which callers reach via an authenticated, tenant-scoped
+ * endpoint (see StaffExpenseController#getReceipt).
  */
 @Component
 public class LocalFileMediaStorageAdapter implements MediaStoragePort {
+
+    private static final String MEDIA_URL_SEGMENT = "/media/";
 
     private final Path baseDir;
     private final String publicBaseUrl;
@@ -57,6 +63,36 @@ public class LocalFileMediaStorageAdapter implements MediaStoragePort {
         }
 
         String key = category.directoryName() + "/" + filename;
-        return new StoredMedia(key, publicBaseUrl + "/media/" + key);
+        return new StoredMedia(key, publicBaseUrl + MEDIA_URL_SEGMENT + key);
+    }
+
+    @Override
+    public Optional<LoadedMedia> load(String key) {
+        Path resolved = baseDir.resolve(key).normalize();
+        if (!resolved.startsWith(baseDir) || !Files.isRegularFile(resolved)) {
+            return Optional.empty();
+        }
+        byte[] content;
+        try {
+            content = Files.readAllBytes(resolved);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Could not read stored file: " + key, e);
+        }
+        String contentType = DetectedFileType.sniff(content)
+                .map(DetectedFileType::contentType)
+                .orElse("application/octet-stream");
+        return Optional.of(new LoadedMedia(content, contentType));
+    }
+
+    @Override
+    public Optional<String> resolveKeyFromUrl(String url) {
+        if (url == null) {
+            return Optional.empty();
+        }
+        int index = url.indexOf(MEDIA_URL_SEGMENT);
+        if (index < 0) {
+            return Optional.empty();
+        }
+        return Optional.of(url.substring(index + MEDIA_URL_SEGMENT.length()));
     }
 }

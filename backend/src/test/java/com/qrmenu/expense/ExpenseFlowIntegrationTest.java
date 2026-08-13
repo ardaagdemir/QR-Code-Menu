@@ -5,6 +5,7 @@ import com.qrmenu.staffaccess.StaffCookieSupport;
 import com.qrmenu.support.AbstractIntegrationTest;
 import com.qrmenu.support.StaffFixtures;
 import com.qrmenu.support.TenantFixtures;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.UUID;
@@ -12,11 +13,13 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockCookie;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MvcResult;
 
 import static com.qrmenu.support.AbstractIntegrationTest.TEST_ADMIN_TOKEN;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -198,6 +201,67 @@ class ExpenseFlowIntegrationTest extends AbstractIntegrationTest {
         assertThat(result.get("approvedExpensesMinorUnits").asLong()).isEqualTo(4000);
         assertThat(result.get("netOperatingResultMinorUnits").asLong())
                 .isEqualTo(result.get("netSalesMinorUnits").asLong() - 4000);
+    }
+
+    @Test
+    void receiptIsOnlyDownloadableThroughTheAuthenticatedTenantScopedEndpoint() throws Exception {
+        byte[] pdfBytes = "%PDF-1.4 fake receipt".getBytes(StandardCharsets.US_ASCII);
+
+        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Expense Business 6");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
+        String otherBranchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Diğer Şube");
+        String adminCookie =
+                StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, "expense-admin-6@example.com");
+        MockCookie cookie = new MockCookie(StaffCookieSupport.COOKIE_NAME, adminCookie);
+        String categoryId = createCategory(cookie, "Kira");
+
+        JsonNode uploadResult = objectMapper.readTree(mockMvc.perform(multipart("/api/staff/media/receipts")
+                        .file(new MockMultipartFile("file", "fis.pdf", "application/pdf", pdfBytes))
+                        .cookie(cookie))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString());
+        String receiptUrl = uploadResult.get("url").asText();
+
+        MvcResult createResult = mockMvc.perform(post("/api/staff/expenses")
+                        .cookie(cookie)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"branchId\":\"" + branchId + "\",\"categoryId\":\"" + categoryId
+                                + "\",\"amountMinorUnits\":15000,\"incurredAt\":\"" + LocalDate.now(ZoneOffset.UTC)
+                                + "\",\"receiptImageUrl\":\"" + receiptUrl + "\"}"))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String expenseId = objectMapper.readTree(createResult.getResponse().getContentAsString()).get("id").asText();
+
+        // Not reachable on the public /media/** path.
+        mockMvc.perform(get(receiptUrl.replaceFirst("^https?://[^/]+", "")).cookie(cookie)).andExpect(status().isNotFound());
+
+        // Owner can download it through the authenticated endpoint.
+        mockMvc.perform(get("/api/staff/expenses/{expenseId}/receipt", expenseId).cookie(cookie))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().contentType("application/pdf"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().bytes(pdfBytes));
+
+        // A staff member scoped to a different branch of the same business cannot.
+        String otherManagerEmail = "expense-manager-6@example.com";
+        mockMvc.perform(post("/internal/businesses/{businessId}/staff-users", businessId)
+                        .header("X-Internal-Admin-Token", TEST_ADMIN_TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"" + otherManagerEmail + "\",\"password\":\"" + StaffFixtures.DEFAULT_PASSWORD
+                                + "\",\"role\":\"BRANCH_MANAGER\",\"branchIds\":[\"" + otherBranchId + "\"]}"))
+                .andExpect(status().isCreated());
+        MockCookie otherManagerCookie = new MockCookie(StaffCookieSupport.COOKIE_NAME, StaffFixtures.login(mockMvc, otherManagerEmail));
+        mockMvc.perform(get("/api/staff/expenses/{expenseId}/receipt", expenseId).cookie(otherManagerCookie))
+                .andExpect(status().isForbidden());
+
+        // A different business/tenant entirely cannot, either (404s rather than 403s to avoid tenant enumeration).
+        String otherBusinessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Expense Business 7");
+        String otherAdminCookie = StaffFixtures.bootstrapBusinessAdminAndLogin(
+                mockMvc, TEST_ADMIN_TOKEN, otherBusinessId, "expense-admin-7@example.com");
+        mockMvc.perform(get("/api/staff/expenses/{expenseId}/receipt", expenseId)
+                        .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, otherAdminCookie)))
+                .andExpect(status().isNotFound());
     }
 
     private String createCategory(MockCookie cookie, String name) throws Exception {

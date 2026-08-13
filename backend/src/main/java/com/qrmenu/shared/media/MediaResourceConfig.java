@@ -7,13 +7,18 @@ import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 /**
- * Serves LocalFileMediaStorageAdapter's output back out over HTTP. Product images are
- * shown on the public customer menu (no auth by design, Section 3), so /media/** is a
- * plain static resource mapping - not behind /api/**, so it is unaffected by CorsConfig/
- * RateLimitFilter (a plain <img> tag needs neither CORS nor a rate-limited JSON API).
- * Receipt files reuse the same public path (upload itself is already permission-gated,
- * Section 22/21 - the filename is a high-entropy UUID, the same "hard to guess, low
- * blast radius" posture the QR/orderTrackingToken already use in this codebase).
+ * Serves LocalFileMediaStorageAdapter's product-image output back out over HTTP. Product
+ * images are shown on the public customer menu (no auth by design, Section 3), so
+ * /media/product-images/** is a plain static resource mapping - not behind /api/**, so it
+ * is unaffected by CorsConfig/RateLimitFilter (a plain <img> tag needs neither CORS nor a
+ * rate-limited JSON API).
+ *
+ * Expense receipts are deliberately NOT mapped here: unlike product images they are never
+ * shown on any unauthenticated surface, and can contain sensitive vendor/amount
+ * information, so a bare "hard to guess UUID" posture isn't enough for them. Receipts are
+ * only reachable through StaffExpenseController#getReceipt, which resolves the caller's
+ * session, checks Permission.EXPENSE_VIEW, and confirms the requested Expense belongs to
+ * the caller's own business/branch before reading the file via MediaStoragePort#load.
  */
 @Configuration
 class MediaResourceConfig implements WebMvcConfigurer {
@@ -26,7 +31,10 @@ class MediaResourceConfig implements WebMvcConfigurer {
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        String location = Path.of(baseDir).toAbsolutePath().normalize().toUri().toString();
-        registry.addResourceHandler("/media/**").addResourceLocations(location).setCachePeriod(3600);
+        String productImagesDir = MediaCategory.PRODUCT_IMAGE.directoryName();
+        String location = Path.of(baseDir, productImagesDir).toAbsolutePath().normalize().toUri().toString();
+        registry.addResourceHandler("/media/" + productImagesDir + "/**")
+                .addResourceLocations(location)
+                .setCachePeriod(3600);
     }
 }

@@ -1,5 +1,7 @@
 package com.qrmenu.shared.media;
 
+import java.util.Optional;
+
 /**
  * Section 3.2: "domain doğrudan dosya binary'si tutmaz; bir media/storage adapter'ın
  * döndürdüğü URL/key saklanır" - provider-independent, same shape as
@@ -16,4 +18,15 @@ public interface MediaStoragePort {
      * empty, too large, or not a recognized/allowed type for the category.
      */
     StoredMedia store(MediaCategory category, byte[] content);
+
+    /** Reads back the bytes stored under {@code key} (as returned in {@link StoredMedia#key()}). */
+    Optional<LoadedMedia> load(String key);
+
+    /**
+     * Recovers the storage key from a public URL previously returned by {@link #store}, so a
+     * caller that only persisted the URL (e.g. Expense.receiptImageUrl) can still look the file
+     * up through an authenticated path instead of the public one. Empty if the URL doesn't look
+     * like one this adapter produced.
+     */
+    Optional<String> resolveKeyFromUrl(String url);
 }

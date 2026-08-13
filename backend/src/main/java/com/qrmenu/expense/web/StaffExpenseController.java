@@ -11,6 +11,7 @@ import com.qrmenu.expense.web.dto.ExpenseCategoryResponse;
 import com.qrmenu.expense.web.dto.ExpenseResponse;
 import com.qrmenu.expense.web.dto.RecurringExpenseTemplateResponse;
 import com.qrmenu.expense.web.dto.UpdateExpenseRequest;
+import com.qrmenu.shared.media.LoadedMedia;
 import com.qrmenu.staffaccess.Permission;
 import com.qrmenu.staffaccess.StaffAuthService;
 import com.qrmenu.staffaccess.StaffContext;
@@ -21,7 +22,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -115,6 +118,23 @@ public class StaffExpenseController {
                 request.description(),
                 request.receiptImageUrl());
         return toResponse(expense, categoryNameMap(context.businessId()));
+    }
+
+    /**
+     * The only way to read a receipt's bytes back - not exposed on any public /media/**
+     * path (see MediaResourceConfig). Scoped to the caller's own
+     * business/branch by ExpenseService#loadReceipt, same as every other per-id lookup.
+     */
+    @GetMapping("/api/staff/expenses/{expenseId}/receipt")
+    public ResponseEntity<byte[]> getReceipt(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
+            @PathVariable UUID expenseId) {
+        StaffContext context = requireView(sessionCookie);
+        LoadedMedia media = expenseService.loadReceipt(context, expenseId);
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(media.contentType()))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline")
+                .body(media.content());
     }
 
     @PostMapping("/api/staff/expenses/{expenseId}/submit")

@@ -21,6 +21,11 @@ type Props = {
  * becomes the URL MediaStoragePort returned. No manual URL text entry anywhere - the
  * caller's create/update form keeps sending a plain string, unaware it came from an
  * upload rather than being typed.
+ *
+ * Non-image files (receipts) are not linked out to directly: unlike product images,
+ * receipt files are not on a public URL (see backend MediaResourceConfig), so `value`
+ * alone is not fetchable without the caller's staff session - only a confirmation is
+ * shown here, not a clickable preview.
  */
 export default function FileUploadField({ label, value, onChange, upload, accept, hint, previewAsImage = true }: Props) {
   const [uploading, setUploading] = useState(false);
@@ -54,9 +59,7 @@ export default function FileUploadField({ label, value, onChange, upload, accept
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={value} alt="" className={styles.thumb} />
               ) : (
-                <a href={value} target="_blank" rel="noreferrer" className={styles.fileLink}>
-                  Dosyayı görüntüle
-                </a>
+                <span className={styles.fileLink}>Dosya yüklendi</span>
               )}
               <Button type="button" variant="ghost" size="md" onClick={() => onChange(null)} disabled={uploading}>
                 Kaldır

@@ -6,6 +6,8 @@ import com.qrmenu.common.web.StaffPermissionDeniedException;
 import com.qrmenu.expense.repository.ExpenseCategoryRepository;
 import com.qrmenu.expense.repository.ExpenseRepository;
 import com.qrmenu.expense.repository.RecurringExpenseTemplateRepository;
+import com.qrmenu.shared.media.LoadedMedia;
+import com.qrmenu.shared.media.MediaStoragePort;
 import com.qrmenu.staffaccess.StaffContext;
 import com.qrmenu.staffaccess.StaffRole;
 import java.time.Instant;
@@ -30,16 +32,19 @@ public class ExpenseService {
     private final ExpenseCategoryRepository categoryRepository;
     private final RecurringExpenseTemplateRepository templateRepository;
     private final AuditService auditService;
+    private final MediaStoragePort mediaStoragePort;
 
     public ExpenseService(
             ExpenseRepository expenseRepository,
             ExpenseCategoryRepository categoryRepository,
             RecurringExpenseTemplateRepository templateRepository,
-            AuditService auditService) {
+            AuditService auditService,
+            MediaStoragePort mediaStoragePort) {
         this.expenseRepository = expenseRepository;
         this.categoryRepository = categoryRepository;
         this.templateRepository = templateRepository;
         this.auditService = auditService;
+        this.mediaStoragePort = mediaStoragePort;
     }
 
     @Transactional
@@ -155,6 +160,24 @@ public class ExpenseService {
                 List.copyOf(context.branchIds()), from, to);
     }
 
+    /**
+     * Backs StaffExpenseController#getReceipt: same tenant/branch scoping as every other
+     * per-id lookup in here, but without the editable-state restriction (an APPROVED/
+     * REJECTED expense's receipt must still be viewable, just not editable).
+     */
+    @Transactional(readOnly = true)
+    public LoadedMedia loadReceipt(StaffContext context, UUID expenseId) {
+        Expense expense = requireViewableExpense(context, expenseId);
+        String receiptImageUrl = expense.getReceiptImageUrl();
+        if (receiptImageUrl == null) {
+            throw new ResourceNotFoundException("Expense has no receipt: " + expenseId);
+        }
+        return mediaStoragePort
+                .resolveKeyFromUrl(receiptImageUrl)
+                .flatMap(mediaStoragePort::load)
+                .orElseThrow(() -> new ResourceNotFoundException("Receipt file not found: " + expenseId));
+    }
+
     /** Section 17: approved-expense total for the "Yönetimsel Net Sonuç" figure - reporting module's public entry point into this module. */
     @Transactional(readOnly = true)
     public long sumApprovedExpenses(UUID businessId, UUID branchId, LocalDate from, LocalDate to) {
@@ -248,6 +271,14 @@ public class ExpenseService {
     }
 
     private Expense requireEditableExpense(StaffContext context, UUID expenseId) {
+        Expense expense = requireViewableExpense(context, expenseId);
+        if (!expense.isEditable()) {
+            throw new IllegalStateException("Expense is not editable in status " + expense.getStatus());
+        }
+        return expense;
+    }
+
+    private Expense requireViewableExpense(StaffContext context, UUID expenseId) {
         Expense expense = expenseRepository
                 .findByIdAndBusinessId(expenseId, context.businessId())
                 .orElseThrow(() -> new ResourceNotFoundException("Expense not found: " + expenseId));
@@ -257,9 +288,6 @@ public class ExpenseService {
             }
         } else if (!context.canAccessBranch(expense.getBranchId())) {
             throw new StaffPermissionDeniedException("Not authorized for branch: " + expense.getBranchId());
-        }
-        if (!expense.isEditable()) {
-            throw new IllegalStateException("Expense is not editable in status " + expense.getStatus());
         }
         return expense;
     }
