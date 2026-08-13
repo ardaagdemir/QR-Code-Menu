@@ -2322,3 +2322,18 @@ doğrulandı), yerel `next dev` kapatıldı, `infra-staff-web-1` container'ı ye
 durumuna döndüğü doğrulandı. Işık temasında canlı Chrome testi yapılmadı (Adım 1-6 Tasarım Yenilemesi
 turlarıyla aynı düşük-risk gerekçesi) - bunun yerine tüm renk çiftleri programatik WCAG hesabıyla
 doğrulandı (yukarıya bakınız). Backend değişikliği yok.
+
+## Dev Veritabanı Temizliği — Tek Kalıcı Personel Hesabı — ✅ COMPLETED
+
+Kullanıcı isteği: DB'deki dağınık test `staff_user` kayıtları (12 adet, çeşitli test işletmelerine ait)
+tamamen silinsin, yerine tek bir kalıcı personel hesabı oluşturulsun ve bundan sonraki tüm manuel/canlı
+testlerde o hesap kullanılsın.
+
+**Uygulama:** `staff_session` (20) ve `staff_user_branch` (4) satırları silindi, `audit_log_entry`daki
+`actor_staff_user_id` FK'leri (34 satır, `NO ACTION` kısıtı var) NULL'landı, ardından `staff_user`
+tablosundaki 12 kayıt da silindi. Yerine `/internal/businesses/{id}/staff-users` (internal admin token ile)
+üzerinden `BUSINESS_ADMIN` rolünde tek bir kalıcı hesap oluşturuldu — **"Test Restoran" işletmesi / "Merkez
+Şube"** altında (bu işletme zaten geliştirme günlüğünde en sık referans verilen dev/test işletmesiydi).
+Giriş `/api/staff/auth/login` ile doğrulandı (200 OK). Hesap bilgileri (email + şifre) buraya **bilerek
+yazılmadı** — repo GitHub'a push ediliyor; kimlik bilgileri yalnızca yerel hafıza kaydında tutuluyor.
+Bundan sonraki tüm manuel/canlı test ihtiyaçlarında yeni geçici hesap açmak yerine bu tek hesap kullanılmalı.
