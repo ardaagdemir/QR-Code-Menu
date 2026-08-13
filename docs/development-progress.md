@@ -2575,4 +2575,18 @@ görünüyordu) ve `order_number=2` (durum `REJECTED_BY_STORE`, 08-13 07:53). Bu
 için silinmedi - önceki bir test/doğrulama oturumundan kalmış olabilirler (muhtemelen tam temizlenmemiş).
 İsterseniz ayrı bir adımda temizlenebilir.
 
+**Düzeltme - stale container image (kullanıcı geri bildirimi):** Kullanıcı, yukarıdaki doğrulamadan sonra
+`infra-staff-web-1`'in gerçek tarayıcı görünümünün hâlâ eski warm/bej kimlikte olduğunu bildirdi. Kök neden
+gerçek Chrome'da computed style incelemesiyle kesin olarak teşhis edildi: `.shell` elemanının `className`'i
+hâlâ `AppShell-module__R3Ra8G__warm` içeriyordu ve `:root`'un `--color-primary`'si `#0e7c86` (eski Tide),
+`.shell` üzerindeki override ise `#963b1a` (eski warm/kiremit) olarak ölçüldü - hem `.warm` class'ı hem eski
+hex değerleri güncel kaynak kodda **hiç yok**, yani sorun kod/specificity değil, doğrudan yukarıdaki
+doğrulama notunda zaten işaretlenen "container imajı henüz rebuild edilmedi" durumuydu - `docker compose up
+-d --force-recreate` olmadan yapılan restart, eski image'ı aynen çalıştırmaya devam etmiş. Çözüm: `docker
+compose build staff-web` + `docker compose up -d staff-web` ile image gerçekten yeniden build edilip
+container yeniden oluşturuldu (kod değişikliği yok, yalnızca deploy). Yeniden doğrulama: hard-navigate sonrası
+computed style'lar `--color-primary: #5b3df0`, `--color-info: #1d4ed8`, `.shell` class listesinde `.warm`
+YOK; ekran görüntüsü beyaz zemin + charcoal metin + indigo primary + nötr kanban kolonları + doğru durum
+renklerini gösteriyor. Kod tarafında hiçbir değişiklik yapılmadı - yalnızca deploy edilen image güncellendi.
+
 Backend'e dokunulmadı.
