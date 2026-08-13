@@ -1548,7 +1548,7 @@ yerel `next dev` kapatıldı, `infra-staff-web-1` container'ı yeniden başlatı
 doğrulama yapılmadı (Adım 1-4 ile aynı düşük-risk gerekçesi - yalnızca mevcut `--color-*` token'ları
 kullanıldı). Backend değişikliği yok.
 
-## UI/UX Productization Gate — Adım 6 Tasarım Yenilemesi: raporlama/dashboard — 🔄 Tasarım tamamlandı, uygulama sürüyor
+## UI/UX Productization Gate — Adım 6 Tasarım Yenilemesi: raporlama/dashboard — ✅ COMPLETED
 
 Gate'in "Cross-cutting" sırasının 6. adımı (reporting/dashboard visualization). Adım 6'nın işlevsel kapsamı
 (KpiCard/DateRangePresets/BarList component'leri + bunların `dashboard`, `reports` (zincir), `reports/
@@ -1579,8 +1579,19 @@ dile doğal olarak oturuyor. `KpiCard` bilinçli olarak sakin bırakıldı - Ad�
 font kimliğini taşıyor, ek bir öğe Chanel prensibini ihlal eder (Adım 5'te `PageHeader`/`EmptyState`/
 `ErrorState`/`Toast`'ın aynı gerekçeyle sakin bırakılmasıyla tutarlı).
 
-**Uygulama planı:** (1) `BarList.module.css` `.bar`'ın `background`'ı düz `--color-primary`'den
-`linear-gradient(to right, var(--color-primary), var(--color-primary-strong))`'a; (2)
-`DateRangePresets.module.css` `.active`'in `background`'ı aynı gradient'e; (3) `npx tsc --noEmit` +
-`npx eslint .` + `npm run build` (staff-web); (4) canlı Chrome testi (`reports` ve/veya `dashboard`
-sayfasında gerçek veriyle bar/preset render'ı).
+**Uygulanan değişiklikler:** `BarList.module.css` `.bar`'ın `background`'ı düz `--color-primary`'den
+`linear-gradient(to right, var(--color-primary), var(--color-primary-strong))`'a; `DateRangePresets.module.css`
+`.active`'in `background`'ı aynı gradient'e çevrildi. İki dosyalık, sayfa dokunmayan minimal bir değişiklik.
+
+**Doğrulama:** `npx tsc --noEmit` + `npx eslint .` + `npm run build` (staff-web, 13 route) temiz. Canlı
+Chrome testi yapıldı - `infra-staff-web-1` container'ı geçici durdurulup yerine `npx next dev -p 3002`
+başlatıldı, `/internal/businesses/{id}/staff-users` bootstrap endpoint'iyle geçici bir `BUSINESS_ADMIN` test
+hesabı (`design-verify@qrmenu.local`, "Test Restoran") oluşturuldu. `dashboard`'da "Bugün" KPI grid'i +
+Şube Sıralaması `BarList`'inin tide gradient'i (teal → koyu teal, soldan sağa) gerçek veriyle (₺300 brüt
+satış, tek şube) doğru render edildi (zoom ile görsel olarak doğrulandı); `reports` (zincir) sayfasında
+"Bugün" preset pilinin aynı gradient dolgusu ve `Şube Sıralaması` bar'ı doğrulandı; `reports/[branchId]`
+(şube raporu) sayfasına geçildi, sayfa hatasız render edildi (o aralıkta ürün/kategori/gün-sonu verisi
+olmadığından bu bölümler boş-durum metni gösterdi - tasarım değişikliğiyle ilgisiz, mevcut veri durumu).
+Konsolda hata yok. Test sonunda test hesabı + session'ı DB'den silindi, yerel `next dev` kapatıldı,
+`infra-staff-web-1` container'ı yeniden başlatıldı. Işık temasında ayrı doğrulama yapılmadı (Adım 1-5 ile
+aynı düşük-risk gerekçesi - yalnızca mevcut `--color-*` token'ları kullanıldı). Backend değişikliği yok.
