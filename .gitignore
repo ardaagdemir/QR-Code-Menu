@@ -31,6 +31,7 @@ frontend/*/npm-debug.log*
 .env.local
 .env.*.local
 infra/.env
+infra/.env.prod
 
 # --- Docker ---
 infra/docker/**/*.local.*

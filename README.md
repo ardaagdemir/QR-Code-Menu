@@ -72,6 +72,18 @@ docker compose up --build
 - PostgreSQL: `localhost:5433` (konteyner içi: `postgres:5432`; host'ta 5433 kullanılır çünkü 5432 yerel bir
   PostgreSQL kurulumuyla çakışabilir)
 
+## Production'a çalıştırma
+
+```bash
+cd infra
+cp .env.prod.example .env.prod   # gerçek değerleri girin, commit etmeyin
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+```
+
+TLS termination Caddy ile yapılır (otomatik Let's Encrypt) - `infra/Caddyfile`, `infra/docker-compose.prod.yml`.
+Gerekli tüm domain/secret/URL değişkenleri için `infra/.env.prod.example` dosyasına bakın; biri eksikse
+`docker compose` build'e girmeden hata verir.
+
 ## Katkı / geliştirme sırası
 
 Geliştirme, [`docs/product-requirements.md`](docs/product-requirements.md) Bölüm 9'daki milestone sırasını takip

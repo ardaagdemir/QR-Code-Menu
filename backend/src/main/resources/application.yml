@@ -79,3 +79,10 @@ management:
   endpoint:
     health:
       show-details: never
+  health:
+    # Owner-notification email (Section 15) is explicitly non-blocking for the core
+    # product ("WhatsApp entegrasyonu... blocker değildir", same spirit for email) - an
+    # unreachable/slow SMTP provider must not flip Docker's backend healthcheck (used
+    # for restart policy + depends_on readiness gating) to unhealthy.
+    mail:
+      enabled: false

@@ -21,9 +21,16 @@ services:
   backend:
     build:
       context: ../backend
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-qrmenu}
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-qrmenu}
@@ -59,16 +66,40 @@ services:
   customer-web:
     build:
       context: ../frontend/customer-web
+      args:
+        # Inlined into the JS bundle at build time (see frontend/customer-web/Dockerfile).
+        # Local default only - docker-compose.prod.yml requires a real value.
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8080}
+    restart: unless-stopped
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    healthcheck:
+      # 127.0.0.1, not localhost: BusyBox wget on Alpine resolves "localhost" to ::1
+      # first and doesn't fall back to IPv4, but Node's server only listens on IPv4.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
     ports:
       - "3000:3000"
 
   staff-web:
     build:
       context: ../frontend/staff-web
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8080}
+    restart: unless-stopped
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3002/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
     ports:
       - "3002:3002"
 

@@ -1,0 +1,121 @@
+# Production stack: adds TLS termination (Caddy) in front of backend/customer-web/
+# staff-web, requires every previously-optional env var explicitly (fails fast instead
+# of falling back to a local/dev default), and does not publish backend/frontend/
+# postgres ports directly to the host - only Caddy's 80/443 are reachable, everything
+# else talks over the compose-internal network. Kept as its own standalone file rather
+# than an overlay on docker-compose.yml so merge semantics of `ports`/`depends_on`
+# can't accidentally reintroduce a directly-reachable plaintext port.
+#
+# Usage (from the infra/ directory - see .env.prod.example for the required values):
+#   cp .env.prod.example .env.prod   # fill in real values, never commit
+#   docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in infra/.env.prod}
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in infra/.env.prod}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in infra/.env.prod}
+    restart: unless-stopped
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ../backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      INTERNAL_ADMIN_TOKEN: ${INTERNAL_ADMIN_TOKEN:?set INTERNAL_ADMIN_TOKEN in infra/.env.prod}
+      PAYMENT_MOCK_WEBHOOK_SECRET: ${PAYMENT_MOCK_WEBHOOK_SECRET:?set PAYMENT_MOCK_WEBHOOK_SECRET in infra/.env.prod}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?set CORS_ALLOWED_ORIGINS in infra/.env.prod}
+      SMTP_HOST: ${SMTP_HOST:?set SMTP_HOST in infra/.env.prod}
+      SMTP_PORT: ${SMTP_PORT:?set SMTP_PORT in infra/.env.prod}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_AUTH: ${SMTP_AUTH:-true}
+      SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
+      OWNER_NOTIFICATION_FROM_EMAIL: ${OWNER_NOTIFICATION_FROM_EMAIL:?set OWNER_NOTIFICATION_FROM_EMAIL in infra/.env.prod}
+      MEDIA_STORAGE_LOCAL_BASE_DIR: /data/media
+      MEDIA_STORAGE_PUBLIC_BASE_URL: ${MEDIA_STORAGE_PUBLIC_BASE_URL:?set MEDIA_STORAGE_PUBLIC_BASE_URL in infra/.env.prod}
+    volumes:
+      - media_data:/data/media
+
+  customer-web:
+    build:
+      context: ../frontend/customer-web
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:?set NEXT_PUBLIC_API_BASE_URL in infra/.env.prod}
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      # 127.0.0.1, not localhost: BusyBox wget on Alpine resolves "localhost" to ::1
+      # first and doesn't fall back to IPv4, but Node's server only listens on IPv4.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  staff-web:
+    build:
+      context: ../frontend/staff-web
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:?set NEXT_PUBLIC_API_BASE_URL in infra/.env.prod}
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3002/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+      customer-web:
+        condition: service_healthy
+      staff-web:
+        condition: service_healthy
+    environment:
+      API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN in infra/.env.prod}
+      CUSTOMER_WEB_DOMAIN: ${CUSTOMER_WEB_DOMAIN:?set CUSTOMER_WEB_DOMAIN in infra/.env.prod}
+      STAFF_WEB_DOMAIN: ${STAFF_WEB_DOMAIN:?set STAFF_WEB_DOMAIN in infra/.env.prod}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in infra/.env.prod}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  postgres_data:
+  media_data:
+  caddy_data:
+  caddy_config:
