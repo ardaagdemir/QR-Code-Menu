@@ -142,7 +142,7 @@ export default function PaymentSheet({ tableVisitId, initialIntent, trackingToke
 
       {phase === "succeeded" ? (
         <>
-          <p className={styles.statusSuccess}>Ödeme başarılı. Siparişiniz mutfağa iletildi.</p>
+          <p className={styles.statusSuccess}>Ödeme başarılı. Siparişiniz işletmeye iletildi, onay bekleniyor.</p>
           {orderNumber !== null ? <p className={styles.orderNumber}>Sipariş No: #{orderNumber}</p> : null}
           {trackingToken ? (
             <Link href={`/order/track/${trackingToken}`} className={styles.trackingLink}>

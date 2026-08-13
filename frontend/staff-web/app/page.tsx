@@ -38,7 +38,7 @@ export default function LoginPage() {
     <main className={styles.page}>
       <form className={styles.card} onSubmit={handleSubmit}>
         <h1 className={styles.title}>Personel Girişi</h1>
-        <p className={styles.subtitle}>QR Menü yönetim ve mutfak ekranlarına erişmek için giriş yapın.</p>
+        <p className={styles.subtitle}>QR Menü yönetim ve kasa ekranlarına erişmek için giriş yapın.</p>
 
         <div className={styles.field}>
           <label className={styles.label} htmlFor="email">

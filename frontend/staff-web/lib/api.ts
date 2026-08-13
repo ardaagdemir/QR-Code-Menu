@@ -45,7 +45,7 @@ export type StaffContext = {
   staffUserId: string;
   businessId: string;
   email: string;
-  role: "PLATFORM_ADMIN" | "BUSINESS_ADMIN" | "BRANCH_MANAGER" | "CASHIER" | "KITCHEN_STAFF";
+  role: "PLATFORM_ADMIN" | "BUSINESS_ADMIN" | "BRANCH_MANAGER" | "CASHIER";
   branchIds: string[];
   businessName: string;
   branches: StaffBranchSummary[];
@@ -63,58 +63,10 @@ export async function me(): Promise<StaffContext> {
   return apiFetch("/api/staff/auth/me");
 }
 
-export type KitchenOrderItemOption = {
+export type OrderItemOptionSummary = {
   id: string;
   name: string;
 };
-
-export type KitchenOrderItem = {
-  id: string;
-  productName: string;
-  orderedQuantity: number;
-  acceptedQuantity: number;
-  rejectedQuantity: number;
-  status: "PENDING_REVIEW" | "PREPARING" | "REJECTED" | "READY" | "SERVED";
-  options: KitchenOrderItemOption[];
-};
-
-export type KitchenOrder = {
-  orderId: string;
-  orderNumber: number | null;
-  status: string;
-  totalMinorUnits: number;
-  tableLabel: string | null;
-  statusSince: string;
-  items: KitchenOrderItem[];
-};
-
-export async function getKitchenQueue(branchId: string): Promise<KitchenOrder[]> {
-  return apiFetch(`/api/kitchen/branches/${encodeURIComponent(branchId)}/orders`);
-}
-
-export async function decideOrderItem(branchId: string, orderItemId: string, acceptedQuantity: number): Promise<KitchenOrder> {
-  return apiFetch(
-    `/api/kitchen/branches/${encodeURIComponent(branchId)}/order-items/${encodeURIComponent(orderItemId)}/decide`,
-    { method: "POST", body: JSON.stringify({ acceptedQuantity }) },
-  );
-}
-
-export async function markOrderItemReady(branchId: string, orderItemId: string): Promise<KitchenOrder> {
-  return apiFetch(`/api/kitchen/branches/${encodeURIComponent(branchId)}/order-items/${encodeURIComponent(orderItemId)}/ready`, {
-    method: "POST",
-  });
-}
-
-export async function markOrderItemServed(branchId: string, orderItemId: string): Promise<KitchenOrder> {
-  return apiFetch(`/api/kitchen/branches/${encodeURIComponent(branchId)}/order-items/${encodeURIComponent(orderItemId)}/served`, {
-    method: "POST",
-  });
-}
-
-/** EventSource must be opened with { withCredentials: true } so the qrmenu_staff_session cookie rides along cross-origin. */
-export function buildKitchenStreamUrl(branchId: string): string {
-  return `${getApiBaseUrl()}/api/kitchen/branches/${encodeURIComponent(branchId)}/stream`;
-}
 
 export type StaffOrderItem = {
   id: string;
@@ -153,7 +105,7 @@ export type StaffOrderLookup = {
 
 /** Section 4, screen #6: staff finds an order by its readable order number to start a refund. */
 export async function searchOrderByNumber(branchId: string, orderNumber: number): Promise<StaffOrderLookup> {
-  return apiFetch(`/api/kitchen/branches/${encodeURIComponent(branchId)}/orders/search?orderNumber=${orderNumber}`);
+  return apiFetch(`/api/staff/branches/${encodeURIComponent(branchId)}/orders/search?orderNumber=${orderNumber}`);
 }
 
 export type RefundLineInput = {
@@ -163,7 +115,7 @@ export type RefundLineInput = {
 
 /** The backend prices every line from the OrderItem's own snapshot - this never sends an amount, only quantities. */
 export async function createRefund(branchId: string, orderId: string, items: RefundLineInput[]): Promise<Refund> {
-  return apiFetch(`/api/kitchen/branches/${encodeURIComponent(branchId)}/orders/${encodeURIComponent(orderId)}/refunds`, {
+  return apiFetch(`/api/staff/branches/${encodeURIComponent(branchId)}/orders/${encodeURIComponent(orderId)}/refunds`, {
     method: "POST",
     body: JSON.stringify({ items }),
   });
@@ -171,14 +123,18 @@ export async function createRefund(branchId: string, orderId: string, items: Ref
 
 /** Section 4, screen #6: "teslim işlemi" - staff confirms a READY order was delivered/picked up. */
 export async function completeOrder(branchId: string, orderId: string): Promise<StaffOrderLookup> {
-  return apiFetch(`/api/kitchen/branches/${encodeURIComponent(branchId)}/orders/${encodeURIComponent(orderId)}/complete`, {
+  return apiFetch(`/api/staff/branches/${encodeURIComponent(branchId)}/orders/${encodeURIComponent(orderId)}/complete`, {
     method: "POST",
   });
 }
 
 // ---------------------------------------------------------------------------
-// Kasa kabul/red kapısı (gap-analysis #1, product-requirements.md Section 6) -
-// Permission.ORDER_VIEW/ORDER_ACCEPT/ORDER_REJECT.
+// Kasa - tek operasyon ekranı (gap-analysis #1, product-requirements.md Section 6/8/11):
+// kabul/red kapısı + kabul edilen siparişin PREPARING -> READY -> COMPLETED akışı, tek
+// tek sipariş bazlı aksiyonlarla (item bazlı bir karar adımı yok). Permission.ORDER_VIEW
+// (görüntüle) / ORDER_ACCEPT / ORDER_REJECT / ORDER_PREPARE (hazır işaretle). Ayrı bir
+// Mutfak/KDS ekranı yok - bu uçlar eskiden /api/kitchen/** altındaki ayrı bir
+// KitchenController'a aitti.
 // ---------------------------------------------------------------------------
 
 export type OrderControlItem = {
@@ -187,8 +143,8 @@ export type OrderControlItem = {
   orderedQuantity: number;
   acceptedQuantity: number;
   rejectedQuantity: number;
-  status: string;
-  options: KitchenOrderItemOption[];
+  status: "PENDING_REVIEW" | "PREPARING" | "REJECTED" | "READY" | "SERVED" | string;
+  options: OrderItemOptionSummary[];
 };
 
 export type OrderControlOrder = {
@@ -220,6 +176,28 @@ export async function rejectOrder(branchId: string, orderId: string, reasonCode:
     method: "POST",
     body: JSON.stringify({ reasonCode, note: note || null }),
   });
+}
+
+/** Section 6/8: kabul edilmiş, hâlâ hazırlanan siparişler ("PREPARING -> READY"). */
+export async function getInProgressOrders(branchId: string): Promise<OrderControlOrder[]> {
+  return apiFetch(`/api/staff/branches/${encodeURIComponent(branchId)}/orders/in-progress`);
+}
+
+/** Section 6/8: hazır, teslim/tamamlanma bekleyen siparişler ("READY -> COMPLETED"). */
+export async function getReadyOrders(branchId: string): Promise<OrderControlOrder[]> {
+  return apiFetch(`/api/staff/branches/${encodeURIComponent(branchId)}/orders/ready`);
+}
+
+/** Section 6/8: PREPARING -> READY, the whole order at once - no item-level decision step. */
+export async function markOrderReady(branchId: string, orderId: string): Promise<OrderControlOrder> {
+  return apiFetch(`/api/staff/branches/${encodeURIComponent(branchId)}/orders/${encodeURIComponent(orderId)}/ready`, {
+    method: "POST",
+  });
+}
+
+/** EventSource must be opened with { withCredentials: true } so the qrmenu_staff_session cookie rides along cross-origin. */
+export function buildOrderStreamUrl(branchId: string): string {
+  return `${getApiBaseUrl()}/api/staff/branches/${encodeURIComponent(branchId)}/orders/stream`;
 }
 
 export function formatPriceMinorUnits(priceMinorUnits: number): string {
@@ -484,7 +462,7 @@ export async function upsertBranchProduct(
 // Staff / role management (Permission.STAFF_MANAGE)
 // ---------------------------------------------------------------------------
 
-export type StaffRole = "BUSINESS_ADMIN" | "BRANCH_MANAGER" | "CASHIER" | "KITCHEN_STAFF";
+export type StaffRole = "BUSINESS_ADMIN" | "BRANCH_MANAGER" | "CASHIER";
 
 export type StaffUser = {
   id: string;

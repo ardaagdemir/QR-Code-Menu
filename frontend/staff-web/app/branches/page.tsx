@@ -136,9 +136,6 @@ export default function BranchesPage() {
                       <Link href={`/cashier/${branch.id}`} className={styles.backLink}>
                         Kasa
                       </Link>
-                      <Link href={`/kitchen/${branch.id}`} className={styles.backLink}>
-                        Mutfak
-                      </Link>
                       <Link href={`/refunds/${branch.id}`} className={styles.backLink}>
                         İadeler
                       </Link>

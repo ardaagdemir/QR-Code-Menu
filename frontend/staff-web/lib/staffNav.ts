@@ -5,7 +5,6 @@ export const ROLE_LABELS: Record<string, string> = {
   BUSINESS_ADMIN: "İşletme Yöneticisi",
   BRANCH_MANAGER: "Şube Sorumlusu",
   CASHIER: "Kasa",
-  KITCHEN_STAFF: "Mutfak Personeli",
 };
 
 export type StaffRole = StaffContext["role"];
@@ -17,7 +16,7 @@ export function isBusinessWide(role: StaffRole): boolean {
   return role === "BUSINESS_ADMIN" || role === "PLATFORM_ADMIN";
 }
 
-/** Kasa/Mutfak/İadeler have no "all branches" screen - a business-wide role goes
+/** Kasa/İadeler have no "all branches" screen - a business-wide role goes
  * through /branches to pick one, an operator scoped to their own branch(es) goes
  * straight there (first assigned branch, the common single-branch case). */
 export function singleBranchHref(context: StaffContext, basePath: string): string | null {
@@ -30,7 +29,7 @@ export function singleBranchHref(context: StaffContext, basePath: string): strin
   return `${basePath}/${context.branches[0].id}`;
 }
 
-/** Unlike Kasa/Mutfak/İadeler, sales reporting has a real "all branches" screen
+/** Unlike Kasa/İadeler, sales reporting has a real "all branches" screen
  * (Permission.REPORT_CHAIN_VIEW, /reports) - business-wide roles land there directly
  * instead of being routed through /branches first. */
 export function reportsHref(context: StaffContext): string | null {
@@ -67,7 +66,7 @@ export const NAV_GROUPS: NavGroup[] = [
         key: "dashboard",
         label: "Dashboard",
         matchPrefix: "/dashboard",
-        roles: ["PLATFORM_ADMIN", "BUSINESS_ADMIN", "BRANCH_MANAGER", "CASHIER", "KITCHEN_STAFF"],
+        roles: ["PLATFORM_ADMIN", "BUSINESS_ADMIN", "BRANCH_MANAGER", "CASHIER"],
         href: () => "/dashboard",
       },
       {
@@ -76,13 +75,6 @@ export const NAV_GROUPS: NavGroup[] = [
         matchPrefix: "/cashier",
         roles: ["PLATFORM_ADMIN", "BUSINESS_ADMIN", "BRANCH_MANAGER", "CASHIER"],
         href: (context) => singleBranchHref(context, "/cashier"),
-      },
-      {
-        key: "kitchen",
-        label: "Mutfak",
-        matchPrefix: "/kitchen",
-        roles: ["PLATFORM_ADMIN", "BUSINESS_ADMIN", "BRANCH_MANAGER", "KITCHEN_STAFF"],
-        href: (context) => singleBranchHref(context, "/kitchen"),
       },
     ],
   },

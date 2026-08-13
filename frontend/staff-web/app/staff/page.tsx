@@ -23,7 +23,6 @@ const ROLE_LABELS: Record<string, string> = {
   BUSINESS_ADMIN: "İşletme Yöneticisi",
   BRANCH_MANAGER: "Şube Sorumlusu",
   CASHIER: "Kasa",
-  KITCHEN_STAFF: "Mutfak Personeli",
 };
 
 /** Section 4, staff-web admin screen #4: Personel/Rol yönetimi (Permission.STAFF_MANAGE). */
@@ -39,7 +38,7 @@ export default function StaffPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<StaffRole>("KITCHEN_STAFF");
+  const [role, setRole] = useState<StaffRole>("CASHIER");
   const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>([]);
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -189,7 +188,6 @@ export default function StaffPage() {
                   <option value="BUSINESS_ADMIN">İşletme Yöneticisi</option>
                   <option value="BRANCH_MANAGER">Şube Sorumlusu</option>
                   <option value="CASHIER">Kasa</option>
-                  <option value="KITCHEN_STAFF">Mutfak Personeli</option>
                 </Select>
               )}
             </FormField>

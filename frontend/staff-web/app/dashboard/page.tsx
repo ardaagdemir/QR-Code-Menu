@@ -25,7 +25,7 @@ function todayIsoDate(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-/** Permission.REPORT_VIEW (StaffRole.java) - KITCHEN_STAFF has no report visibility. */
+/** Permission.REPORT_VIEW (StaffRole.java) - every business role has report visibility. */
 const REPORT_ROLES: StaffContext["role"][] = ["PLATFORM_ADMIN", "BUSINESS_ADMIN", "BRANCH_MANAGER", "CASHIER"];
 
 /**

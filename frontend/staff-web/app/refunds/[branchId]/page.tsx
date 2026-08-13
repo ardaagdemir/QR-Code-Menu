@@ -133,9 +133,6 @@ export default function RefundsPage() {
               <Link href={`/cashier/${branchId}`} className={styles.backLink}>
                 Kasa
               </Link>
-              <Link href={`/kitchen/${branchId}`} className={styles.backLink}>
-                Mutfağa dön
-              </Link>
             </div>
           }
         />

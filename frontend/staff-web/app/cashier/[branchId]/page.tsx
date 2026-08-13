@@ -1,15 +1,22 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ApiError,
   acceptOrder,
-  buildKitchenStreamUrl,
+  buildOrderStreamUrl,
+  completeOrder,
   formatPriceMinorUnits,
+  getInProgressOrders,
+  getKitchenFinancialSummary,
   getPendingAcceptanceOrders,
+  getReadyOrders,
+  markOrderReady,
+  me,
   rejectOrder,
+  type KitchenFinancialSummary,
   type OrderControlOrder,
 } from "@/lib/api";
 import { formatElapsedMinutes, waitingUrgency } from "@/lib/time";
@@ -25,7 +32,7 @@ import styles from "./page.module.css";
 
 const REJECT_REASONS: { value: string; label: string }[] = [
   { value: "OUT_OF_STOCK", label: "Ürün tükendi" },
-  { value: "KITCHEN_BUSY", label: "Mutfak yoğun" },
+  { value: "KITCHEN_BUSY", label: "Yoğunluk" },
   { value: "CLOSED", label: "Şube kapanıyor/kapalı" },
   { value: "OTHER", label: "Diğer" },
 ];
@@ -33,28 +40,29 @@ const REJECT_REASONS: { value: string; label: string }[] = [
 const WAITING_BADGE_TONE = { normal: "neutral", warning: "warning", danger: "danger" } as const;
 
 /**
- * Gap-analysis #2: kasa dashboard (Section 10.1) - ödemesi başarılı, işletme onayı
- * bekleyen siparişleri gösterir; kasa her siparişi tümüyle KABUL (-> mutfak) veya
- * RED (-> otomatik tam iade) eder. Aynı "SSE'yi salt refetch sinyali olarak kullan"
- * deseni KDS/pickup board ile paylaşılıyor - branş-kitchen kanalı zaten her sipariş
- * durum değişikliğinde (AWAITING_STORE_ACCEPTANCE'a düşüş dahil) event yayınlıyor.
- *
- * Bölüm 19.3 "Kasa": kart masa/sipariş no/ödeme durumu/bekleme süresi/tutar/ürün
- * özetini ilk bakışta vermeli. "Ödeme Alındı" rozeti statik - bu liste yalnızca
- * CustomerOrder.markAwaitingStoreAcceptance()'ın garanti ettiği gibi doğrulanmış
- * ödemesi olan siparişleri döndürüyor, ayrı bir API alanı gerekmiyor.
+ * Ürün kararı: ayrı bir Mutfak/KDS ekranı yok - Kasa, sipariş operasyonunun tek ekranı.
+ * Üç liste tek sayfada yaşar: onay bekleyen siparişler (kabul/red), kabul edilmiş ve
+ * hâlâ hazırlanan siparişler (tek "Hazır" aksiyonuyla PREPARING -> READY, item bazlı bir
+ * karar adımı yok) ve hazır/teslim bekleyen siparişler. Üç liste de aynı SSE kanalını
+ * (Section 2: "salt refetch sinyali") paylaşır - branch'in order-control kanalı zaten
+ * her durum geçişinde event yayınlıyor.
  */
 export default function CashierDashboardPage() {
   const params = useParams<{ branchId: string }>();
   const branchId = params.branchId;
   const router = useRouter();
 
-  const [orders, setOrders] = useState<OrderControlOrder[]>([]);
+  const [pendingOrders, setPendingOrders] = useState<OrderControlOrder[]>([]);
+  const [inProgressOrders, setInProgressOrders] = useState<OrderControlOrder[]>([]);
+  const [readyOrders, setReadyOrders] = useState<OrderControlOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [connectionStatus, setConnectionStatus] = useState<"connecting" | "live" | "reconnecting">("connecting");
   const [error, setError] = useState<string | null>(null);
   const [pendingOrderId, setPendingOrderId] = useState<string | null>(null);
   const [rejectingOrderId, setRejectingOrderId] = useState<string | null>(null);
+  const [readyingOrderId, setReadyingOrderId] = useState<string | null>(null);
+  const [completingOrderId, setCompletingOrderId] = useState<string | null>(null);
+  const [financialSummary, setFinancialSummary] = useState<KitchenFinancialSummary | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const reasonCodeRef = useRef<Record<string, string>>({});
   const noteRef = useRef<Record<string, string>>({});
@@ -69,30 +77,34 @@ export default function CashierDashboardPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // Section 6: "Mümkünse sesli/görsel uyarı verilsin" - bir sipariş kritik eşiği
-  // geçtiğinde (branch'in configurable storeAcceptanceTimeoutSeconds'ı) bir kez sesli uyarı çalar.
   useEffect(() => {
-    const stillOpenOrderIds = new Set(orders.map((order) => order.orderId));
+    const stillOpenOrderIds = new Set(pendingOrders.map((order) => order.orderId));
     for (const orderId of alertedOrderIdsRef.current) {
       if (!stillOpenOrderIds.has(orderId)) {
         alertedOrderIdsRef.current.delete(orderId);
       }
     }
-    for (const order of orders) {
+    for (const order of pendingOrders) {
       const urgency = waitingUrgency(order.statusSince, now, order.storeAcceptanceTimeoutSeconds);
       if (urgency === "danger" && !alertedOrderIdsRef.current.has(order.orderId)) {
         alertedOrderIdsRef.current.add(order.orderId);
         playCriticalOrderAlert();
       }
     }
-  }, [orders, now]);
+  }, [pendingOrders, now]);
 
-  async function reloadOrders() {
+  const reloadAll = useCallback(async () => {
     const requestId = ++latestRequestIdRef.current;
     try {
-      const data = await getPendingAcceptanceOrders(branchId);
+      const [pending, inProgress, ready] = await Promise.all([
+        getPendingAcceptanceOrders(branchId),
+        getInProgressOrders(branchId),
+        getReadyOrders(branchId),
+      ]);
       if (requestId === latestRequestIdRef.current) {
-        setOrders(data);
+        setPendingOrders(pending);
+        setInProgressOrders(inProgress);
+        setReadyOrders(ready);
         setError(null);
         setLoading(false);
       }
@@ -107,17 +119,23 @@ export default function CashierDashboardPage() {
       setError("Sipariş listesi yüklenemedi.");
       setLoading(false);
     }
-  }
+  }, [branchId, router]);
 
   useEffect(() => {
     let cancelled = false;
 
-    async function fetchOrders() {
+    async function fetchAll() {
       const requestId = ++latestRequestIdRef.current;
       try {
-        const data = await getPendingAcceptanceOrders(branchId);
+        const [pending, inProgress, ready] = await Promise.all([
+          getPendingAcceptanceOrders(branchId),
+          getInProgressOrders(branchId),
+          getReadyOrders(branchId),
+        ]);
         if (!cancelled && requestId === latestRequestIdRef.current) {
-          setOrders(data);
+          setPendingOrders(pending);
+          setInProgressOrders(inProgress);
+          setReadyOrders(ready);
           setError(null);
           setLoading(false);
         }
@@ -134,11 +152,11 @@ export default function CashierDashboardPage() {
       }
     }
 
-    const eventSource = new EventSource(buildKitchenStreamUrl(branchId), { withCredentials: true });
+    const eventSource = new EventSource(buildOrderStreamUrl(branchId), { withCredentials: true });
     eventSource.addEventListener("open", () => setConnectionStatus("live"));
     eventSource.addEventListener("error", () => setConnectionStatus("reconnecting"));
-    eventSource.addEventListener("order-status", () => fetchOrders());
-    void fetchOrders();
+    eventSource.addEventListener("order-status", () => fetchAll());
+    void fetchAll();
 
     return () => {
       cancelled = true;
@@ -146,12 +164,35 @@ export default function CashierDashboardPage() {
     };
   }, [branchId, router]);
 
+  useEffect(() => {
+    let cancelled = false;
+    // Gap-analysis #14: REPORT_FINANCIAL_SUMMARY_VIEW is only granted to
+    // BUSINESS_ADMIN/BRANCH_MANAGER (see StaffRole) - checking the role here just
+    // avoids a call that would 403 for CASHIER; the backend enforces this regardless.
+    me()
+      .then((context) => {
+        if (cancelled || (context.role !== "BUSINESS_ADMIN" && context.role !== "BRANCH_MANAGER")) {
+          return;
+        }
+        const today = new Date().toISOString().slice(0, 10);
+        return getKitchenFinancialSummary(branchId, today, today).then((summary) => {
+          if (!cancelled) {
+            setFinancialSummary(summary);
+          }
+        });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [branchId]);
+
   async function handleAccept(orderId: string) {
     setPendingOrderId(orderId);
     setError(null);
     try {
       await acceptOrder(branchId, orderId);
-      await reloadOrders();
+      await reloadAll();
     } catch {
       setError("Sipariş kabul edilemedi.");
     } finally {
@@ -167,11 +208,35 @@ export default function CashierDashboardPage() {
     try {
       await rejectOrder(branchId, orderId, reasonCode, note);
       setRejectingOrderId(null);
-      await reloadOrders();
+      await reloadAll();
     } catch {
       setError("Sipariş reddedilemedi.");
     } finally {
       setPendingOrderId(null);
+    }
+  }
+
+  async function handleMarkReady(orderId: string) {
+    setReadyingOrderId(orderId);
+    try {
+      await markOrderReady(branchId, orderId);
+      await reloadAll();
+    } catch {
+      setError("Sipariş hazır olarak işaretlenemedi.");
+    } finally {
+      setReadyingOrderId(null);
+    }
+  }
+
+  async function handleComplete(orderId: string) {
+    setCompletingOrderId(orderId);
+    try {
+      await completeOrder(branchId, orderId);
+      await reloadAll();
+    } catch {
+      setError("Sipariş tamamlanamadı.");
+    } finally {
+      setCompletingOrderId(null);
     }
   }
 
@@ -181,9 +246,6 @@ export default function CashierDashboardPage() {
         <div className={styles.header}>
           <h1 className={styles.title}>Kasa</h1>
           <div className={styles.headerActions}>
-            <Link href={`/kitchen/${branchId}`} className={styles.navLink}>
-              Mutfak
-            </Link>
             <Link href={`/refunds/${branchId}`} className={styles.navLink}>
               İadeler
             </Link>
@@ -194,100 +256,203 @@ export default function CashierDashboardPage() {
           </div>
         </div>
 
-        {error ? <ErrorState message={error} onRetry={reloadOrders} /> : null}
+        {error ? <ErrorState message={error} onRetry={reloadAll} /> : null}
+
+        {financialSummary ? (
+          <div className={styles.financialSummary}>
+            <div className={styles.financialSummaryItem}>
+              <span className={styles.financialSummaryLabel}>Bugün brüt satış</span>
+              <span className={styles.financialSummaryValue}>{formatPriceMinorUnits(financialSummary.grossSalesMinorUnits)}</span>
+            </div>
+            <div className={styles.financialSummaryItem}>
+              <span className={styles.financialSummaryLabel}>Net satış</span>
+              <span className={styles.financialSummaryValue}>{formatPriceMinorUnits(financialSummary.netSalesMinorUnits)}</span>
+            </div>
+            <div className={styles.financialSummaryItem}>
+              <span className={styles.financialSummaryLabel}>Sipariş sayısı</span>
+              <span className={styles.financialSummaryValue}>{financialSummary.orderCount}</span>
+            </div>
+          </div>
+        ) : null}
 
         {loading ? (
           <p className={styles.loading}>Yükleniyor…</p>
-        ) : orders.length === 0 ? (
-          <EmptyState title="Onay bekleyen sipariş yok" description="Ödemesi tamamlanan yeni siparişler burada görünecek." />
         ) : (
-          <div className={styles.grid}>
-            {orders.map((order) => {
-              const urgency = waitingUrgency(order.statusSince, now, order.storeAcceptanceTimeoutSeconds);
-              return (
-                <article
-                  key={order.orderId}
-                  className={[styles.card, styles[`card--${urgency}`], urgency === "danger" ? styles["card--critical"] : ""].join(" ")}
-                >
-                  <div className={styles.cardHeader}>
-                    <div className={styles.cardHeaderMain}>
-                      <span className={styles.tableLabel}>{order.tableLabel ?? "Masa —"}</span>
-                      <span className={styles.orderNumber}>#{order.orderNumber ?? "—"}</span>
-                    </div>
-                    <span className={styles.orderTotal}>{formatPriceMinorUnits(order.totalMinorUnits)}</span>
-                  </div>
-
-                  <div className={styles.cardMeta}>
-                    <Badge tone="success">Ödeme Alındı</Badge>
-                    <Badge tone={WAITING_BADGE_TONE[urgency]}>
-                      {urgency === "danger" ? "Kritik · " : ""}
-                      {formatElapsedMinutes(order.statusSince, now)} bekliyor
-                    </Badge>
-                  </div>
-
-                  {order.items.map((item) => (
-                    <div key={item.id} className={styles.item}>
-                      {item.orderedQuantity}× {item.productName}
-                      {item.options.length > 0 ? (
-                        <div className={styles.itemOptions}>{item.options.map((option) => option.name).join(", ")}</div>
-                      ) : null}
-                    </div>
-                  ))}
-
-                  {rejectingOrderId === order.orderId ? (
-                    <div className={styles.rejectForm}>
-                      <Select
-                        defaultValue={REJECT_REASONS[0].value}
-                        onChange={(event) => {
-                          reasonCodeRef.current[order.orderId] = event.target.value;
-                        }}
-                        aria-label="Red nedeni"
+          <>
+            <section className={styles.section}>
+              <h2 className={styles.sectionTitle}>Onay Bekleyen Siparişler</h2>
+              {pendingOrders.length === 0 ? (
+                <EmptyState title="Onay bekleyen sipariş yok" description="Ödemesi tamamlanan yeni siparişler burada görünecek." />
+              ) : (
+                <div className={styles.grid}>
+                  {pendingOrders.map((order) => {
+                    const urgency = waitingUrgency(order.statusSince, now, order.storeAcceptanceTimeoutSeconds);
+                    return (
+                      <article
+                        key={order.orderId}
+                        className={[styles.card, styles[`card--${urgency}`], urgency === "danger" ? styles["card--critical"] : ""].join(
+                          " ",
+                        )}
                       >
-                        {REJECT_REASONS.map((reason) => (
-                          <option key={reason.value} value={reason.value}>
-                            {reason.label}
-                          </option>
+                        <div className={styles.cardHeader}>
+                          <div className={styles.cardHeaderMain}>
+                            <span className={styles.tableLabel}>{order.tableLabel ?? "Masa —"}</span>
+                            <span className={styles.orderNumber}>#{order.orderNumber ?? "—"}</span>
+                          </div>
+                          <span className={styles.orderTotal}>{formatPriceMinorUnits(order.totalMinorUnits)}</span>
+                        </div>
+
+                        <div className={styles.cardMeta}>
+                          <Badge tone="success">Ödeme Alındı</Badge>
+                          <Badge tone={WAITING_BADGE_TONE[urgency]}>
+                            {urgency === "danger" ? "Kritik · " : ""}
+                            {formatElapsedMinutes(order.statusSince, now)} bekliyor
+                          </Badge>
+                        </div>
+
+                        {order.items.map((item) => (
+                          <div key={item.id} className={styles.item}>
+                            {item.orderedQuantity}× {item.productName}
+                            {item.options.length > 0 ? (
+                              <div className={styles.itemOptions}>{item.options.map((option) => option.name).join(", ")}</div>
+                            ) : null}
+                          </div>
                         ))}
-                      </Select>
-                      <Textarea
-                        rows={2}
-                        placeholder="Not (opsiyonel)"
-                        onChange={(event) => {
-                          noteRef.current[order.orderId] = event.target.value;
-                        }}
-                        aria-label="Red notu"
-                      />
+
+                        {rejectingOrderId === order.orderId ? (
+                          <div className={styles.rejectForm}>
+                            <Select
+                              defaultValue={REJECT_REASONS[0].value}
+                              onChange={(event) => {
+                                reasonCodeRef.current[order.orderId] = event.target.value;
+                              }}
+                              aria-label="Red nedeni"
+                            >
+                              {REJECT_REASONS.map((reason) => (
+                                <option key={reason.value} value={reason.value}>
+                                  {reason.label}
+                                </option>
+                              ))}
+                            </Select>
+                            <Textarea
+                              rows={2}
+                              placeholder="Not (opsiyonel)"
+                              onChange={(event) => {
+                                noteRef.current[order.orderId] = event.target.value;
+                              }}
+                              aria-label="Red notu"
+                            />
+                            <div className={styles.cardActions}>
+                              <Button
+                                variant="danger"
+                                disabled={pendingOrderId === order.orderId}
+                                onClick={() => handleSubmitReject(order.orderId)}
+                              >
+                                {pendingOrderId === order.orderId ? "İşleniyor…" : "Reddi Onayla"}
+                              </Button>
+                              <Button variant="ghost" onClick={() => setRejectingOrderId(null)}>
+                                Vazgeç
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className={styles.cardActions}>
+                            <Button disabled={pendingOrderId === order.orderId} onClick={() => handleAccept(order.orderId)}>
+                              Kabul Et
+                            </Button>
+                            <Button
+                              variant="secondary"
+                              disabled={pendingOrderId === order.orderId}
+                              onClick={() => setRejectingOrderId(order.orderId)}
+                            >
+                              Reddet
+                            </Button>
+                          </div>
+                        )}
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+
+            <section className={styles.section}>
+              <h2 className={styles.sectionTitle}>Hazırlanıyor</h2>
+              {inProgressOrders.length === 0 ? (
+                <EmptyState title="Hazırlanan sipariş yok" description="Kabul edilen siparişler burada görünecek." />
+              ) : (
+                <div className={styles.grid}>
+                  {inProgressOrders.map((order) => {
+                    const urgency = waitingUrgency(order.statusSince, now);
+                    return (
+                      <article key={order.orderId} className={[styles.card, styles[`card--${urgency}`]].join(" ")}>
+                        <div className={styles.cardHeader}>
+                          <div className={styles.cardHeaderMain}>
+                            <span className={styles.tableLabel}>{order.tableLabel ?? "Masa —"}</span>
+                            <span className={styles.orderNumber}>#{order.orderNumber ?? "—"}</span>
+                          </div>
+                          <Badge tone={WAITING_BADGE_TONE[urgency]}>{formatElapsedMinutes(order.statusSince, now)}</Badge>
+                        </div>
+                        <span className={styles.orderTotal}>{formatPriceMinorUnits(order.totalMinorUnits)}</span>
+
+                        {order.items.map((item) => (
+                          <div key={item.id} className={styles.item}>
+                            {item.orderedQuantity}× {item.productName}
+                            {item.options.length > 0 ? (
+                              <div className={styles.itemOptions}>{item.options.map((option) => option.name).join(", ")}</div>
+                            ) : null}
+                          </div>
+                        ))}
+
+                        <div className={styles.cardActions}>
+                          <Button disabled={readyingOrderId === order.orderId} onClick={() => handleMarkReady(order.orderId)}>
+                            Hazır
+                          </Button>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+
+            <section className={styles.section}>
+              <h2 className={styles.sectionTitle}>Hazır · Teslim Bekliyor</h2>
+              {readyOrders.length === 0 ? (
+                <EmptyState title="Teslim bekleyen sipariş yok" description="Hazırlanan siparişler burada görünecek." />
+              ) : (
+                <div className={styles.grid}>
+                  {readyOrders.map((order) => (
+                    <article key={order.orderId} className={styles.card}>
+                      <div className={styles.cardHeader}>
+                        <div className={styles.cardHeaderMain}>
+                          <span className={styles.tableLabel}>{order.tableLabel ?? "Masa —"}</span>
+                          <span className={styles.orderNumber}>#{order.orderNumber ?? "—"}</span>
+                        </div>
+                        <Badge tone="success">Hazır</Badge>
+                      </div>
+                      <span className={styles.orderTotal}>{formatPriceMinorUnits(order.totalMinorUnits)}</span>
+
+                      {order.items.map((item) => (
+                        <div key={item.id} className={styles.item}>
+                          {item.orderedQuantity}× {item.productName}
+                          {item.options.length > 0 ? (
+                            <div className={styles.itemOptions}>{item.options.map((option) => option.name).join(", ")}</div>
+                          ) : null}
+                        </div>
+                      ))}
+
                       <div className={styles.cardActions}>
-                        <Button
-                          variant="danger"
-                          disabled={pendingOrderId === order.orderId}
-                          onClick={() => handleSubmitReject(order.orderId)}
-                        >
-                          {pendingOrderId === order.orderId ? "İşleniyor…" : "Reddi Onayla"}
-                        </Button>
-                        <Button variant="ghost" onClick={() => setRejectingOrderId(null)}>
-                          Vazgeç
+                        <Button disabled={completingOrderId === order.orderId} onClick={() => handleComplete(order.orderId)}>
+                          Teslim Edildi / Tamamlandı
                         </Button>
                       </div>
-                    </div>
-                  ) : (
-                    <div className={styles.cardActions}>
-                      <Button disabled={pendingOrderId === order.orderId} onClick={() => handleAccept(order.orderId)}>
-                        Kabul Et
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        disabled={pendingOrderId === order.orderId}
-                        onClick={() => setRejectingOrderId(order.orderId)}
-                      >
-                        Reddet
-                      </Button>
-                    </div>
-                  )}
-                </article>
-              );
-            })}
-          </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </section>
+          </>
         )}
       </main>
     </AppShell>

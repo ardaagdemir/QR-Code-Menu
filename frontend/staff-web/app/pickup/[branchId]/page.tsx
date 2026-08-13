@@ -9,7 +9,7 @@ import styles from "./page.module.css";
  * Section 4, staff-web screen #8: kiosk-mode pickup board for CUSTOMER_PICKUP branches
  * - meant to run unattended on a screen in the restaurant, so no login/nav here (public/
  * unauthenticated endpoint, see PickupBoardController). Same "SSE as a refetch signal"
- * pattern as the KDS board (app/kitchen/[branchId]/page.tsx).
+ * pattern as the Kasa dashboard (app/cashier/[branchId]/page.tsx).
  */
 export default function PickupBoardPage() {
   const params = useParams<{ branchId: string }>();
