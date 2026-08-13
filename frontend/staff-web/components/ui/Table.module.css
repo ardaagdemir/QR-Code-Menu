@@ -31,6 +31,12 @@
 
 .table tbody tr {
   background: var(--color-surface-raised);
+  box-shadow: inset 2px 0 0 transparent;
+}
+
+.table tbody tr:hover {
+  background: color-mix(in srgb, var(--color-primary) 5%, var(--color-surface-raised));
+  box-shadow: inset 2px 0 0 var(--color-primary);
 }
 
 .primary {
