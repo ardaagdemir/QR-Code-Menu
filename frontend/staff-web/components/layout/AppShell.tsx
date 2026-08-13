@@ -101,7 +101,7 @@ export default function AppShell({ children }: Props) {
             </IconButton>
             {context ? (
               <span className={styles.context}>
-                {context.businessName}
+                <span className={styles.contextBusiness}>{context.businessName}</span>
                 {context.branches.length > 0 ? ` · ${context.branches.map((branch) => branch.name).join(", ")}` : ""}
               </span>
             ) : null}
