@@ -73,6 +73,9 @@
   --tap-target-min: 44px;
   --container-width: 480px;
   --container-width-desktop: 1080px;
+  /* KDS kiosk/büyük ekran: sipariş kartı grid'inin geniş ekranlarda daha fazla sütun
+     göstermesi için admin sayfalarından daha geniş bir üst sınır (Bölüm 19.4). */
+  --container-width-kiosk: 1920px;
 
   /* z-index scale */
   --z-sticky-header: 10;
