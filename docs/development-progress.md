@@ -1415,3 +1415,44 @@ halkası görsel olarak zoom ile doğrulandı, adım 2/5 "İşletme onayı" curr
 doğrulama yapılmadı (Chrome sistem teması dark idi, JS ile `prefers-color-scheme` override edilemiyor) -
 düşük risk kabul edildi çünkü tüm yeni stiller mevcut `--color-*` token'larını kullanıyor (Adım 1'de her
 iki tema için de zaten doğrulanmıştı), hiçbir yeni hardcoded renk eklenmedi. Backend değişikliği yok.
+
+---
+
+## UI/UX Productization Gate — Adım 3 Tasarım Yenilemesi: staff-web application shell — ✅ COMPLETED
+
+Gate'in "Cross-cutting" sırasının 3. adımı (staff-web application shell/sidebar). Adım 3'ün işlevsel
+kapsamı (AppShell component'i, sol sidebar + top bar + drawer, rol bazlı nav filtreleme - bkz. yukarıdaki
+"Adım 3: Staff Web Application Shell/Sidebar") daha önce tamamlanmıştı, ama Adım 1'in "Tide" kimliği
+`AppShell`'e de yalnızca token cascade'i kadar indi - hiçbir sayfa/shell-seviyesi component'e bilinçli bir
+tasarım geçişi uygulanmamıştı. Bu adımda `frontend-design` skill süreciyle (Adım 1/2 Tasarım Yenilemesi
+ile aynı yöntem) yalnızca `components/layout/AppShell.tsx` + `.module.css`'e restrained bir geçiş
+uygulandı. Kapsam bilinçli olarak yalnızca shell chrome'uyla sınırlı tutuldu - `app/dashboard/page.tsx`
+(Adım 6'da gerçek KPI içeriğiyle dolduruldu, kendi tasarım yenilemesi ayrı bir adımda ele alınacak) ve
+`styles/admin.module.css` (Adım 5'in kapsamı) bu geçişin dışında bırakıldı.
+
+**Tasarım kararı - imza öğesi:** Sidebar'daki aktif sayfa linkine, customer-web `VisitHeader`'daki
+"tide line" imzasını (Adım 2 Tasarım Yenilemesi) shell'in kendi diline çeviren dikey bir "tide marker"
+eklendi - linkin sol kenarında 3px, `--color-primary` → `--color-primary-strong` gradient'li dikey bir
+çubuk. Önceki `.active` stili (düz `--color-primary` dolgu + beyaz metin) yerini yumuşak bir tint'e
+(`color-mix(in srgb, var(--color-primary) 12%, transparent)`) ve `--color-primary` renkli/yarı-kalın
+metne bıraktı - bu, bir mesai boyunca sürekli görünen shell'de "aktif blok" yerine "buradasın" hissi veren
+daha sakin bir wayfinding pattern'i (Linear/Vercel tarzı sidebar'lardaki tanıdık dil). Geri kalan her yer
+sakin bırakıldı:
+
+1. **Brand** (`QR Menü` wordmark) - `--font-family-display` + `-0.01em` letter-spacing kazandı (h1-h3'ün
+   zaten aldığı display font kimliği shell'in kendi markasına da taşındı).
+2. **Top bar context** - `businessName` artık `--color-fg` + yarı-kalın, şube adları ondan sonra
+   `--color-fg-muted` kalıyor (`design-verify@qrmenu.local` test hesabıyla "Test Restoran" / şube adı
+   hiyerarşisi doğrulandı) - önceden ikisi de aynı tondaydı, iş yeri adı artık görsel olarak öne çıkıyor.
+
+**Doğrulama:** `npx tsc --noEmit` + `npx eslint` + `npm run build` (staff-web) temiz. Canlı Chrome testi
+yapıldı - Docker'ın `infra-staff-web-1` container'ı 3002 portunu (backend CORS'un izin verdiği tek
+origin'lerden biri) tuttuğundan, container geçici durduruldu, yerine `npx next dev -p 3002` başlatıldı.
+`/internal/businesses/{id}/staff-users` bootstrap endpoint'iyle geçici bir `BUSINESS_ADMIN` test hesabı
+(`design-verify@qrmenu.local`, "Test Restoran") oluşturuldu, giriş yapılıp Dashboard → Şubeler arası
+gezinildi: tide marker aktif linkte doğru render edildi, sayfa değiştikçe doğru linke taşındı (routing
+mantığı bozulmadı - business-wide rol için "Kasa" linki beklendiği gibi `/branches` seçiciye yönlendirdi),
+top bar hiyerarşisi ve display-font brand doğru göründü, konsolda hata yok. Test sonunda test hesabı +
+session'ı DB'den silindi, yerel `next dev` kapatıldı, `infra-staff-web-1` container'ı yeniden başlatıldı.
+Işık temasında ayrı doğrulama yapılmadı (Adım 1/2 ile aynı düşük-risk gerekçesi - yalnızca mevcut
+`--color-*` token'ları kullanıldı). Backend değişikliği yok.
