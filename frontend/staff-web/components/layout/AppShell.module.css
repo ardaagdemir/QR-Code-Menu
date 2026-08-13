@@ -3,6 +3,59 @@
   min-height: 100vh;
 }
 
+/* Kasa'nın kendi "sıcak" kimliği (ürün kararı: sıcak/modern restoran-POS hissi) - yalnızca
+ * bu AppShell örneğine scoped bir --color-* override bloğu. Her component zaten yalnızca
+ * var(--color-*) token'larını okuduğu için (Button/Badge/Card/Select/...), bu tek blok
+ * sidebar+topbar+içerik zincirinin tamamını yeniden temalar - başka hiçbir route bu class'ı
+ * almadığından "Tide" kimliği geri kalan her ekranda birebir korunur. */
+.warm {
+  --color-bg: #fbf1e6;
+  --color-surface: #f1e0c8;
+  --color-surface-raised: #ffffff;
+  --color-fg: #2b1b12;
+  --color-fg-muted: #8a6f58;
+  --color-border: rgba(43, 27, 18, 0.1);
+  --color-border-strong: rgba(43, 27, 18, 0.2);
+  --color-primary: #cc5023;
+  --color-primary-strong: #a83d16;
+  --color-primary-fg: #ffffff;
+  --color-danger: #b23a2e;
+  --color-danger-bg: rgba(178, 58, 46, 0.1);
+  --color-success: #3f7d4e;
+  --color-success-bg: rgba(63, 125, 78, 0.12);
+  --color-warning: #c98a1d;
+  --color-warning-bg: rgba(201, 138, 29, 0.12);
+  --color-badge-bg: rgba(43, 27, 18, 0.06);
+  --color-overlay: rgba(20, 12, 6, 0.55);
+  --color-skeleton: rgba(43, 27, 18, 0.08);
+  --color-skeleton-shine: rgba(43, 27, 18, 0.16);
+}
+
+@media (prefers-color-scheme: dark) {
+  .warm {
+    --color-bg: #1c130b;
+    --color-surface: #241a10;
+    --color-surface-raised: #2e2117;
+    --color-fg: #f5e9da;
+    --color-fg-muted: #b79a80;
+    --color-border: rgba(255, 255, 255, 0.1);
+    --color-border-strong: rgba(255, 255, 255, 0.2);
+    --color-primary: #f0894a;
+    --color-primary-strong: #f7a874;
+    --color-primary-fg: #1c130b;
+    --color-danger: #e88478;
+    --color-danger-bg: rgba(232, 132, 120, 0.14);
+    --color-success: #7fbf8c;
+    --color-success-bg: rgba(127, 191, 140, 0.14);
+    --color-warning: #e3b24e;
+    --color-warning-bg: rgba(227, 178, 78, 0.14);
+    --color-badge-bg: rgba(255, 255, 255, 0.1);
+    --color-overlay: rgba(0, 0, 0, 0.65);
+    --color-skeleton: rgba(255, 255, 255, 0.08);
+    --color-skeleton-shine: rgba(255, 255, 255, 0.16);
+  }
+}
+
 .backdrop {
   display: none;
 }
@@ -168,6 +221,7 @@
 
 .content {
   flex: 1;
+  background: var(--color-bg);
 }
 
 @media (max-width: 1023px) {
