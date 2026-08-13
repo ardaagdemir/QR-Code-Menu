@@ -75,16 +75,16 @@ class BusinessSettingsFlowIntegrationTest extends AbstractIntegrationTest {
     @Test
     void staffWithoutPermissionCannotReadOrChangeBusinessSettings() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Locked Settings Business");
-        String kitchenEmail = "settings-kitchen-1@example.com";
+        String cashierEmail = "settings-cashier-1@example.com";
         mockMvc.perform(post("/internal/businesses/{businessId}/staff-users", businessId)
                         .header("X-Internal-Admin-Token", TEST_ADMIN_TOKEN)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + kitchenEmail + "\",\"password\":\"" + StaffFixtures.DEFAULT_PASSWORD
-                                + "\",\"role\":\"KITCHEN_STAFF\"}"))
+                        .content("{\"email\":\"" + cashierEmail + "\",\"password\":\"" + StaffFixtures.DEFAULT_PASSWORD
+                                + "\",\"role\":\"CASHIER\"}"))
                 .andExpect(status().isCreated());
-        String kitchenCookie = StaffFixtures.login(mockMvc, kitchenEmail);
+        String cashierCookie = StaffFixtures.login(mockMvc, cashierEmail);
 
-        mockMvc.perform(get("/api/staff/business").cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, kitchenCookie)))
+        mockMvc.perform(get("/api/staff/business").cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, cashierCookie)))
                 .andExpect(status().isForbidden());
     }
 

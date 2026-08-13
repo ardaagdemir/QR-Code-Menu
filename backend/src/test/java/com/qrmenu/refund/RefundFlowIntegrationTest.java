@@ -47,10 +47,7 @@ class RefundFlowIntegrationTest extends AbstractIntegrationTest {
         String orderItemId = order.get("items").get(0).get("id").asText();
         assertThat(order.get("totalMinorUnits").asLong()).isEqualTo(30000);
 
-        // Kitchen rejects 1 of the 3 (e.g. out of stock) - staff now manually refunds that unit.
-        mockMvc.perform(kitchenPost(branchId, "/order-items/" + orderItemId + "/decide", "{\"acceptedQuantity\":2}", staffCookie))
-                .andExpect(status().isOk());
-
+        // 1 of the 3 turns out to be unavailable after acceptance (e.g. out of stock) - staff manually refunds that unit.
         MvcResult refundResult = mockMvc.perform(staffPost(
                                 branchId,
                                 "/" + orderId + "/refunds",
@@ -161,7 +158,7 @@ class RefundFlowIntegrationTest extends AbstractIntegrationTest {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Guard Business");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
 
-        mockMvc.perform(get("/api/kitchen/branches/{branchId}/orders/search?orderNumber=1", branchId)).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/staff/branches/{branchId}/orders/search?orderNumber=1", branchId)).andExpect(status().isUnauthorized());
     }
 
     private String bootstrapStaffAdmin(String businessId, String emailLocalPart) throws Exception {
@@ -170,14 +167,14 @@ class RefundFlowIntegrationTest extends AbstractIntegrationTest {
     }
 
     private int fetchLatestOrderNumber(String branchId, String staffCookie) throws Exception {
-        JsonNode queue = objectMapper.readTree(mockMvc.perform(kitchenGet(branchId, "/orders", staffCookie))
+        JsonNode queue = objectMapper.readTree(mockMvc.perform(inProgressGet(branchId, staffCookie))
                 .andReturn()
                 .getResponse()
                 .getContentAsString());
         if (queue.size() > 0) {
             return queue.get(queue.size() - 1).get("orderNumber").asInt();
         }
-        throw new IllegalStateException("No orders currently in kitchen queue for branch " + branchId);
+        throw new IllegalStateException("No orders currently in progress for branch " + branchId);
     }
 
     private CheckedInVisit createPaidOrderWithOneItem(
@@ -235,25 +232,18 @@ class RefundFlowIntegrationTest extends AbstractIntegrationTest {
         throw new AssertionError("Timed out waiting for orderStatus=" + expectedOrderStatus + ", last=" + last);
     }
 
-    private MockHttpServletRequestBuilder kitchenGet(String branchId, String path, String staffCookie) {
-        return get("/api/kitchen/branches/{branchId}" + path, branchId)
+    private MockHttpServletRequestBuilder inProgressGet(String branchId, String staffCookie) {
+        return get("/api/staff/branches/{branchId}/orders/in-progress", branchId)
                 .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, staffCookie));
     }
 
-    private MockHttpServletRequestBuilder kitchenPost(String branchId, String path, String jsonBody, String staffCookie) {
-        return post("/api/kitchen/branches/{branchId}" + path, branchId)
-                .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, staffCookie))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(jsonBody);
-    }
-
     private MockHttpServletRequestBuilder staffGet(String branchId, String path, String staffCookie) {
-        return get("/api/kitchen/branches/{branchId}/orders" + path, branchId)
+        return get("/api/staff/branches/{branchId}/orders" + path, branchId)
                 .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, staffCookie));
     }
 
     private MockHttpServletRequestBuilder staffPost(String branchId, String path, String jsonBody, String staffCookie) {
-        return post("/api/kitchen/branches/{branchId}/orders" + path, branchId)
+        return post("/api/staff/branches/{branchId}/orders" + path, branchId)
                 .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, staffCookie))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(jsonBody);

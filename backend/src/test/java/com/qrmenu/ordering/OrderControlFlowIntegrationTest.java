@@ -54,15 +54,22 @@ class OrderControlFlowIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("IN_KITCHEN"));
 
-        // No longer pending, and CASHIER (no Permission.KITCHEN_DECIDE) can't see the
-        // KDS queue itself - only that the order left AWAITING_STORE_ACCEPTANCE behind.
+        // No longer pending - and unlike the removed KITCHEN_STAFF-only KDS, CASHIER
+        // holds Permission.ORDER_PREPARE too, so it sees the order in the in-progress
+        // queue (Section 6/11: kasa siparişin tamamı için tek operasyon ekranı).
         assertThat(objectMapper.readTree(mockMvc.perform(pendingGet(branchId, cashierCookie))
                         .andReturn()
                         .getResponse()
                         .getContentAsString()))
                 .isEmpty();
-        mockMvc.perform(get("/api/kitchen/branches/{branchId}/orders", branchId).cookie(cashierCookie(cashierCookie)))
-                .andExpect(status().isForbidden());
+        JsonNode inProgress = objectMapper.readTree(mockMvc.perform(
+                        get("/api/staff/branches/{branchId}/orders/in-progress", branchId).cookie(cashierCookie(cashierCookie)))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString());
+        assertThat(inProgress).hasSize(1);
+        assertThat(inProgress.get(0).get("orderId").asText()).isEqualTo(orderId);
     }
 
     @Test
@@ -87,37 +94,6 @@ class OrderControlFlowIntegrationTest extends AbstractIntegrationTest {
                         .getResponse()
                         .getContentAsString());
         assertThat(pending.get(0).get("storeAcceptanceTimeoutSeconds").asInt()).isEqualTo(600);
-    }
-
-    @Test
-    void kitchenStaffCannotAcceptOrRejectOrders() throws Exception {
-        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Permission Boundary Business");
-        String adminCookie = StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, "boundary-admin@example.com");
-        String kitchenStaffEmail = "boundary-kitchen@example.com";
-        mockMvc.perform(post("/api/staff/staff-users")
-                        .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, adminCookie))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + kitchenStaffEmail + "\",\"password\":\"" + StaffFixtures.DEFAULT_PASSWORD
-                                + "\",\"role\":\"KITCHEN_STAFF\"}"))
-                .andExpect(status().isCreated());
-        String kitchenCookie = StaffFixtures.login(mockMvc, kitchenStaffEmail);
-
-        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
-        String tableId = TenantFixtures.createTable(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, "Masa 1");
-        String qrToken = TenantFixtures.createQrToken(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, tableId);
-        CheckedInVisit visit = payAndAwaitStoreAcceptance(businessId, branchId, qrToken, "Çay", 1500, 1);
-
-        String orderId = objectMapper.readTree(mockMvc.perform(pendingGet(branchId, adminCookie))
-                        .andReturn()
-                        .getResponse()
-                        .getContentAsString())
-                .get(0)
-                .get("orderId")
-                .asText();
-
-        mockMvc.perform(post("/api/staff/branches/{branchId}/orders/{orderId}/accept", branchId, orderId).cookie(cashierCookie(kitchenCookie)))
-                .andExpect(status().isForbidden());
-        mockMvc.perform(pendingGet(branchId, kitchenCookie)).andExpect(status().isForbidden());
     }
 
     @Test
@@ -187,7 +163,7 @@ class OrderControlFlowIntegrationTest extends AbstractIntegrationTest {
 
     private String lastTrackingToken;
 
-    /** CASHIER isn't BUSINESS_ADMIN/PLATFORM_ADMIN, so it needs an explicit branch assignment like BRANCH_MANAGER/KITCHEN_STAFF. */
+    /** CASHIER isn't BUSINESS_ADMIN/PLATFORM_ADMIN, so it needs an explicit branch assignment like BRANCH_MANAGER. */
     private String bootstrapCashier(String businessId, String branchId, String emailLocalPart) throws Exception {
         String email = emailLocalPart + "@example.com";
         mockMvc.perform(post("/internal/businesses/{businessId}/staff-users", businessId)

@@ -37,11 +37,11 @@ class ReportingFlowIntegrationTest extends AbstractIntegrationTest {
         String productId = TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Kahve", 3000, 10);
         TenantFixtures.upsertBranchProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, productId, "AVAILABLE", null);
 
-        // Order A: paid, cashier ACCEPT, kitchen accepts both units -> counts fully toward gross/net/product breakdown.
+        // Order A: paid, cashier ACCEPT auto-accepts both units -> counts fully toward gross/net/product breakdown.
         String tableA = TenantFixtures.createTable(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, "Masa 1");
         String qrA = TenantFixtures.createQrToken(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, tableA);
         CheckedInVisit visitA = payAndAwaitStoreAcceptance(businessId, productId, qrA, 2);
-        String orderIdA = acceptAndDecideFullyInKitchen(branchId, adminCookie, visitA, productId);
+        String orderIdA = acceptOrder(branchId, adminCookie, visitA);
         // Gap-analysis #17: only visitA records a headcount - visitB stays unset (never
         // defaulted to 1), so guestCountTotal must reflect just the one recorded visit.
         mockMvc.perform(withCookie(patch("/api/table-visits/{tableVisitId}/guest-count", visitA.tableVisitId()), visitA)
@@ -109,7 +109,7 @@ class ReportingFlowIntegrationTest extends AbstractIntegrationTest {
         String tableA = TenantFixtures.createTable(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchA, "Masa 1");
         String qrA = TenantFixtures.createQrToken(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, tableA);
         CheckedInVisit visitA = payAndAwaitStoreAcceptance(businessId, productId, qrA, 1);
-        acceptAndDecideFullyInKitchen(branchA, adminCookie, visitA, productId);
+        acceptOrder(branchA, adminCookie, visitA);
 
         LocalDate today = LocalDate.now(ZoneOffset.UTC);
         JsonNode chain = objectMapper.readTree(mockMvc.perform(get("/api/staff/reports/chain")
@@ -163,32 +163,11 @@ class ReportingFlowIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(status().isForbidden());
     }
 
-    @Test
-    void kitchenStaffCannotViewReports() throws Exception {
-        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Report Business 3");
-        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
-        String kitchenEmail = "report-kitchen-3@example.com";
-        mockMvc.perform(post("/internal/businesses/{businessId}/staff-users", businessId)
-                        .header("X-Internal-Admin-Token", TEST_ADMIN_TOKEN)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + kitchenEmail + "\",\"password\":\"" + StaffFixtures.DEFAULT_PASSWORD
-                                + "\",\"role\":\"KITCHEN_STAFF\",\"branchIds\":[\"" + branchId + "\"]}"))
-                .andExpect(status().isCreated());
-        String kitchenCookie = StaffFixtures.login(mockMvc, kitchenEmail);
-
-        LocalDate today = LocalDate.now(ZoneOffset.UTC);
-        mockMvc.perform(get("/api/staff/branches/{branchId}/reports", branchId)
-                        .param("from", today.toString())
-                        .param("to", today.toString())
-                        .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, kitchenCookie)))
-                .andExpect(status().isForbidden());
-    }
-
     /**
      * Gap-analysis #14 (Section 11 💡): the kitchen financial summary is gated by its own
      * REPORT_FINANCIAL_SUMMARY_VIEW permission, not plain REPORT_VIEW - a CASHIER has
      * REPORT_VIEW (full reports) but must NOT see this, while BUSINESS_ADMIN/BRANCH_MANAGER
-     * (who both hold KITCHEN_DECIDE too) do.
+     * (who both hold ORDER_PREPARE too) do.
      */
     @Test
     void kitchenFinancialSummaryIsGatedToItsOwnPermissionNotPlainReportView() throws Exception {
@@ -202,7 +181,7 @@ class ReportingFlowIntegrationTest extends AbstractIntegrationTest {
         String tableId = TenantFixtures.createTable(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, "Masa 1");
         String qrToken = TenantFixtures.createQrToken(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, tableId);
         CheckedInVisit visit = payAndAwaitStoreAcceptance(businessId, productId, qrToken, 1);
-        acceptAndDecideFullyInKitchen(branchId, adminCookie, visit, productId);
+        acceptOrder(branchId, adminCookie, visit);
 
         LocalDate today = LocalDate.now(ZoneOffset.UTC);
 
@@ -272,8 +251,8 @@ class ReportingFlowIntegrationTest extends AbstractIntegrationTest {
         throw new AssertionError("Timed out waiting for order to reach AWAITING_STORE_ACCEPTANCE");
     }
 
-    private String acceptAndDecideFullyInKitchen(String branchId, String staffCookie, CheckedInVisit visit, String productId)
-            throws Exception {
+    /** Accept auto-accepts every item in full now - no separate item-level decision step. */
+    private String acceptOrder(String branchId, String staffCookie, CheckedInVisit visit) throws Exception {
         MockCookie cookie = new MockCookie(StaffCookieSupport.COOKIE_NAME, staffCookie);
         JsonNode pending = objectMapper.readTree(mockMvc.perform(
                         get("/api/staff/branches/{branchId}/orders/pending-acceptance", branchId).cookie(cookie))
@@ -284,28 +263,6 @@ class ReportingFlowIntegrationTest extends AbstractIntegrationTest {
         assertThat(pending).hasSize(1);
         String orderId = pending.get(0).get("orderId").asText();
         mockMvc.perform(post("/api/staff/branches/{branchId}/orders/{orderId}/accept", branchId, orderId).cookie(cookie))
-                .andExpect(status().isOk());
-
-        JsonNode queue = objectMapper.readTree(mockMvc.perform(get("/api/kitchen/branches/{branchId}/orders", branchId).cookie(cookie))
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString());
-        JsonNode order = null;
-        for (JsonNode candidate : queue) {
-            if (candidate.get("orderId").asText().equals(orderId)) {
-                order = candidate;
-                break;
-            }
-        }
-        assertThat(order).isNotNull();
-        JsonNode item = order.get("items").get(0);
-        String orderItemId = item.get("id").asText();
-        int orderedQuantity = item.get("orderedQuantity").asInt();
-        mockMvc.perform(post("/api/kitchen/branches/{branchId}/order-items/{orderItemId}/decide", branchId, orderItemId)
-                        .cookie(cookie)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"acceptedQuantity\":" + orderedQuantity + "}"))
                 .andExpect(status().isOk());
         return orderId;
     }

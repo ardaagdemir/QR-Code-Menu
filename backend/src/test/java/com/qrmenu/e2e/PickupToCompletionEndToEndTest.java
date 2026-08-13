@@ -20,10 +20,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * Milestone 9 (+ gap-analysis #1's cashier gate): one true end-to-end test walking the
  * full CUSTOMER_PICKUP path that every other integration test only covers in isolated
- * slices - QR check-in -> cart -> mock payment -> cashier ACCEPT -> kitchen accept/ready
- * -> the order appearing on the branch's public pickup board -> staff marking it
- * complete -> the order leaving the pickup board and the customer's own tracking view
- * reflecting COMPLETED + the CUSTOMER_PICKUP delivery model throughout.
+ * slices - QR check-in -> cart -> mock payment -> cashier ACCEPT (auto-accepts every
+ * item, no separate kitchen decision step) -> cashier marks the order READY -> the
+ * order appearing on the branch's public pickup board -> staff marking it complete ->
+ * the order leaving the pickup board and the customer's own tracking view reflecting
+ * COMPLETED + the CUSTOMER_PICKUP delivery model throughout.
  */
 class PickupToCompletionEndToEndTest extends AbstractIntegrationTest {
 
@@ -75,20 +76,16 @@ class PickupToCompletionEndToEndTest extends AbstractIntegrationTest {
         mockMvc.perform(post("/api/staff/branches/{branchId}/orders/{orderId}/accept", branchId, orderId).cookie(staffMockCookie))
                 .andExpect(status().isOk());
 
-        // Kitchen accepts the only item and marks it ready - order rolls up to READY.
-        JsonNode queue = objectMapper.readTree(mockMvc.perform(get("/api/kitchen/branches/{branchId}/orders", branchId).cookie(staffMockCookie))
+        // The in-progress queue shows the item already auto-accepted in full. Cashier marks the whole order ready.
+        JsonNode queue = objectMapper.readTree(mockMvc.perform(
+                        get("/api/staff/branches/{branchId}/orders/in-progress", branchId).cookie(staffMockCookie))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
                 .getContentAsString());
         assertThat(queue).hasSize(1);
-        String orderItemId = queue.get(0).get("items").get(0).get("id").asText();
-        mockMvc.perform(post("/api/kitchen/branches/{branchId}/order-items/{orderItemId}/decide", branchId, orderItemId)
-                        .cookie(staffMockCookie)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"acceptedQuantity\":1}"))
-                .andExpect(status().isOk());
-        mockMvc.perform(post("/api/kitchen/branches/{branchId}/order-items/{orderItemId}/ready", branchId, orderItemId).cookie(staffMockCookie))
+        assertThat(queue.get(0).get("items").get(0).get("status").asText()).isEqualTo("PREPARING");
+        mockMvc.perform(post("/api/staff/branches/{branchId}/orders/{orderId}/ready", branchId, orderId).cookie(staffMockCookie))
                 .andExpect(status().isOk());
 
         // The order now shows up on the public pickup board.
@@ -110,7 +107,7 @@ class PickupToCompletionEndToEndTest extends AbstractIntegrationTest {
         assertThat(tracking.get("deliveryModel").asText()).isEqualTo("CUSTOMER_PICKUP");
 
         // Staff marks it collected.
-        mockMvc.perform(post("/api/kitchen/branches/{branchId}/orders/{orderId}/complete", branchId, orderId).cookie(staffMockCookie))
+        mockMvc.perform(post("/api/staff/branches/{branchId}/orders/{orderId}/complete", branchId, orderId).cookie(staffMockCookie))
                 .andExpect(status().isOk());
 
         // Gone from the pickup board, COMPLETED in tracking, and a second completion attempt is rejected.
@@ -126,7 +123,7 @@ class PickupToCompletionEndToEndTest extends AbstractIntegrationTest {
                 .getResponse()
                 .getContentAsString());
         assertThat(finalTracking.get("status").asText()).isEqualTo("COMPLETED");
-        mockMvc.perform(post("/api/kitchen/branches/{branchId}/orders/{orderId}/complete", branchId, orderId).cookie(staffMockCookie))
+        mockMvc.perform(post("/api/staff/branches/{branchId}/orders/{orderId}/complete", branchId, orderId).cookie(staffMockCookie))
                 .andExpect(status().isBadRequest());
     }
 

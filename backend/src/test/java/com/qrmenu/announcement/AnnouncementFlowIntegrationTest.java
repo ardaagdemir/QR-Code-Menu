@@ -131,23 +131,23 @@ class AnnouncementFlowIntegrationTest extends AbstractIntegrationTest {
     @Test
     void staffWithoutAnnouncementManagePermissionCannotCreateButCanReadActive() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Announce Business 4");
-        String kitchenEmail = "announce-kitchen-1@example.com";
+        String cashierEmail = "announce-cashier-1@example.com";
         mockMvc.perform(post("/internal/businesses/{businessId}/staff-users", businessId)
                         .header("X-Internal-Admin-Token", TEST_ADMIN_TOKEN)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + kitchenEmail + "\",\"password\":\"" + StaffFixtures.DEFAULT_PASSWORD
-                                + "\",\"role\":\"KITCHEN_STAFF\"}"))
+                        .content("{\"email\":\"" + cashierEmail + "\",\"password\":\"" + StaffFixtures.DEFAULT_PASSWORD
+                                + "\",\"role\":\"CASHIER\"}"))
                 .andExpect(status().isCreated());
-        String kitchenCookie = StaffFixtures.login(mockMvc, kitchenEmail);
+        String cashierCookie = StaffFixtures.login(mockMvc, cashierEmail);
 
         mockMvc.perform(post("/api/staff/announcements")
-                        .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, kitchenCookie))
+                        .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, cashierCookie))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"title\":\"x\",\"message\":\"y\",\"target\":\"ALL_BRANCHES\"}"))
                 .andExpect(status().isForbidden());
 
         mockMvc.perform(get("/api/staff/announcements/active")
-                        .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, kitchenCookie)))
+                        .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, cashierCookie)))
                 .andExpect(status().isOk());
     }
 }

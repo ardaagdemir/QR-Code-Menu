@@ -1,4 +1,4 @@
-package com.qrmenu.kitchen;
+package com.qrmenu.ordering;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.qrmenu.staffaccess.StaffCookieSupport;
@@ -22,26 +22,28 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Covers Milestone 6 (kitchen queue mechanics) and its Milestone 8 auth retrofit: an
- * order the cashier has ACCEPTed (gap-analysis #1 - payment success alone no longer
- * queues the kitchen, see OrderControlController) lands in the KDS queue with a
- * readable order number, partial accept/reject per item, the IN_KITCHEN -> READY
- * rollup once every item is decided/ready, and that kitchen endpoints require a real
- * staff session (qrmenu_staff_session cookie, resolved through StaffAuthService)
- * rather than the Milestone 6 shared-secret guard.
+ * Product decision (no separate Mutfak/KDS screen, and no separate item-level kitchen
+ * decision step): what used to be KitchenFlowIntegrationTest against a standalone
+ * KitchenController - an order the cashier has ACCEPTed (gap-analysis #1) lands in the
+ * Kasa "in-progress" queue with a readable order number, every item auto-accepted in
+ * full (OrderItem.acceptFully - no partial accept/reject per item anymore), and moves
+ * PREPARING -> READY as a single order-level action, requiring a real staff session -
+ * exercised here through OrderControlController's merged in-progress/{orderId}/ready
+ * endpoint (Permission.ORDER_VIEW / Permission.ORDER_PREPARE) instead of the removed
+ * /api/kitchen/** surface.
  */
-class KitchenFlowIntegrationTest extends AbstractIntegrationTest {
+class OrderPreparationFlowIntegrationTest extends AbstractIntegrationTest {
 
     @Test
-    void aPaidOrderReachesTheKitchenQueueWithAnOrderNumberAndCanBeFullyAcceptedThroughToReady() throws Exception {
-        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Kitchen Business");
-        String staffCookie = bootstrapStaffAdmin(businessId, "kitchen-admin-1");
+    void aPaidOrderReachesTheInProgressQueueWithAnOrderNumberAndItemsAutoAcceptedThroughToReady() throws Exception {
+        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Preparation Business");
+        String staffCookie = bootstrapStaffAdmin(businessId, "prep-admin-1");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String tableId = TenantFixtures.createTable(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, "Masa 1");
         String qrToken = TenantFixtures.createQrToken(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, tableId);
         CheckedInVisit visit = createPaidOrderWithOneItem(businessId, branchId, qrToken, "Çorba", 5000, 2, staffCookie);
 
-        JsonNode queue = objectMapper.readTree(mockMvc.perform(kitchenGet(branchId, "/orders", staffCookie))
+        JsonNode queue = objectMapper.readTree(mockMvc.perform(inProgressGet(branchId, staffCookie))
                         .andExpect(status().isOk())
                         .andReturn()
                         .getResponse()
@@ -50,31 +52,22 @@ class KitchenFlowIntegrationTest extends AbstractIntegrationTest {
         JsonNode order = queue.get(0);
         assertThat(order.get("status").asText()).isEqualTo("IN_KITCHEN");
         assertThat(order.get("orderNumber").asInt()).isGreaterThanOrEqualTo(1);
-        // Bölüm 19.3 KDS kartı: masa etiketi ve "sipariş yaşı" zaman damgası.
+        // Bölüm 19.3 kasa kartı: masa etiketi ve "sipariş yaşı" zaman damgası.
         assertThat(order.get("tableLabel").asText()).isEqualTo("Masa 1");
         assertThat(order.get("statusSince").asText()).isNotBlank();
-        String orderItemId = order.get("items").get(0).get("id").asText();
-        assertThat(order.get("items").get(0).get("status").asText()).isEqualTo("PENDING_REVIEW");
+        String orderId = order.get("orderId").asText();
+        // Product decision: ACCEPT already auto-accepted the full ordered quantity - no PENDING_REVIEW/decide step left.
+        assertThat(order.get("items").get(0).get("status").asText()).isEqualTo("PREPARING");
+        assertThat(order.get("items").get(0).get("acceptedQuantity").asInt()).isEqualTo(2);
+        assertThat(order.get("items").get(0).get("rejectedQuantity").asInt()).isEqualTo(0);
 
-        mockMvc.perform(kitchenPost(branchId, "/order-items/" + orderItemId + "/decide", "{\"acceptedQuantity\":2}", staffCookie))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("IN_KITCHEN"))
-                .andExpect(jsonPath("$.items[0].status").value("PREPARING"))
-                .andExpect(jsonPath("$.items[0].acceptedQuantity").value(2))
-                .andExpect(jsonPath("$.items[0].rejectedQuantity").value(0));
-
-        mockMvc.perform(kitchenPost(branchId, "/order-items/" + orderItemId + "/ready", null, staffCookie))
+        mockMvc.perform(orderPost(branchId, "/" + orderId + "/ready", staffCookie))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("READY"))
                 .andExpect(jsonPath("$.items[0].status").value("READY"));
 
-        mockMvc.perform(kitchenPost(branchId, "/order-items/" + orderItemId + "/served", null, staffCookie))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("READY"))
-                .andExpect(jsonPath("$.items[0].status").value("SERVED"));
-
-        // A served/ready order is no longer in the active IN_KITCHEN queue.
-        JsonNode queueAfter = objectMapper.readTree(mockMvc.perform(kitchenGet(branchId, "/orders", staffCookie))
+        // A READY order is no longer in the active in-progress queue.
+        JsonNode queueAfter = objectMapper.readTree(mockMvc.perform(inProgressGet(branchId, staffCookie))
                         .andExpect(status().isOk())
                         .andReturn()
                         .getResponse()
@@ -82,32 +75,58 @@ class KitchenFlowIntegrationTest extends AbstractIntegrationTest {
         assertThat(queueAfter).isEmpty();
     }
 
+    /**
+     * Product decision: Kasa'nın "Hazır - Teslim Bekliyor" bölümü (Section 6/8) - bir
+     * sipariş PREPARING'den READY'ye geçtiğinde in-progress kuyruğundan düşer ama
+     * /orders/ready'de görünmeye devam eder, ta ki personel ORDER_COMPLETE ile teslim
+     * işaretleyene kadar (bkz. RefundController.completeOrder, aynı davranış - ayrı bir
+     * URL taşıması gerekmedi).
+     */
     @Test
-    void aFullyRejectedSingleItemOrderStillRollsUpToReady() throws Exception {
-        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Reject Business");
-        String staffCookie = bootstrapStaffAdmin(businessId, "kitchen-admin-2");
+    void aReadyOrderAppearsInTheReadyListUntilCompleted() throws Exception {
+        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Ready Business");
+        String staffCookie = bootstrapStaffAdmin(businessId, "prep-admin-5");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String tableId = TenantFixtures.createTable(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, "Masa 1");
         String qrToken = TenantFixtures.createQrToken(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, tableId);
-        CheckedInVisit visit = createPaidOrderWithOneItem(businessId, branchId, qrToken, "Tatlı", 3000, 1, staffCookie);
+        createPaidOrderWithOneItem(businessId, branchId, qrToken, "Limonata", 2500, 1, staffCookie);
 
-        JsonNode queue = objectMapper.readTree(mockMvc.perform(kitchenGet(branchId, "/orders", staffCookie))
+        JsonNode queue = objectMapper.readTree(mockMvc.perform(inProgressGet(branchId, staffCookie))
                 .andReturn()
                 .getResponse()
                 .getContentAsString());
-        String orderItemId = queue.get(0).get("items").get(0).get("id").asText();
+        String orderId = queue.get(0).get("orderId").asText();
 
-        mockMvc.perform(kitchenPost(branchId, "/order-items/" + orderItemId + "/decide", "{\"acceptedQuantity\":0}", staffCookie))
+        mockMvc.perform(orderPost(branchId, "/" + orderId + "/ready", staffCookie)).andExpect(status().isOk());
+
+        JsonNode readyList = objectMapper.readTree(mockMvc.perform(
+                        get("/api/staff/branches/{branchId}/orders/ready", branchId)
+                                .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, staffCookie)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("READY"))
-                .andExpect(jsonPath("$.items[0].status").value("REJECTED"))
-                .andExpect(jsonPath("$.items[0].rejectedQuantity").value(1));
+                .andReturn()
+                .getResponse()
+                .getContentAsString());
+        assertThat(readyList).hasSize(1);
+        assertThat(readyList.get(0).get("orderId").asText()).isEqualTo(orderId);
+
+        mockMvc.perform(post("/api/staff/branches/{branchId}/orders/{orderId}/complete", branchId, orderId)
+                        .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, staffCookie)))
+                .andExpect(status().isOk());
+
+        JsonNode readyListAfter = objectMapper.readTree(mockMvc.perform(
+                        get("/api/staff/branches/{branchId}/orders/ready", branchId)
+                                .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, staffCookie)))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString());
+        assertThat(readyListAfter).isEmpty();
     }
 
     @Test
     void orderNumbersAreSequentialPerBranchPerDay() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Sequence Business");
-        String staffCookie = bootstrapStaffAdmin(businessId, "kitchen-admin-3");
+        String staffCookie = bootstrapStaffAdmin(businessId, "prep-admin-3");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String tableAId = TenantFixtures.createTable(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, "Masa A");
         String tableBId = TenantFixtures.createTable(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, "Masa B");
@@ -117,7 +136,7 @@ class KitchenFlowIntegrationTest extends AbstractIntegrationTest {
         createPaidOrderWithOneItem(businessId, branchId, qrTokenA, "Ürün A", 1000, 1, staffCookie);
         createPaidOrderWithOneItem(businessId, branchId, qrTokenB, "Ürün B", 1000, 1, staffCookie);
 
-        JsonNode queue = objectMapper.readTree(mockMvc.perform(kitchenGet(branchId, "/orders", staffCookie))
+        JsonNode queue = objectMapper.readTree(mockMvc.perform(inProgressGet(branchId, staffCookie))
                 .andReturn()
                 .getResponse()
                 .getContentAsString());
@@ -126,20 +145,20 @@ class KitchenFlowIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void kitchenEndpointsRejectMissingOrInvalidStaffSession() throws Exception {
+    void inProgressEndpointRejectsMissingOrInvalidStaffSession() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Guard Business");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
 
-        mockMvc.perform(get("/api/kitchen/branches/{branchId}/orders", branchId)).andExpect(status().isUnauthorized());
-        mockMvc.perform(get("/api/kitchen/branches/{branchId}/orders", branchId)
+        mockMvc.perform(get("/api/staff/branches/{branchId}/orders/in-progress", branchId)).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/staff/branches/{branchId}/orders/in-progress", branchId)
                         .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, UUID.randomUUID().toString())))
                 .andExpect(status().isUnauthorized());
     }
 
     @Test
-    void theOrderTrackingEndpointReflectsKitchenProgressAndRejectsAnUnknownToken() throws Exception {
+    void theOrderTrackingEndpointReflectsPreparationProgressAndRejectsAnUnknownToken() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Tracking Business");
-        String staffCookie = bootstrapStaffAdmin(businessId, "kitchen-admin-4");
+        String staffCookie = bootstrapStaffAdmin(businessId, "prep-admin-4");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String tableId = TenantFixtures.createTable(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, "Masa 1");
         String qrToken = TenantFixtures.createQrToken(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, tableId);
@@ -204,7 +223,7 @@ class KitchenFlowIntegrationTest extends AbstractIntegrationTest {
 
         String orderId = pollUntilOrderStatus(visit, paymentId, "AWAITING_STORE_ACCEPTANCE");
 
-        // Gap-analysis #1: payment success no longer auto-queues the kitchen - the
+        // Gap-analysis #1: payment success no longer auto-queues preparation - the
         // cashier has to accept first (Permission.ORDER_ACCEPT).
         mockMvc.perform(post("/api/staff/branches/{branchId}/orders/{orderId}/accept", visit.branchId(), orderId)
                         .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, staffCookie)))
@@ -229,15 +248,14 @@ class KitchenFlowIntegrationTest extends AbstractIntegrationTest {
         throw new AssertionError("Timed out waiting for orderStatus=" + expectedOrderStatus + ", last=" + last);
     }
 
-    private MockHttpServletRequestBuilder kitchenGet(String branchId, String path, String staffCookie) {
-        return get("/api/kitchen/branches/{branchId}" + path, branchId)
+    private MockHttpServletRequestBuilder inProgressGet(String branchId, String staffCookie) {
+        return get("/api/staff/branches/{branchId}/orders/in-progress", branchId)
                 .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, staffCookie));
     }
 
-    private MockHttpServletRequestBuilder kitchenPost(String branchId, String path, String jsonBody, String staffCookie) {
-        MockHttpServletRequestBuilder request = post("/api/kitchen/branches/{branchId}" + path, branchId)
+    private MockHttpServletRequestBuilder orderPost(String branchId, String path, String staffCookie) {
+        return post("/api/staff/branches/{branchId}/orders" + path, branchId)
                 .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, staffCookie));
-        return jsonBody == null ? request : request.contentType(MediaType.APPLICATION_JSON).content(jsonBody);
     }
 
     private MockHttpServletRequestBuilder withCookie(MockHttpServletRequestBuilder request, CheckedInVisit visit) {

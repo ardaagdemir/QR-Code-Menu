@@ -115,25 +115,25 @@ class MediaUploadFlowIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void kitchenStaffCannotUploadProductImagesOrReceipts() throws Exception {
+    void cashierCannotUploadProductImagesOrReceipts() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Media Business 5");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube 1");
         mockMvc.perform(post("/internal/businesses/{businessId}/staff-users", businessId)
                         .header("X-Internal-Admin-Token", TEST_ADMIN_TOKEN)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"media-kitchen-5@example.com\",\"password\":\"" + StaffFixtures.DEFAULT_PASSWORD
-                                + "\",\"role\":\"KITCHEN_STAFF\",\"branchIds\":[\"" + branchId + "\"]}"))
+                        .content("{\"email\":\"media-cashier-5@example.com\",\"password\":\"" + StaffFixtures.DEFAULT_PASSWORD
+                                + "\",\"role\":\"CASHIER\",\"branchIds\":[\"" + branchId + "\"]}"))
                 .andExpect(status().isCreated());
-        String kitchenCookie = StaffFixtures.login(mockMvc, "media-kitchen-5@example.com");
+        String cashierCookie = StaffFixtures.login(mockMvc, "media-cashier-5@example.com");
 
         mockMvc.perform(multipart("/api/staff/media/product-images")
                         .file(new MockMultipartFile("file", "dish.png", "image/png", PNG_BYTES))
-                        .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, kitchenCookie)))
+                        .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, cashierCookie)))
                 .andExpect(status().isForbidden());
 
         mockMvc.perform(multipart("/api/staff/media/receipts")
                         .file(new MockMultipartFile("file", "fis.pdf", "application/pdf", PDF_BYTES))
-                        .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, kitchenCookie)))
+                        .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, cashierCookie)))
                 .andExpect(status().isForbidden());
     }
 }

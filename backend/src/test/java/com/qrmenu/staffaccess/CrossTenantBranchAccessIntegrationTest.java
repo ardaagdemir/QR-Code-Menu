@@ -12,10 +12,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Gap-analysis #12: StaffContext.canAccessBranch() let BUSINESS_ADMIN reach ANY
- * branchId, not just its own business's - KitchenController/OrderControlController/
- * RefundController all resolve authorization through
- * StaffAuthService.resolveStaffContextForBranch alone, with no secondary businessId
- * check downstream, so fixing that one choke point closes the hole for all three.
+ * branchId, not just its own business's - OrderControlController/RefundController
+ * all resolve authorization through StaffAuthService.resolveStaffContextForBranch
+ * alone, with no secondary businessId check downstream, so fixing that one choke
+ * point closes the hole for both.
  */
 class CrossTenantBranchAccessIntegrationTest extends AbstractIntegrationTest {
 
@@ -28,11 +28,11 @@ class CrossTenantBranchAccessIntegrationTest extends AbstractIntegrationTest {
                 StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessA, "cross-tenant-admin-a@example.com");
         MockCookie cookie = new MockCookie(StaffCookieSupport.COOKIE_NAME, adminACookie);
 
-        mockMvc.perform(get("/api/kitchen/branches/{branchId}/orders", branchB).cookie(cookie))
+        mockMvc.perform(get("/api/staff/branches/{branchId}/orders/in-progress", branchB).cookie(cookie))
                 .andExpect(status().isForbidden());
         mockMvc.perform(get("/api/staff/branches/{branchId}/orders/pending-acceptance", branchB).cookie(cookie))
                 .andExpect(status().isForbidden());
-        mockMvc.perform(get("/api/kitchen/branches/{branchId}/orders/search", branchB).param("orderNumber", "1").cookie(cookie))
+        mockMvc.perform(get("/api/staff/branches/{branchId}/orders/search", branchB).param("orderNumber", "1").cookie(cookie))
                 .andExpect(status().isForbidden());
     }
 }

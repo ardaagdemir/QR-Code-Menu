@@ -82,53 +82,6 @@ class DailyCloseFlowIntegrationTest extends AbstractIntegrationTest {
         assertThat(second.get("generatedAt").asText()).isEqualTo(first.get("generatedAt").asText());
     }
 
-    @Test
-    void kitchenStaffCannotAccessDailyClose() throws Exception {
-        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Close Business 2");
-        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
-        String kitchenEmail = "close-kitchen-2@example.com";
-        mockMvc.perform(post("/internal/businesses/{businessId}/staff-users", businessId)
-                        .header("X-Internal-Admin-Token", TEST_ADMIN_TOKEN)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + kitchenEmail + "\",\"password\":\"" + StaffFixtures.DEFAULT_PASSWORD
-                                + "\",\"role\":\"KITCHEN_STAFF\",\"branchIds\":[\"" + branchId + "\"]}"))
-                .andExpect(status().isCreated());
-        String kitchenCookie = StaffFixtures.login(mockMvc, kitchenEmail);
-        MockCookie cookie = new MockCookie(StaffCookieSupport.COOKIE_NAME, kitchenCookie);
-        LocalDate today = LocalDate.now(ZoneOffset.UTC);
-
-        mockMvc.perform(get("/api/staff/branches/{branchId}/daily-close", branchId)
-                        .param("from", today.toString())
-                        .param("to", today.toString())
-                        .cookie(cookie))
-                .andExpect(status().isForbidden());
-        mockMvc.perform(post("/api/staff/branches/{branchId}/daily-close/final", branchId)
-                        .param("businessDate", today.toString())
-                        .cookie(cookie))
-                .andExpect(status().isForbidden());
-    }
-
-    @Test
-    void kitchenStaffCannotExportDailyCloseExcel() throws Exception {
-        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Export Auth Business");
-        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
-        String kitchenEmail = "export-auth-kitchen@example.com";
-        mockMvc.perform(post("/internal/businesses/{businessId}/staff-users", businessId)
-                        .header("X-Internal-Admin-Token", TEST_ADMIN_TOKEN)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + kitchenEmail + "\",\"password\":\"" + StaffFixtures.DEFAULT_PASSWORD
-                                + "\",\"role\":\"KITCHEN_STAFF\",\"branchIds\":[\"" + branchId + "\"]}"))
-                .andExpect(status().isCreated());
-        String kitchenCookie = StaffFixtures.login(mockMvc, kitchenEmail);
-        LocalDate today = LocalDate.now(ZoneOffset.UTC);
-
-        mockMvc.perform(get("/api/staff/branches/{branchId}/daily-close/excel", branchId)
-                        .param("from", today.toString())
-                        .param("to", today.toString())
-                        .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, kitchenCookie)))
-                .andExpect(status().isForbidden());
-    }
-
     /** BRANCH_MANAGER has REPORT_VIEW (branch-scoped) but not REPORT_CHAIN_VIEW - the chain export must still reject it. */
     @Test
     void branchManagerCannotExportChainDailyCloseExcel() throws Exception {
@@ -242,27 +195,8 @@ class DailyCloseFlowIntegrationTest extends AbstractIntegrationTest {
 
         String orderId = awaitStoreAcceptance(visit, paymentId);
         MockCookie cookie = new MockCookie(StaffCookieSupport.COOKIE_NAME, staffCookie);
+        // Accept auto-accepts every item in full now - no separate item-level decision step.
         mockMvc.perform(post("/api/staff/branches/{branchId}/orders/{orderId}/accept", branchId, orderId).cookie(cookie))
-                .andExpect(status().isOk());
-
-        JsonNode queue = objectMapper.readTree(mockMvc.perform(get("/api/kitchen/branches/{branchId}/orders", branchId).cookie(cookie))
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString());
-        JsonNode order = null;
-        for (JsonNode candidate : queue) {
-            if (candidate.get("orderId").asText().equals(orderId)) {
-                order = candidate;
-                break;
-            }
-        }
-        assertThat(order).isNotNull();
-        JsonNode item = order.get("items").get(0);
-        mockMvc.perform(post("/api/kitchen/branches/{branchId}/order-items/{orderItemId}/decide", branchId, item.get("id").asText())
-                        .cookie(cookie)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"acceptedQuantity\":" + item.get("orderedQuantity").asInt() + "}"))
                 .andExpect(status().isOk());
     }
 

@@ -67,18 +67,18 @@ class ExpenseFlowIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void kitchenStaffCannotAccessExpenses() throws Exception {
+    void cashierCannotAccessExpenses() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Expense Business 2");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
-        String kitchenEmail = "expense-kitchen-2@example.com";
+        String cashierEmail = "expense-cashier-2@example.com";
         mockMvc.perform(post("/internal/businesses/{businessId}/staff-users", businessId)
                         .header("X-Internal-Admin-Token", TEST_ADMIN_TOKEN)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + kitchenEmail + "\",\"password\":\"" + StaffFixtures.DEFAULT_PASSWORD
-                                + "\",\"role\":\"KITCHEN_STAFF\",\"branchIds\":[\"" + branchId + "\"]}"))
+                        .content("{\"email\":\"" + cashierEmail + "\",\"password\":\"" + StaffFixtures.DEFAULT_PASSWORD
+                                + "\",\"role\":\"CASHIER\",\"branchIds\":[\"" + branchId + "\"]}"))
                 .andExpect(status().isCreated());
-        String kitchenCookie = StaffFixtures.login(mockMvc, kitchenEmail);
-        MockCookie cookie = new MockCookie(StaffCookieSupport.COOKIE_NAME, kitchenCookie);
+        String cashierCookie = StaffFixtures.login(mockMvc, cashierEmail);
+        MockCookie cookie = new MockCookie(StaffCookieSupport.COOKIE_NAME, cashierCookie);
         LocalDate today = LocalDate.now(ZoneOffset.UTC);
 
         mockMvc.perform(get("/api/staff/expenses")

@@ -18,7 +18,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Covers Milestone 8: real StaffUser login/logout/me, the permission layer
- * (Permission-not-held -> 403, branch scoping for BRANCH_MANAGER/KITCHEN_STAFF -> 403
+ * (Permission-not-held -> 403, branch scoping for BRANCH_MANAGER/CASHIER -> 403
  * outside their assigned branches), and that mutations through the new /api/staff/**
  * admin endpoints show up in the audit log.
  */
@@ -67,17 +67,17 @@ class StaffAccessFlowIntegrationTest extends AbstractIntegrationTest {
         String adminCookie = StaffFixtures.bootstrapBusinessAdminAndLogin(
                 mockMvc, TEST_ADMIN_TOKEN, businessId, "permission-admin@example.com");
 
-        String kitchenStaffEmail = "kitchen-staff@example.com";
+        String cashierEmail = "boundary-cashier@example.com";
         mockMvc.perform(post("/api/staff/staff-users")
                         .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, adminCookie))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + kitchenStaffEmail + "\",\"password\":\"" + StaffFixtures.DEFAULT_PASSWORD
-                                + "\",\"role\":\"KITCHEN_STAFF\"}"))
+                        .content("{\"email\":\"" + cashierEmail + "\",\"password\":\"" + StaffFixtures.DEFAULT_PASSWORD
+                                + "\",\"role\":\"CASHIER\"}"))
                 .andExpect(status().isCreated());
-        String kitchenStaffCookie = StaffFixtures.login(mockMvc, kitchenStaffEmail);
+        String cashierCookie = StaffFixtures.login(mockMvc, cashierEmail);
 
-        // KITCHEN_STAFF only holds Permission.KITCHEN_DECIDE - BRANCH_MANAGE is out of reach.
-        mockMvc.perform(get("/api/staff/branches").cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, kitchenStaffCookie)))
+        // CASHIER holds ORDER_*/REPORT_VIEW - BRANCH_MANAGE is out of reach.
+        mockMvc.perform(get("/api/staff/branches").cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, cashierCookie)))
                 .andExpect(status().isForbidden());
     }
 
@@ -104,24 +104,24 @@ class StaffAccessFlowIntegrationTest extends AbstractIntegrationTest {
                 .andReturn();
         String branchBId = objectMapper.readTree(branchBResult.getResponse().getContentAsString()).get("id").asText();
 
-        String kitchenStaffEmail = "scoped-kitchen-staff@example.com";
+        String cashierEmail = "scoped-cashier@example.com";
         mockMvc.perform(post("/api/staff/staff-users")
                         .cookie(adminMockCookie)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + kitchenStaffEmail + "\",\"password\":\"" + StaffFixtures.DEFAULT_PASSWORD
-                                + "\",\"role\":\"KITCHEN_STAFF\",\"branchIds\":[\"" + branchAId + "\"]}"))
+                        .content("{\"email\":\"" + cashierEmail + "\",\"password\":\"" + StaffFixtures.DEFAULT_PASSWORD
+                                + "\",\"role\":\"CASHIER\",\"branchIds\":[\"" + branchAId + "\"]}"))
                 .andExpect(status().isCreated());
-        String kitchenStaffCookie = StaffFixtures.login(mockMvc, kitchenStaffEmail);
-        MockCookie kitchenMockCookie = new MockCookie(StaffCookieSupport.COOKIE_NAME, kitchenStaffCookie);
+        String cashierCookie = StaffFixtures.login(mockMvc, cashierEmail);
+        MockCookie cashierMockCookie = new MockCookie(StaffCookieSupport.COOKIE_NAME, cashierCookie);
 
-        mockMvc.perform(get("/api/kitchen/branches/{branchId}/orders", branchAId).cookie(kitchenMockCookie))
+        mockMvc.perform(get("/api/staff/branches/{branchId}/orders/pending-acceptance", branchAId).cookie(cashierMockCookie))
                 .andExpect(status().isOk());
-        mockMvc.perform(get("/api/kitchen/branches/{branchId}/orders", branchBId).cookie(kitchenMockCookie))
+        mockMvc.perform(get("/api/staff/branches/{branchId}/orders/pending-acceptance", branchBId).cookie(cashierMockCookie))
                 .andExpect(status().isForbidden());
 
         // /me's branches list (used by staff-web's AppShell top bar context, Section 19.3) only
         // reflects the staff user's own assigned branches, not every branch in the business.
-        mockMvc.perform(get("/api/staff/auth/me").cookie(kitchenMockCookie))
+        mockMvc.perform(get("/api/staff/auth/me").cookie(cashierMockCookie))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.branches", org.hamcrest.Matchers.hasSize(1)))
                 .andExpect(jsonPath("$.branches[0].id").value(branchAId))

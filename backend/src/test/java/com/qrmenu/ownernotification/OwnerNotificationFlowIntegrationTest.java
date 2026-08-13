@@ -140,34 +140,6 @@ class OwnerNotificationFlowIntegrationTest extends AbstractIntegrationTest {
         assertThat(listResult.get(1).get("triggeredBy").asText()).isEqualTo("MANUAL");
     }
 
-    @Test
-    void kitchenStaffCannotAccessNotificationEndpoints() throws Exception {
-        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Notify Business 4");
-        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
-        String kitchenEmail = "notify-kitchen-4@example.com";
-        mockMvc.perform(post("/internal/businesses/{businessId}/staff-users", businessId)
-                        .header("X-Internal-Admin-Token", TEST_ADMIN_TOKEN)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + kitchenEmail + "\",\"password\":\"" + StaffFixtures.DEFAULT_PASSWORD
-                                + "\",\"role\":\"KITCHEN_STAFF\",\"branchIds\":[\"" + branchId + "\"]}"))
-                .andExpect(status().isCreated());
-        String kitchenCookie = StaffFixtures.login(mockMvc, kitchenEmail);
-        MockCookie cookie = new MockCookie(StaffCookieSupport.COOKIE_NAME, kitchenCookie);
-
-        DailyBranchCloseReport report = dailyCloseService.generateFinal(
-                UUID.fromString(businessId), UUID.fromString(branchId), LocalDate.now(ZoneOffset.UTC));
-
-        mockMvc.perform(get("/api/staff/branches/{branchId}/daily-close/{reportId}/notifications", branchId, report.getId())
-                        .cookie(cookie))
-                .andExpect(status().isForbidden());
-        mockMvc.perform(post(
-                        "/api/staff/branches/{branchId}/daily-close/{reportId}/notifications/resend",
-                        branchId,
-                        report.getId())
-                        .cookie(cookie))
-                .andExpect(status().isForbidden());
-    }
-
     private void createContact(
             String businessId, String staffCookie, String email, boolean dailyReportRecipient, boolean active)
             throws Exception {

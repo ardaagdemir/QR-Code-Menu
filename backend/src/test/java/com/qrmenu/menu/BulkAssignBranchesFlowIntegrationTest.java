@@ -87,17 +87,17 @@ class BulkAssignBranchesFlowIntegrationTest extends AbstractIntegrationTest {
         String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Ana Yemekler");
         String productId =
                 TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Lahmacun", 8000, 10);
-        String kitchenEmail = "bulk-kitchen-1@example.com";
+        String cashierEmail = "bulk-cashier-1@example.com";
         mockMvc.perform(post("/internal/businesses/{businessId}/staff-users", businessId)
                         .header("X-Internal-Admin-Token", TEST_ADMIN_TOKEN)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + kitchenEmail + "\",\"password\":\"" + StaffFixtures.DEFAULT_PASSWORD
-                                + "\",\"role\":\"KITCHEN_STAFF\"}"))
+                        .content("{\"email\":\"" + cashierEmail + "\",\"password\":\"" + StaffFixtures.DEFAULT_PASSWORD
+                                + "\",\"role\":\"CASHIER\"}"))
                 .andExpect(status().isCreated());
-        String kitchenCookie = StaffFixtures.login(mockMvc, kitchenEmail);
+        String cashierCookie = StaffFixtures.login(mockMvc, cashierEmail);
 
         mockMvc.perform(post("/api/staff/products/{productId}/branch-assignments", productId)
-                        .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, kitchenCookie))
+                        .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, cashierCookie))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"target\":\"ALL_BRANCHES\"}"))
                 .andExpect(status().isForbidden());
