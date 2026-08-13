@@ -20,6 +20,21 @@
   padding: var(--space-6);
 }
 
+.dialog::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  background: linear-gradient(90deg, var(--color-primary), var(--color-primary-strong));
+}
+
+.danger::before {
+  background: linear-gradient(90deg, var(--color-danger), color-mix(in srgb, var(--color-danger) 65%, black));
+}
+
 .sm {
   max-width: 360px;
 }

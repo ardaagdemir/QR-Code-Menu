@@ -33,7 +33,7 @@ export default function ConfirmDialog({
   const titleId = useId();
 
   return (
-    <Dialog onClose={onCancel} labelledBy={titleId} size="sm">
+    <Dialog onClose={onCancel} labelledBy={titleId} size="sm" tone={tone}>
       <h2 id={titleId} className={styles.title}>
         {title}
       </h2>
