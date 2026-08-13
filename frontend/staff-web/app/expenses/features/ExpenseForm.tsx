@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
-import { createExpense, type Branch, type Expense, type ExpenseCategory } from "@/lib/api";
+import { createExpense, uploadReceiptImage, type Branch, type Expense, type ExpenseCategory } from "@/lib/api";
 import PageHeader from "@/components/ui/PageHeader";
 import Button from "@/components/ui/Button";
 import Dialog from "@/components/ui/Dialog";
@@ -9,6 +9,7 @@ import ErrorState from "@/components/ui/ErrorState";
 import FormField from "@/components/ui/FormField";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
+import FileUploadField from "@/components/ui/FileUploadField";
 import { useToast } from "@/components/ui/ToastProvider";
 import styles from "@/styles/admin.module.css";
 
@@ -34,6 +35,7 @@ export default function ExpenseForm({ categories, accessibleBranches, isBusiness
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(todayIsoDate());
   const [vendor, setVendor] = useState("");
+  const [receiptImageUrl, setReceiptImageUrl] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -56,10 +58,11 @@ export default function ExpenseForm({ categories, accessibleBranches, isBusiness
         incurredAt: date,
         vendor: vendor.trim() || null,
         description: null,
-        receiptImageUrl: null,
+        receiptImageUrl,
       });
       setAmount("");
       setVendor("");
+      setReceiptImageUrl(null);
       setOpen(false);
       onCreated(expense);
       showToast("Gider eklendi.", "success");
@@ -113,6 +116,15 @@ export default function ExpenseForm({ categories, accessibleBranches, isBusiness
             <FormField label="Satıcı (opsiyonel)">
               {(controlProps) => <Input {...controlProps} value={vendor} onChange={(event) => setVendor(event.target.value)} />}
             </FormField>
+            <FileUploadField
+              label="Fiş/fatura (opsiyonel)"
+              hint="JPEG, PNG, WEBP veya PDF - en fazla 10MB."
+              accept="image/jpeg,image/png,image/webp,application/pdf"
+              value={receiptImageUrl}
+              onChange={setReceiptImageUrl}
+              upload={uploadReceiptImage}
+              previewAsImage={false}
+            />
 
             {formError ? <ErrorState message={formError} /> : null}
 

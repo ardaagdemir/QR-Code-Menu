@@ -5,6 +5,7 @@ import {
   createProduct,
   listBranchProducts,
   listProductsForCategory,
+  uploadProductImage,
   type Branch,
   type BranchProductAdmin,
   type ProductAdmin,
@@ -19,6 +20,7 @@ import Dialog from "@/components/ui/Dialog";
 import FormField from "@/components/ui/FormField";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
+import FileUploadField from "@/components/ui/FileUploadField";
 import { useToast } from "@/components/ui/ToastProvider";
 import ProductRow from "./ProductRow";
 import styles from "@/styles/admin.module.css";
@@ -45,6 +47,7 @@ export default function ProductsSection({ categoryId, branches, selectedBranchId
   const [productName, setProductName] = useState("");
   const [productPrice, setProductPrice] = useState("");
   const [productTax, setProductTax] = useState("10");
+  const [productImageUrl, setProductImageUrl] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -81,9 +84,10 @@ export default function ProductsSection({ categoryId, branches, selectedBranchId
     setCreating(true);
     setFormError(null);
     try {
-      const product = await createProduct(categoryId, productName.trim(), priceMinorUnits, taxRatePercent);
+      const product = await createProduct(categoryId, productName.trim(), priceMinorUnits, taxRatePercent, productImageUrl);
       setProductName("");
       setProductPrice("");
+      setProductImageUrl(null);
       setProducts((current) => [...current, product]);
       setCreateOpen(false);
       showToast("Ürün oluşturuldu.", "success");
@@ -172,6 +176,14 @@ export default function ProductsSection({ categoryId, branches, selectedBranchId
                 <Input {...controlProps} inputMode="numeric" value={productTax} onChange={(event) => setProductTax(event.target.value)} required />
               )}
             </FormField>
+            <FileUploadField
+              label="Ürün görseli"
+              hint="JPEG, PNG veya WEBP - en fazla 5MB."
+              accept="image/jpeg,image/png,image/webp"
+              value={productImageUrl}
+              onChange={setProductImageUrl}
+              upload={uploadProductImage}
+            />
             {formError ? <ErrorState message={formError} /> : null}
             <Button type="submit" disabled={creating}>
               {creating ? "Oluşturuluyor…" : "Ürün Ekle"}

@@ -1,0 +1,58 @@
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.preview {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.thumb {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.fileLink {
+  font-size: var(--font-size-sm);
+  color: var(--color-primary);
+}
+
+.fileInput {
+  font-size: var(--font-size-sm);
+  color: var(--color-fg-muted);
+}
+
+.fileInput::file-selector-button {
+  min-height: var(--tap-target-min);
+  margin-right: var(--space-3);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface-raised);
+  color: var(--color-fg);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: border-color var(--transition-fast);
+}
+
+.fileInput::file-selector-button:hover {
+  border-color: var(--color-primary);
+}
+
+.fileInput:disabled::file-selector-button {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.status {
+  font-size: var(--font-size-xs);
+  color: var(--color-fg-muted);
+}

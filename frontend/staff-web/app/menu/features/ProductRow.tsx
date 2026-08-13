@@ -5,6 +5,7 @@ import {
   ALLERGENS,
   bulkAssignProductToBranches,
   updateProductDetails,
+  uploadProductImage,
   upsertBranchProduct,
   type Allergen,
   type Branch,
@@ -16,6 +17,7 @@ import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import FormField from "@/components/ui/FormField";
 import Input from "@/components/ui/Input";
+import FileUploadField from "@/components/ui/FileUploadField";
 import { useToast } from "@/components/ui/ToastProvider";
 import tableStyles from "@/components/ui/Table.module.css";
 import styles from "@/styles/admin.module.css";
@@ -56,6 +58,7 @@ export default function ProductRow({ product, branchProduct, branches, selectedB
 
   const [prepTime, setPrepTime] = useState(product.estimatedPreparationMinutes?.toString() ?? "");
   const [allergens, setAllergens] = useState<Set<Allergen>>(new Set(product.allergens));
+  const [imageUrl, setImageUrl] = useState<string | null>(product.imageUrl);
 
   const [assignTarget, setAssignTarget] = useState<BranchAssignmentTarget>("ALL_BRANCHES");
   const [assignBranchIds, setAssignBranchIds] = useState<Set<string>>(new Set());
@@ -65,6 +68,7 @@ export default function ProductRow({ product, branchProduct, branches, selectedB
   function openEdit() {
     setPrepTime(product.estimatedPreparationMinutes?.toString() ?? "");
     setAllergens(new Set(product.allergens));
+    setImageUrl(product.imageUrl);
     setPanel(panel === "edit" ? "none" : "edit");
   }
 
@@ -117,7 +121,13 @@ export default function ProductRow({ product, branchProduct, branches, selectedB
   async function handleTogglePassive() {
     setBusy(true);
     try {
-      const updated = await updateProductDetails(product.id, !product.active, product.estimatedPreparationMinutes, product.allergens);
+      const updated = await updateProductDetails(
+        product.id,
+        !product.active,
+        product.estimatedPreparationMinutes,
+        product.allergens,
+        product.imageUrl,
+      );
       onProductUpdated(updated);
     } catch {
       showToast("Ürün durumu güncellenemedi.", "error");
@@ -134,7 +144,7 @@ export default function ProductRow({ product, branchProduct, branches, selectedB
     }
     setBusy(true);
     try {
-      const updated = await updateProductDetails(product.id, product.active, prepTimeValue, Array.from(allergens));
+      const updated = await updateProductDetails(product.id, product.active, prepTimeValue, Array.from(allergens), imageUrl);
       onProductUpdated(updated);
       setPanel("none");
       showToast("Ürün detayları güncellendi.", "success");
@@ -206,6 +216,14 @@ export default function ProductRow({ product, branchProduct, branches, selectedB
         <tr className={tableStyles.expandedRow}>
           <td colSpan={5}>
             <div className={styles.section}>
+              <FileUploadField
+                label="Ürün görseli"
+                hint="JPEG, PNG veya WEBP - en fazla 5MB."
+                accept="image/jpeg,image/png,image/webp"
+                value={imageUrl}
+                onChange={setImageUrl}
+                upload={uploadProductImage}
+              />
               <FormField label="Hazırlık süresi (dk)">
                 {(controlProps) => <Input {...controlProps} inputMode="numeric" value={prepTime} onChange={(event) => setPrepTime(event.target.value)} />}
               </FormField>

@@ -409,10 +409,11 @@ export async function createProduct(
   name: string,
   basePriceMinorUnits: number,
   taxRatePercent: number,
+  imageUrl: string | null = null,
 ): Promise<ProductAdmin> {
   return apiFetch("/api/staff/products", {
     method: "POST",
-    body: JSON.stringify({ categoryId, name, basePriceMinorUnits, taxRatePercent }),
+    body: JSON.stringify({ categoryId, name, basePriceMinorUnits, taxRatePercent, imageUrl }),
   });
 }
 
@@ -421,11 +422,28 @@ export async function updateProductDetails(
   active: boolean,
   estimatedPreparationMinutes: number | null,
   allergens: Allergen[],
+  imageUrl: string | null,
 ): Promise<ProductAdmin> {
   return apiFetch(`/api/staff/products/${encodeURIComponent(productId)}`, {
     method: "PATCH",
-    body: JSON.stringify({ active, estimatedPreparationMinutes, allergens }),
+    body: JSON.stringify({ active, estimatedPreparationMinutes, allergens, imageUrl }),
   });
+}
+
+/** Gap-analysis #15: upload-first, then attach the returned URL through create/update as before - no schema change. */
+async function uploadMedia(path: string, file: File): Promise<string> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await fetch(`${getApiBaseUrl()}${path}`, { method: "POST", credentials: "include", body: formData });
+  if (!response.ok) {
+    await parseErrorOrThrow(response);
+  }
+  const body: { url: string } = await response.json();
+  return body.url;
+}
+
+export async function uploadProductImage(file: File): Promise<string> {
+  return uploadMedia("/api/staff/media/product-images", file);
 }
 
 export type BranchProductAdmin = {
@@ -869,6 +887,11 @@ export async function listExpenses(branchId: string | null, from: string, to: st
 
 export async function createExpense(input: ExpenseInput): Promise<Expense> {
   return apiFetch("/api/staff/expenses", { method: "POST", body: JSON.stringify(input) });
+}
+
+/** Gap-analysis #15: allows photos or scanned documents (PDF), per Section 16.1. */
+export async function uploadReceiptImage(file: File): Promise<string> {
+  return uploadMedia("/api/staff/media/receipts", file);
 }
 
 export async function updateExpenseDraft(expenseId: string, input: Omit<ExpenseInput, "branchId">): Promise<Expense> {
