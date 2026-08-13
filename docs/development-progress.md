@@ -1680,7 +1680,7 @@ aynı düşük-risk gerekçesi - yalnızca mevcut `--color-*` token'ları kullan
 
 ---
 
-## Gap-Analysis #15 — Görsel/Receipt Storage (MediaStoragePort) — 🚧 IN PROGRESS
+## Gap-Analysis #15 — Görsel/Receipt Storage (MediaStoragePort) — ✅ COMPLETED
 
 Önceki bir oturumun requirements-vs-kod taramasında bulunan tek somut PARTIAL: `Product.imageUrl` /
 `Expense.receiptImageUrl` yalnızca birer plain string kolon - Bölüm 3.2/16.1'in istediği "media/storage
@@ -1734,3 +1734,58 @@ sabit gönderiyordu) - kullanıcı bugüne kadar bu alanları yalnızca doğruda
 Bu tasarım kullanıcının kendi talimatındaki 8 maddeyi birebir karşılıyor; ayrı bir netleştirme turu
 gerekmedi (talimat zaten tüm ana kararları - provider-bağımsız port, local adapter, upload UI, mevcut şema
 korunması, content-type/boyut/güvenlik kontrolü, prod sağlayıcı seçilmemesi - içeriyordu).
+
+**Sonuç:** tasarım plana göre uygulandı, iki commit'te:
+
+1. **Backend** (`c302c17`): `com.qrmenu.shared.media` (`MediaStoragePort`/`MediaCategory`/`DetectedFileType`/
+   `LocalFileMediaStorageAdapter`/`MediaResourceConfig`), `com.qrmenu.media.web.StaffMediaUploadController`
+   (`/api/staff/media/product-images` + `/receipts`), `Product.updateDetails`/`MenuService.
+   updateProductDetails`/`UpdateProductDetailsRequest`'e `imageUrl` eklendi (artık PATCH ile de
+   düzenlenebiliyor - önceden yalnızca creation'da vardı), `ApiExceptionHandler`'a
+   `MaxUploadSizeExceededException → 400`, `application.yml`'e `spring.servlet.multipart.max-file-size`
+   (12MB) + `media.storage.*`, `infra/docker-compose.yml`'e `media_data` volume'u. Yeni
+   `MediaUploadFlowIntegrationTest` (5: başarılı ürün görseli upload + PATCH ile ürüne bağlama, PDF fiş
+   upload, tanınmayan içerik reddi, boyut aşımı reddi, `KITCHEN_STAFF`'ın her iki uç noktadan da 403 alması).
+   Tam backend suite (`mvn test`, tüm modüller) 120 → 125 yeşil.
+2. **Frontend** (`57e9fee`): yeni shared `components/ui/FileUploadField` (dosya seç → anında yükle →
+   `value`'ya URL yaz, `previewAsImage` prop'uyla görsel thumbnail/dosya linki ayrımı), `lib/api.ts`'e
+   `uploadProductImage`/`uploadReceiptImage` (multipart `fetch`, `apiFetch`'in JSON-only varsayımını
+   atlıyor) + `createProduct`/`updateProductDetails`/`ExpenseInput` imzalarına `imageUrl`/`receiptImageUrl`.
+   `ProductsSection` (oluşturma), `ProductRow` (düzenleme - `imageUrl` daha önce hiç UI'dan
+   değiştirilemiyordu), `ExpenseForm` (oluşturma - `receiptImageUrl` daha önce sabit `null` gönderiliyordu,
+   alan hiç UI'da yoktu) bu component'i kullanıyor. `npx tsc --noEmit` + `npx eslint .` + `npm run build`
+   (13 route) temiz.
+
+**Canlı Chrome doğrulaması (gerçek Docker Compose stack'i, uçtan uca):** `docker compose up -d --build
+backend staff-web` ile güncel koda göre yeniden build edildi. İlk denemede gerçek bir hata bulundu ve
+düzeltildi: **backend container'ı non-root `appuser` ile çalışıyor** (Milestone 9 güvenlik kararı), ama yeni
+`media_data` named volume'u Docker tarafından `root:root` sahipliğiyle oluşturuluyordu -
+`LocalFileMediaStorageAdapter.store`'un `Files.createDirectories(/data/media/product-images)` çağrısı
+`AccessDeniedException` ile 500 veriyordu. Düzeltme: `backend/Dockerfile`'da `/data/media`'yı `useradd`'dan
+hemen sonra, `USER appuser`'a geçmeden önce `mkdir -p` + `chown -R appuser:appuser` ile önceden oluşturuldu
+- Docker boş bir named volume'u ilk mount'ta image'daki dizinin sahiplik/izinleriyle initialize ediyor, bu
+yüzden volume da temiz yeniden oluşturuldu (`docker volume rm` + yeniden `up`). Bu, Milestone 4/6/8/9'daki
+"yeni bir HTTP metodu/altyapı eklenen her adımda gerçek ortam doğrulaması entegrasyon testlerinin
+yakalayamayacağı bir hata çıkarabilir" örüntüsünün bir tekrarı - Testcontainers'ın kendi geçici container'ı
+hiçbir zaman non-root/named-volume sahiplik etkileşimini test etmiyor.
+
+Düzeltme sonrası tam akış geçici bir `BUSINESS_ADMIN` test hesabıyla ("Media Verify Business") doğrulandı:
+(1) `/menu`'de "+ Ürün Ekle" → PNG dosyası seçildi → anında yüklendi (thumbnail önizleme + "Kaldır" göründü)
+→ ürün oluşturuldu → "Düzenle" paneli açılıp aynı görselin geri okunduğu (GET `/media/product-images/...`)
+doğrulandı; (2) `/expenses`'te "+ Gider Ekle" → PDF fiş seçildi → anında yüklendi ("Dosyayı görüntüle" linki
+göründü, `previewAsImage=false` doğru davrandı) → gider oluşturuldu → API'den `receiptImageUrl`'in kalıcı
+olduğu ve dosyanın gerçekten `GET /media/receipts/{uuid}.pdf` üzerinden 200 ile inebildiği `curl` ile teyit
+edildi. Test hesabı/business/branch/ürün/gider ve yüklenen test dosyaları doğrulama sonunda temizlendi.
+
+**Bilinen not (bu doğrulama sırasında fark edildi, bu maddenin kapsamı dışında):** Yeni oluşturulan test
+işletmesinde, hiç açıkça çağrılmamış birkaç aksiyon (bir "Kira" gider kategorisi + aylık tekrarlayan şablon,
+3 masa, bir QR token oluşturup iptal etme, şube çalışma saatleri/teslimat modeli değişikliği, bir duyuru)
+audit log'da aynı test staff kullanıcısı tarafından yapılmış görünüyor - bu oturumun kendi curl/Chrome
+adımlarının parçası değildi. Muhtemelen bu ortamda bağımsız çalışan bir smoke-test/demo-seed script'i (bkz.
+DB'de önceden var olan "Docker Smoke Test Business") her yeni BUSINESS_ADMIN hesabını otomatik olarak
+deniyor. Media storage özelliğini etkilemiyor (temiz doğrulama sonucu değişmedi), ama ayrı bir not olarak
+kullanıcıya bildirildi - kaynağı bu oturumda araştırılmadı.
+
+**Doğrulama:** backend `mvn test` (125/125 yeşil) + frontend `tsc`/`eslint`/`build` temiz + canlı Docker
+Compose + gerçek Chrome'da uçtan uca upload/görüntüleme akışı (bulunan Dockerfile izin hatası dahil)
+doğrulandı.

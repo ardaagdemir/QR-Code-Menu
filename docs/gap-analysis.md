@@ -40,6 +40,7 @@
 | **Session/TableVisit TTL** | ✅ (2026-08-12) | `TableVisitCleanupScheduler` eklendi; `getOwnedTableVisit` artık kapalı bir visit'i 404 sayıyor (Gap-Analysis #13). |
 | **Frontend — customer-web** | ✅ | Sepet/ödeme/tracking/receipt + allergen/prep-time gösterimi (`ProductCard`), "işletme onayı bekleniyor"/red mesajları ve refund durumu (`latestRefundStatus`) tracking sayfasında var (Gap-Analysis #1, #4/#6). |
 | **Frontend — staff-web** | ✅ | Kasa dashboard (`/cashier`), raporlama (`/reports`), Excel indirme, gider ekranı (`/expenses`), business settings (`/business-settings`), staff announcement (`/announcements`), zincir karşılaştırma (`/chain-comparison`) — hepsi var. |
+| **Görsel/Receipt storage** | ✅ (2026-08-13) | `MediaStoragePort` + `LocalFileMediaStorageAdapter`, staff-web'de dosya upload UI (`FileUploadField`) — `Product.imageUrl`/`Expense.receiptImageUrl` artık dosya seçilerek doldurulabiliyor, manuel URL girişi yok (Gap-Analysis #15). |
 
 **IMPLEMENTED olarak doğrulananlar** (yeniden yazılmamalı): QR→TableVisit→session, Business-level katalog +
 BranchProduct opt-in, DRAFT sepet + backend revalidasyon, mock ödeme+webhook+idempotency+outbox, KDS item-bazlı
@@ -90,6 +91,16 @@ log, pickup board, `DeliveryModel`, rate limiting, payment timeout scheduler.
     `GET /api/staff/branches/{branchId}/reports/kitchen-summary` uç noktası, `staff-web/app/kitchen`'a
     küçük bir brüt/net satış + sipariş sayısı bloğu (yalnızca izinli role'lerde `me()` ile kontrol edilip
     çağrılıyor). (Bkz. development-progress.md, Gap-Analysis #14.)
+15. ✅ **Görsel/receipt storage (`MediaStoragePort`)** — Bölüm 3.2/16.1'in "media/storage adapter'ın
+    döndürdüğü URL/key saklanır" gereksinimi hiç uygulanmamıştı; `imageUrl`/`receiptImageUrl` yalnızca düz
+    string alanlardı, staff-web'de bu alanları dolduran hiçbir UI yoktu. Provider-bağımsız
+    `MediaStoragePort` + tek adapter (`LocalFileMediaStorageAdapter` — content-type sniffing + boyut
+    limiti + `/media/**` static serving), yeni `POST /api/staff/media/product-images` ve `/receipts`
+    (permission-gated), staff-web'de yeni shared `FileUploadField` — `ProductsSection`/`ProductRow`/
+    `ExpenseForm` artık dosya seçtiriyor, manuel URL girişi yok. `Product.imageUrl`/`Expense.
+    receiptImageUrl` şeması değişmedi. Canlı Docker Compose + Chrome doğrulaması sırasında bulunan gerçek
+    hata (non-root container + yeni named volume sahiplik çakışması) düzeltildi. (Bkz.
+    development-progress.md, Gap-Analysis #15.)
 
 Bu sıralama, dokümanın kendi M6→M13 planıyla ve Bölüm 25'teki "önce CONFLICTING düzelt, sonra sırayla eksikleri
 tamamla" kuralıyla birebir uyumlu.
