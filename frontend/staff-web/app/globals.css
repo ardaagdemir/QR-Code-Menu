@@ -1,32 +1,36 @@
 /*
  * Design tokens - copied from customer-web/app/globals.css (docs/product-requirements.md
- * Bölüm 14: "staff-web ... bu bölümdeki token/component yaklaşımını yeniden kullanacak
- * şekilde planlanır - sıfırdan farklı bir tasarım dili kurulmaz"). No shared package
- * exists between the two Next.js apps (Section 8's monorepo layout has no workspace
- * tooling), so this file is a deliberate copy, not an import - keep the two in sync by
- * hand if the token values change.
+ * Bölüm 19.1: "customer-web ve staff-web aynı temel design-token ailesini kullanır").
+ * No shared package exists between the two Next.js apps (no workspace tooling), so this
+ * file is a deliberate copy, not an import - keep the two in sync by hand if the token
+ * values change. Last synced: UI/UX Productization Gate Adım 1 "Tide" redesign.
  */
 :root {
-  /* Color */
+  /* Color - "Tide" kimliği: nötr ink/paper zemin + tek bir camgöbeği accent
+   * (docs/product-requirements.md Bölüm 19.1: "güven veren", "primary/secondary/
+   * destructive action ayrımı"). Accent (--color-primary) her iki app'te de
+   * tüm primary aksiyon/link/focus-ring için tek kaynak - success/danger/warning
+   * durum tonlarından hue olarak bilinçli şekilde uzak tutulur. */
   --color-bg: #ffffff;
-  --color-surface: #f6f6f7;
+  --color-surface: #f2f4f3;
   --color-surface-raised: #ffffff;
-  --color-fg: #16181c;
-  --color-fg-muted: #6b7280;
-  --color-border: rgba(22, 24, 28, 0.1);
-  --color-border-strong: rgba(22, 24, 28, 0.2);
-  --color-primary: #16181c;
+  --color-fg: #14201e;
+  --color-fg-muted: #5c6d69;
+  --color-border: rgba(20, 32, 30, 0.1);
+  --color-border-strong: rgba(20, 32, 30, 0.2);
+  --color-primary: #0e7c86;
+  --color-primary-strong: #0b626b;
   --color-primary-fg: #ffffff;
-  --color-danger: #c53030;
-  --color-danger-bg: rgba(197, 48, 48, 0.08);
-  --color-success: #1a7f37;
-  --color-success-bg: rgba(26, 127, 55, 0.1);
-  --color-warning: #b45309;
-  --color-warning-bg: rgba(180, 83, 9, 0.1);
-  --color-badge-bg: rgba(22, 24, 28, 0.08);
-  --color-overlay: rgba(15, 15, 17, 0.55);
-  --color-skeleton: rgba(22, 24, 28, 0.08);
-  --color-skeleton-shine: rgba(22, 24, 28, 0.16);
+  --color-danger: #c23a2e;
+  --color-danger-bg: rgba(194, 58, 46, 0.09);
+  --color-success: #2e7d4f;
+  --color-success-bg: rgba(46, 125, 79, 0.1);
+  --color-warning: #b25e0a;
+  --color-warning-bg: rgba(178, 94, 10, 0.1);
+  --color-badge-bg: rgba(20, 32, 30, 0.06);
+  --color-overlay: rgba(8, 14, 13, 0.55);
+  --color-skeleton: rgba(20, 32, 30, 0.08);
+  --color-skeleton-shine: rgba(20, 32, 30, 0.16);
 
   /* Spacing scale */
   --space-1: 4px;
@@ -45,8 +49,12 @@
   --radius-lg: 20px;
   --radius-full: 999px;
 
-  /* Typography */
-  --font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* Typography - next/font ile build-time'da self-host edilir (Bölüm 19.1:
+   * "remote CDN'e bağımlı olmayan modern sans-serif"), runtime'da CDN isteği
+   * atılmaz. --font-body/--font-display next/font tarafından layout.tsx'te
+   * <html> class'ına enjekte edilir; değer boşsa sistem fontuna düşer. */
+  --font-family: var(--font-body), system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-family-display: var(--font-display), var(--font-family);
   --font-size-xs: 0.75rem;
   --font-size-sm: 0.875rem;
   --font-size-base: 1rem;
@@ -61,9 +69,9 @@
   --line-height-base: 1.5;
 
   /* Elevation */
-  --shadow-sm: 0 1px 2px rgba(15, 15, 17, 0.06);
-  --shadow-md: 0 4px 16px rgba(15, 15, 17, 0.1);
-  --shadow-lg: 0 16px 40px rgba(15, 15, 17, 0.18);
+  --shadow-sm: 0 1px 2px rgba(8, 14, 13, 0.06);
+  --shadow-md: 0 4px 16px rgba(8, 14, 13, 0.1);
+  --shadow-lg: 0 16px 40px rgba(8, 14, 13, 0.18);
 
   /* Motion */
   --transition-fast: 120ms ease;
@@ -89,21 +97,22 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-bg: #0d0e10;
-    --color-surface: #17181b;
-    --color-surface-raised: #1c1d21;
-    --color-fg: #f2f3f5;
-    --color-fg-muted: #9aa0aa;
+    --color-bg: #0b1211;
+    --color-surface: #121b19;
+    --color-surface-raised: #17211f;
+    --color-fg: #edf3f1;
+    --color-fg-muted: #93a3a0;
     --color-border: rgba(255, 255, 255, 0.1);
     --color-border-strong: rgba(255, 255, 255, 0.2);
-    --color-primary: #f2f3f5;
-    --color-primary-fg: #16181c;
-    --color-danger: #ef6a6a;
-    --color-danger-bg: rgba(239, 106, 106, 0.12);
-    --color-success: #4ade80;
-    --color-success-bg: rgba(74, 222, 128, 0.14);
-    --color-warning: #fbbf24;
-    --color-warning-bg: rgba(251, 191, 36, 0.14);
+    --color-primary: #4fd0c6;
+    --color-primary-strong: #7be0d6;
+    --color-primary-fg: #0b1211;
+    --color-danger: #f0847a;
+    --color-danger-bg: rgba(240, 132, 122, 0.14);
+    --color-success: #6fce93;
+    --color-success-bg: rgba(111, 206, 147, 0.14);
+    --color-warning: #f0ae5c;
+    --color-warning-bg: rgba(240, 174, 92, 0.14);
     --color-badge-bg: rgba(255, 255, 255, 0.1);
     --color-overlay: rgba(0, 0, 0, 0.65);
     --color-skeleton: rgba(255, 255, 255, 0.08);
@@ -143,6 +152,13 @@ legend {
   padding: 0;
 }
 
+h1,
+h2,
+h3 {
+  font-family: var(--font-family-display);
+  letter-spacing: -0.01em;
+}
+
 ul {
   list-style: none;
 }
@@ -161,8 +177,9 @@ img {
   display: block;
 }
 
+/* accent rengiyle (Tide) tek kaynaktan, marka imzasını da taşıyan bir odak halkası. */
 :focus-visible {
-  outline: 2px solid var(--color-fg);
+  outline: 2px solid var(--color-primary);
   outline-offset: 2px;
 }
 
