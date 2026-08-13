@@ -1323,3 +1323,45 @@ sticky alan veya erişilemeyen CTA gözlenmedi.
 **Doğrulama:** KDS düzeltmesi sonrası `npx tsc --noEmit` + `npm run build` (staff-web) temiz;
 `docker compose up -d --build` ile container yeniden oluşturulup değişiklik gerçek Chrome'da tekrar
 doğrulandı. Backend değişikliği yok.
+
+---
+
+## UI/UX Productization Gate — Adım 1 Tasarım Yenilemesi: "Tide" kimliği — ✅ COMPLETED
+
+Gate'in 7 adımı da tamamlanmış olsa da, Adım 1'de kurulan token sistemi (bkz. yukarıdaki "Adım 1: Shared
+Frontend Component Library") tamamen nötr gri/siyah-beyazdı - hiçbir renk kişiliği taşımıyordu (`--color-
+primary` doğrudan `--color-fg` ile aynıydı). `frontend-design` skill süreciyle (brainstorm → kritik →
+uygula) bilinçli bir görsel kimlik kuruldu; kapsam yalnızca **token katmanı + component-library dosyaları**
+ile sınırlı tutuldu, sayfa dosyalarına dokunulmadı (Adım 2-7'nin wiring'i korunur).
+
+**Tasarım kararı:** Tek cesur hamle - tüm primary aksiyon/link/focus-ring için tek bir "Tide" camgöbeği
+accent (`#0e7c86` light / `#4fd0c6` dark), success (yeşil, hue ~140) ve danger (kırmızı, hue ~6)
+tonlarından hue olarak bilinçli uzaklıkta tutuldu (karışma riski yok). Zemin nötr beyaz/ink kaldı (Bölüm
+19.1 klişe uyarısı: sıcak krem zemin + serif + terracotta üçlüsünden kaçınıldı - burada sans-serif + neredeyse
+beyaz zemin + tek camgöbeği accent var). İnk/paper/surface tonları hafifçe camgöbeği ailesine doğru
+tintlendi (`--color-fg: #14201e`, `--color-surface: #f2f4f3`) - tam nötr gri yerine daha tutarlı bir
+palet. Yeni **additive** token: `--color-primary-strong` (hover/active için, önceki blanket
+`opacity:0.85` yerine).
+
+**Tipografi:** `next/font/google` ile build-time'da self-host edilen iki roldü bir eşleşme - başlıklar
+(`h1/h2/h3` + `KpiCard.value`) için Plus Jakarta Sans (600/700/800, karakterli ama ölçülü), gövde/form/
+tablo için Inter (yoğun staff-web tabloları için en okunur seçenek). `subsets: ["latin","latin-ext"]` ile
+Türkçe karakterler (ç ğ ı ö ş ü) garanti altında. next/font runtime'da CDN isteği atmadığından Bölüm
+19.1'in "remote CDN'e bağımlı olmayan modern sans-serif" şartı korunuyor. Spacing/radius/font-size skalası
+**değişmedi** - mevcut sayfa layout'larının kırılma riski sıfıra indirildi, yalnızca renk + tipografi +
+focus-ring imzası değişti.
+
+**Component değişiklikleri (yalnızca):** `Button.module.css` `.primary:hover/:active`'te yeni
+`--color-primary-strong` kullanımı (her iki app), `KpiCard.module.css` `.value`'ye display font +
+`font-variant-numeric: tabular-nums`. Diğer tüm component'ler zaten %100 token-driven olduğundan (hiçbir
+`.module.css`'te var() dışı hex/rgb bulunmadı) globals.css değişikliği otomatik cascade etti, dosya
+başına ek değişiklik gerekmedi.
+
+**Doğrulama:** her iki app'te `npm run lint` + `npm run build` temiz. Canlı Chrome testi yapıldı (Adım
+7'den beri proje hafızasında tekrar açık): customer-web `localhost:3001` (port 3000 Docker'a ait) 390x844
+placeholder sayfasında display/body font ayrımı doğrulandı; staff-web için `3002` portunun Docker
+container'ına ait olduğu, yerel değişiklikleri yansıtmadığı fark edildi - yerel doğrulama için `3010`
+portunda ayrı bir `next dev` başlatıldı, `/` (Personel Girişi) sayfasında Tide accent buton, hover/
+focus-ring ve başlık display fontu doğru render edildiği görüldü. Dark-mode (`prefers-color-scheme`)
+paleti de aynı prensiple güncellendi ama PRD 19.1 öncelik sırasına göre (light theme birincil) ek
+doğrulama yapılmadı.
