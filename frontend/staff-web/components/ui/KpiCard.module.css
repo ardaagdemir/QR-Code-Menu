@@ -14,8 +14,10 @@
 }
 
 .value {
+  font-family: var(--font-family-display);
   font-size: var(--font-size-2xl);
   font-weight: var(--font-weight-bold);
+  font-variant-numeric: tabular-nums;
 }
 
 .hint {

@@ -25,7 +25,12 @@
   color: var(--color-primary-fg);
 }
 
+.primary:not(:disabled):hover {
+  background: var(--color-primary-strong);
+}
+
 .primary:not(:disabled):active {
+  background: var(--color-primary-strong);
   opacity: 0.85;
 }
 
