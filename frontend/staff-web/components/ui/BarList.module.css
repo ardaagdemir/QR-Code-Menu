@@ -30,7 +30,7 @@
   display: block;
   height: 100%;
   border-radius: var(--radius-full);
-  background: var(--color-primary);
+  background: linear-gradient(to right, var(--color-primary), var(--color-primary-strong));
 }
 
 .value {

@@ -27,7 +27,7 @@ button.presetButton {
 
 .active {
   border-color: var(--color-primary);
-  background: var(--color-primary);
+  background: linear-gradient(to right, var(--color-primary), var(--color-primary-strong));
   color: var(--color-primary-fg);
 }
 
