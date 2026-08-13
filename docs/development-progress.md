@@ -1326,6 +1326,44 @@ doğrulandı. Backend değişikliği yok.
 
 ---
 
+## UI/UX Productization Gate — Adım 7 Tasarım Yenilemesi: responsive/erişilebilirlik doğrulama geçişi — 🔄 Tasarım tamamlandı, uygulama sürüyor
+
+Gate'in "Cross-cutting" sırasının son adımı. Adım 7'nin işlevsel kapsamı (responsive/erişilebilirlik/
+Chrome E2E - bkz. yukarıdaki "Adım 7: Responsive/Accessibility/Browser E2E Pass") kendi başına yeni bir
+görsel imza öğesi taşımıyordu - bu adım zaten Adım 1-6'nın *doğrulamasıydı*. Aynı mantıkla, "Adım 7
+Tasarım Yenilemesi" de Adım 1-6 Tasarım Yenilemesi'nde eklenen altı imza öğesinin (tide line, tide
+marker, tide-edge, timeline pulse, gate stripe, tide bar) tamamının dar/geniş viewport'larda ve
+erişilebilirlik açısından (klavye focus, `prefers-reduced-motion`) kırılmadığını doğrulayan son bir
+geçiş - yeni bir component veya sayfa eklenmiyor, kod değişikliği yalnızca bulgu çıkarsa yapılacak.
+
+**Kapsam - doğrulanacak imza öğeleri ve konumları:**
+1. **Tide line** (Adım 2) - customer-web `VisitHeader`, 390px'te.
+2. **ProductCard/CategoryNav hover+placeholder tint** (Adım 2) - customer-web menü, 390px'te (dokunmatik
+   cihazda hover yok, ama placeholder tint ve CategoryNav aktif chip gölgesi statik olarak görünür kalmalı).
+3. **Timeline pulse** (Adım 2) - sipariş takip sayfası, 390px'te + `prefers-reduced-motion: reduce`
+   altında pulse'ın durduğunu doğrulama (globals.css'teki blanket kural).
+4. **Tide marker** (Adım 3) - staff-web `AppShell` sidebar, 768-1023px (drawer/overlay) ve <768px'te.
+5. **Tide-edge** (Adım 4) - kasa/KDS sipariş kartları, KDS'in Adım 7'nin orijinal kapsamında eklenen
+   `--container-width-kiosk` (1920px) genişliğinde tide-edge'in grid'in geri kalanıyla hizalı kaldığını
+   doğrulama.
+6. **Gate stripe** (Adım 5) - Dialog/ConfirmDialog, dar viewport'ta (dialog genişliği daralınca üst
+   şeridin kırpılmadığını doğrulama) + klavye focus (Tab ile dialog içi gezinme).
+7. **Table row hover tide-marker** (Adım 5) + **tide bar** (Adım 6) - <768px'te tabloların/BarList'in
+   `overflow-x` davranışını bozmadığını doğrulama.
+
+**Erişilebilirlik notu:** Yeni eklenen hiçbir öğe interaktif bir kontrol değil (hepsi salt görsel/
+dekoratif - `::before`/`box-shadow`/`background` katmanları), bu yüzden yeni bir `aria-*` veya focus
+kuralı gerekmiyor beklentisi var; doğrulamanın amacı bunu teyit etmek. Pulse/tide-edge gibi hareket
+içeren öğelerin `prefers-reduced-motion` altında durduğu (Adım 2'de zaten blanket kuralla karşılandığı
+belirtilmişti) bu adımda ilk kez fiilen tarayıcıda test ediliyor.
+
+**Uygulama planı:** (1) Docker container'ların (backend/customer-web/staff-web) güncel kodla ayakta
+olduğunu doğrula; (2) customer-web 390px iframe testiyle tide line/ProductCard/pulse+reduced-motion; (3)
+staff-web 768-1023px ve <768px'te tide marker/table hover/BarList overflow; (4) staff-web gerçek pencerede
+Dialog gate stripe klavye focus + KDS 1920px tide-edge hizası; (5) bulgu çıkarsa düzelt, çıkmazsa yalnızca
+doğrulama sonucu logla; (6) `npx tsc --noEmit` + `npx eslint .` + `npm run build` (her iki app, yalnızca
+kod değişikliği olduysa).
+
 ## UI/UX Productization Gate — Adım 1 Tasarım Yenilemesi: "Tide" kimliği — ✅ COMPLETED
 
 Gate'in 7 adımı da tamamlanmış olsa da, Adım 1'de kurulan token sistemi (bkz. yukarıdaki "Adım 1: Shared
