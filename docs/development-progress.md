@@ -2240,3 +2240,85 @@ kaldırmak gereksiz migration churn'ü olurdu.
   "İade tamamlandı: ₺150,00" ve "Geçmiş İadeler" listesinde doğru göründü; taşınan
   uç noktaların gerçek tarayıcıda çalıştığı doğrulandı.
 - Git commit/push kullanıcı istemedikçe yapılmadı.
+
+---
+
+## Kasa Ekranı Görsel Kimlik Yenilemesi — "sıcak" tema — ✅ COMPLETED
+
+Kullanıcı isteği: mevcut siyah/gri "Tide" kimliğinden memnun değil, bir Dribbble referansına
+(`Restaurant POS UI`, Tedi Kurniadi) benzer açık/sıcak/modern bir restoran-POS hissi istiyor. Kapsam
+bilinçli olarak yalnızca Kasa ekranıyla sınırlı tutuldu ("bu turda diğer staff ekranlarına yayma").
+Referans canlı Chrome ile incelendi (WebFetch boş döndü, JS-render'lı sayfa) - sıcak turuncu/kiremit
+accent, krem/şeftali nötr yüzeyler, beyaz kartlar, güçlü tipografi hiyerarşisi öne çıkan unsurlardı.
+Referans bir menü-seçim POS'u, Kasa ise bir sipariş kuyruğu/triyaj ekranı olduğundan layout birebir
+kopyalanmadı - yalnızca görsel dil (palet/kart stili/ikonografi/CTA'lar) uyarlandı.
+
+**Kapsam çelişkisi çözümü:** Kullanıcının "profesyonel sidebar/application shell" hedefi ile "diğer
+ekranlara yayma" kısıtı doğrudan çelişiyordu (AppShell tüm staff-web ekranlarında ortak). Kullanıcıya
+soruldu, "AppShell'i de bu turda yeniden tasarla" onayı alındı - ama bunu literal global bir değişiklik
+yerine, `AppShell`'e `theme?: "default" | "warm"` prop'u ekleyerek çözdük: `.warm` class'ı yalnızca
+`--color-*`/`--font-family-display` custom property'lerini override ediyor, tüm shared component'ler
+(Button/Badge/Card/Select/Textarea/EmptyState/ErrorState/IconButton) zaten yalnızca bu token'ları
+okuduğu için tek bir override bloğu sidebar+topbar+içerik zincirinin tamamını temalıyor. Yalnızca Kasa
+sayfası (`app/cashier/[branchId]/page.tsx`) `<AppShell theme="warm">` çağırıyor - başka hiçbir route bu
+prop'u geçmediğinden diğer tüm ekranların "Tide" kimliği (renk + font) birebir korundu; canlı testte
+`/dashboard` ziyaret edilerek doğrulandı.
+
+**Tasarım kararı - imza öğesi.** Sipariş kartları zarif bir "mutfak fişi/adisyon" motifiyle tasarlandı:
+kartın üst kenarında ince bir tırtık/dikiş çizgisi (`repeating-linear-gradient` ile 1px yükseklikte,
+dekoratif ve tek başına - okunabilirliği hiç etkilemiyor) ve sipariş numarası sistem monospace stack'iyle
+(termal fiş yazıcısı referansı, ekstra font yükü yok). Kullanıcı geri bildirimiyle ("adisyon metaforunu
+zarif tut") bu tek dekoratif detayla sınırlı tutuldu - bekleme süresi urgency mantığı (Adım 4 Tasarım
+Yenilemesi'nin "tide edge"i) hiç değişmeden aynen taşındı.
+
+**Tasarım kararı - üç durumun ayrımı.** Kullanıcı geri bildirimiyle ("yalnızca kahverengi tonlarla değil,
+güçlü ama paletle uyumlu status accent renkleri") üç kanban kolonu (Onay Bekleyen/Hazırlanıyor/Hazır) her
+biri kendi `--column-accent`'ini taşıyor - sırasıyla ember/kiremit (primary, zaten urgency'nin "normal"
+tonu), hardal-altın (warning) ve orman yeşili (success); kolon üst kenar çizgisi + ikon + sayaç rozeti bu
+renkte. Kart bazındaki urgency (ember→amber→kırmızı) mantığı ayrı ve değişmedi - üç kolonun kimliği ile
+tek bir kartın bekleme aciliyeti iki farklı, birbiriyle çakışmayan sinyal.
+
+**Layout.** Üç bölüm (önceden alt alta tam genişlik) 3 sütunlu bir kanban board'a dönüştürüldü
+(≥1100px yan yana, altında `1fr`'e yığılıyor - `page.module.css` `.board` media query). `--container-
+width-kiosk` (1920px, KDS ekranı kaldırıldığından beri kullanılmayan bir token) yeniden kullanıldı - kanban
+board'un geniş POS/kiosk ekranlarında nefes almasına izin veriyor. Finansal özet üç ayrı KPI kartına
+(ikon + değer) dönüştürüldü. `lucide-react` eklendi (proje daha önce hiç ikon kütüphanesi kullanmıyordu) -
+`Timer`/`ChefHat`/`BellRing` kolon kimliği ikonları, `Check`/`X`/`Send` aksiyon ikonları,
+`UtensilsCrossed` masa etiketi ikonu. Display fontu Kasa'ya özel: `Bricolage Grotesque` (next/font,
+`--font-display-warm` değişkeninde, yalnızca `.warm` scope'unda `--font-family-display`'i işaret ediyor)
+- diğer ekranların display fontu (Plus Jakarta Sans) etkilenmedi.
+
+**Erişilebilirlik düzeltmesi.** İlk taslak palet (`#CC5023`/`#C98A1D`/`#3F7D4E`) düz renk olarak iyi
+görünüyordu ama kendi %10-16 tint arka planları üzerinde (badge metni, kanban sayaç rozeti) WCAG AA
+4.5:1'in altına düşüyordu - `warning` en kötü durumda yalnızca ~2:1'e kadar iniyordu. Python'da
+`(L1+0.05)/(L2+0.05)` kontrast formülüyle her rengin hem beyaz/kart hem kanban tepsi zemini üzerindeki en
+kötü durumu hesaplandı, üçü de ikisinde birden ≥4.5:1'e geçecek şekilde koyultuldu (`#963B1A`/`#775111`/
+`#31623D`) - üç hue hâlâ net ayrışıyor (kiremit/zeytin-hardal/orman yeşili), yalnızca daha az neon.
+Primary'nin solid buton arka planı (beyaz metin) de aynı yöntemle 4.43:1'den 7.15:1'e çıkarıldı. Dark mode
+paleti ilk taslakta zaten hepsinde ≥4.5:1 veriyordu, değiştirilmedi.
+
+**Uygulama:** Business logic/API çağrıları (`handleAccept`/`handleSubmitReject`/`handleMarkReady`/
+`handleComplete`, SSE reconnect, urgency hesaplama) hiç değişmedi - yalnızca JSX yapısı/className'ler/
+ikonlar ve CSS. Adım adım commit edildi: (1) `lucide-react` bağımlılığı, (2) `AppShell` warm theme
+scaffolding, (3) `Bricolage Grotesque` font yükleme, (4) Kasa sayfası kanban+fiş kartı yeniden yazımı,
+(5) WCAG kontrast düzeltmesi.
+
+**Doğrulama:** `npx tsc --noEmit` + `npx eslint` + `npm run build` (staff-web) her commit'te temiz. Canlı
+Chrome testi yapıldı - `infra-staff-web-1` container'ı geçici durdurulup yerine `npx next dev -p 3002`
+başlatıldı, `/internal/businesses/{id}/staff-users` ile geçici bir `BUSINESS_ADMIN` test hesabı
+(`kasa-warm-verify@qrmenu.local`) oluşturuldu. Var olan bir şubeye (ürünleri/masası olan "Kadikoy Subesi")
+doğrudan Postgres'e 5 test siparişi seed edildi - iki "Onay Bekleyen" (biri normal, biri branch timeout'unu
+aşmış "kritik" - kırmızı nabız + sol kenar), iki "Hazırlanıyor" (biri normal, biri "warning" eşiğini aşmış)
+ve bir "Hazır". Ekran görüntülerinde üç kolonun accent renkleri, fiş kartı tırtık çizgisi, monospace
+sipariş no, KPI şeridi ve sidebar+topbar'ın warm temaya geçtiği doğrulandı; aynı oturumda `/dashboard`
+ziyaret edilip o ekranın hâlâ eski "Tide" kimliğinde olduğu (scope sızıntısı yok) doğrulandı. Fonksiyonel
+doğrulama: "Kabul Et" butonuna gerçekten tıklanıp siparişin canlı API çağrısıyla "Onay Bekleyen"den
+"Hazırlanıyor"a taşındığı (SSE/refetch dahil) doğrulandı. Reddet formu (Select/Textarea/Button) açılıp
+kapatılarak tema geçişinin form kontrollerine de uygulandığı görüldü. Test sonunda seed edilen 5 sipariş/
+order-item/table-visit/anonymous-session, test audit-log/staff-session satırı ve test hesabı DB'den
+silindi (her DELETE ayrı transaction olarak - ilk denemede çoklu-statement `psql -c` çağrısının FK
+hatasında tüm batch'i implicit olarak rollback ettiği fark edildi, tek tek yeniden çalıştırılıp
+doğrulandı), yerel `next dev` kapatıldı, `infra-staff-web-1` container'ı yeniden başlatılıp `healthy`
+durumuna döndüğü doğrulandı. Işık temasında canlı Chrome testi yapılmadı (Adım 1-6 Tasarım Yenilemesi
+turlarıyla aynı düşük-risk gerekçesi) - bunun yerine tüm renk çiftleri programatik WCAG hesabıyla
+doğrulandı (yukarıya bakınız). Backend değişikliği yok.
