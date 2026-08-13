@@ -27,3 +27,8 @@
   background: var(--color-warning-bg);
   color: var(--color-warning);
 }
+
+.info {
+  background: var(--color-info-bg);
+  color: var(--color-info);
+}

@@ -3,34 +3,37 @@
  * Bölüm 19.1: "customer-web ve staff-web aynı temel design-token ailesini kullanır").
  * No shared package exists between the two Next.js apps (no workspace tooling), so this
  * file is a deliberate copy, not an import - keep the two in sync by hand if the token
- * values change. Last synced: UI/UX Productization Gate Adım 1 "Tide" redesign.
+ * values change. Last synced: staff-web görsel yön değişikliği (bkz. development-progress.md
+ * "staff-web Görsel Yön Değişikliği" bölümü) - "Tide" kimliği yerini bu tokenlara bıraktı.
  */
 :root {
-  /* Color - "Tide" kimliği: nötr ink/paper zemin + tek bir camgöbeği accent
-   * (docs/product-requirements.md Bölüm 19.1: "güven veren", "primary/secondary/
-   * destructive action ayrımı"). Accent (--color-primary) her iki app'te de
-   * tüm primary aksiyon/link/focus-ring için tek kaynak - success/danger/warning
-   * durum tonlarından hue olarak bilinçli şekilde uzak tutulur. */
+  /* Color - beyaz/nötr zemin + koyu charcoal tipografi + tek güçlü indigo-mor accent.
+   * Accent (--color-primary) tüm primary aksiyon/link/focus-ring için tek kaynak -
+   * durum renklerinden (warning/info/success/danger) hue olarak bilinçli şekilde uzak
+   * tutulur. --color-info, dört ayrı sipariş durumunun (bekliyor/hazırlanıyor/hazır/
+   * kritik) net ayrışması için eklendi - "hazırlanıyor" artık warning'i ödünç almıyor. */
   --color-bg: #ffffff;
-  --color-surface: #f2f4f3;
+  --color-surface: #f4f5f7;
   --color-surface-raised: #ffffff;
-  --color-fg: #14201e;
-  --color-fg-muted: #5c6d69;
-  --color-border: rgba(20, 32, 30, 0.1);
-  --color-border-strong: rgba(20, 32, 30, 0.2);
-  --color-primary: #0e7c86;
-  --color-primary-strong: #0b626b;
+  --color-fg: #1c1f26;
+  --color-fg-muted: #667085;
+  --color-border: rgba(28, 31, 38, 0.09);
+  --color-border-strong: rgba(28, 31, 38, 0.18);
+  --color-primary: #5b3df0;
+  --color-primary-strong: #4527c9;
   --color-primary-fg: #ffffff;
-  --color-danger: #c23a2e;
-  --color-danger-bg: rgba(194, 58, 46, 0.09);
-  --color-success: #2e7d4f;
-  --color-success-bg: rgba(46, 125, 79, 0.1);
-  --color-warning: #b25e0a;
-  --color-warning-bg: rgba(178, 94, 10, 0.1);
-  --color-badge-bg: rgba(20, 32, 30, 0.06);
-  --color-overlay: rgba(8, 14, 13, 0.55);
-  --color-skeleton: rgba(20, 32, 30, 0.08);
-  --color-skeleton-shine: rgba(20, 32, 30, 0.16);
+  --color-danger: #b91c1c;
+  --color-danger-bg: rgba(185, 28, 28, 0.12);
+  --color-success: #146c34;
+  --color-success-bg: rgba(20, 108, 52, 0.12);
+  --color-warning: #a34b08;
+  --color-warning-bg: rgba(163, 75, 8, 0.12);
+  --color-info: #1d4ed8;
+  --color-info-bg: rgba(29, 78, 216, 0.12);
+  --color-badge-bg: rgba(28, 31, 38, 0.06);
+  --color-overlay: rgba(10, 11, 14, 0.55);
+  --color-skeleton: rgba(28, 31, 38, 0.08);
+  --color-skeleton-shine: rgba(28, 31, 38, 0.16);
 
   /* Spacing scale */
   --space-1: 4px;
@@ -43,10 +46,11 @@
   --space-10: 40px;
   --space-12: 48px;
 
-  /* Radius scale */
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 20px;
+  /* Radius scale - warm kimliğin yumuşak/organik köşeleri yerine daha kesin/modern bir
+   * POS hissi için sıkılaştırıldı (bkz. development-progress.md "Görsel Yön Değişikliği"). */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
   --radius-full: 999px;
 
   /* Typography - next/font ile build-time'da self-host edilir (Bölüm 19.1:
@@ -68,10 +72,10 @@
   --line-height-tight: 1.25;
   --line-height-base: 1.5;
 
-  /* Elevation */
-  --shadow-sm: 0 1px 2px rgba(8, 14, 13, 0.06);
-  --shadow-md: 0 4px 16px rgba(8, 14, 13, 0.1);
-  --shadow-lg: 0 16px 40px rgba(8, 14, 13, 0.18);
+  /* Elevation - daha düz/sade (düşük blur+opacity), flat modern POS hissi. */
+  --shadow-sm: 0 1px 2px rgba(15, 17, 21, 0.05);
+  --shadow-md: 0 4px 12px rgba(15, 17, 21, 0.08);
+  --shadow-lg: 0 16px 32px rgba(15, 17, 21, 0.14);
 
   /* Motion */
   --transition-fast: 120ms ease;
@@ -104,22 +108,24 @@
  * for every visitor until they opt into dark themselves. */
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --color-bg: #0b1211;
-  --color-surface: #121b19;
-  --color-surface-raised: #17211f;
-  --color-fg: #edf3f1;
-  --color-fg-muted: #93a3a0;
+  --color-bg: #0f1115;
+  --color-surface: #16181d;
+  --color-surface-raised: #1c1f26;
+  --color-fg: #f2f3f5;
+  --color-fg-muted: #9aa1ad;
   --color-border: rgba(255, 255, 255, 0.1);
   --color-border-strong: rgba(255, 255, 255, 0.2);
-  --color-primary: #4fd0c6;
-  --color-primary-strong: #7be0d6;
-  --color-primary-fg: #0b1211;
+  --color-primary: #8b7bff;
+  --color-primary-strong: #a595ff;
+  --color-primary-fg: #14101f;
   --color-danger: #f0847a;
   --color-danger-bg: rgba(240, 132, 122, 0.14);
   --color-success: #6fce93;
   --color-success-bg: rgba(111, 206, 147, 0.14);
   --color-warning: #f0ae5c;
   --color-warning-bg: rgba(240, 174, 92, 0.14);
+  --color-info: #7aa2f7;
+  --color-info-bg: rgba(122, 162, 247, 0.16);
   --color-badge-bg: rgba(255, 255, 255, 0.1);
   --color-overlay: rgba(0, 0, 0, 0.65);
   --color-skeleton: rgba(255, 255, 255, 0.08);
@@ -183,7 +189,7 @@ img {
   display: block;
 }
 
-/* accent rengiyle (Tide) tek kaynaktan, marka imzasını da taşıyan bir odak halkası. */
+/* Tek kaynaktan (--color-primary) marka imzasını da taşıyan bir odak halkası. */
 :focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;

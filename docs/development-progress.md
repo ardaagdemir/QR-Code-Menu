@@ -2482,3 +2482,64 @@ Light'a çevrilip **Kasa'nın light warm kimliği** (Adım 4/5'te WCAG için koy
 göründüğü, Menü sayfasına geçilince Dark/Light tercihinin diğer (warm olmayan) ekranlara da tutarlı
 uygulandığı doğrulandı; konsolda hydration/hata mesajı çıkmadı. Test sonunda tercih **Light**'a
 bırakıldı. Backend'e dokunulmadı.
+
+## staff-web Görsel Yön Değişikliği — Warm/Tide'dan Modern POS Kimliğine — 🔄 TASARIM TAMAMLANDI, UYGULAMA SÜRÜYOR
+
+Kullanıcı isteği: Mevcut warm/Tide görsel yönünden memnun değil - bunu iyileştirmek değil, **yön
+değiştirmek** isteniyor. Referans: dribbble.com/shots/26146760 ("Restaurant POS UI"). Hedefler: beyaz/çok
+açık nötr zemin, temiz beyaz yüzeyler, koyu charcoal tipografi, tek güçlü modern primary accent; net durum
+renkleri (bekliyor=amber/orange, hazırlanıyor=blue/indigo, hazır=green, kritik=red); daha kompakt KPI
+kartları; daha güçlü sidebar hiyerarşisi; daha modern spacing/typography; Kanban kolonları büyük bej kutular
+gibi görünmemeli; sipariş kartlarında masa/bekleme süresi/tutar/ana aksiyon saniyeler içinde okunabilmeli;
+büyük boş alanlar azalmalı; restoran hissi tüm ekranı beje/kahverengiye boyayarak verilmemeli; jenerik
+SaaS ya da eski POS görünümünden kaçınılmalı. Business logic/API davranışlarına dokunulmayacak. Bu turda
+yalnızca **ortak staff-web AppShell + Kasa ekranı** bu yeni dile geçiyor - diğer sayfaların içeriği redesign
+edilmiyor, yalnızca AppShell paylaşımlı olduğu için diğer ekranlara sızan "ortak shell etkisi" kabul
+edilebilir. `frontend-design` skill'i kullanıldı.
+
+**Mimari karar - Kasa'nın ayrı "warm" kimliği tamamen kaldırılıyor:** Kasa artık AppShell'in scoped
+`--color-*` override'ı olmadan, TÜM staff-web ile aynı paylaşılan kimliği kullanacak. Bu, "restoran hissini
+tüm ekranı beje boyayarak verme" isteğini mimari düzeyde karşılıyor: renk artık kanban kolonunun koca zeminine
+değil yalnızca durum rozetine/ikon chip'ine taşınıyor. `AppShell.tsx`'teki `theme="warm"` prop'u ve
+`AppShell.module.css`'teki `.warm` + dark-warm override blokları kaldırılacak; Kasa sayfası düz `<AppShell>`
+kullanacak. Warm-only `Bricolage Grotesque` display fontu kaldırılıyor - tek display fontu (Plus Jakarta
+Sans) tüm app'te tutarlı kalıyor (font ailesini değiştirmek istekte açıkça talep edilmedi, mevcut ikili zaten
+"jenerik AI görünümü" kategorilerinden hiçbirine girmiyor - risk/kapsamı büyütmemek için korunuyor).
+
+**Token sistemi (yeni paylaşılan kimlik, `app/globals.css` - hem Kasa hem diğer tüm ekranlar):**
+- Nötr: `--color-bg #ffffff`, `--color-surface #f4f5f7`, `--color-surface-raised #ffffff`,
+  `--color-fg #1c1f26` (koyu charcoal), `--color-fg-muted #667085`, border `rgba(28,31,38,.09/.18)`.
+- Primary: `#5b3df0` / strong `#4527c9` - canlı indigo-mor, tek güçlü modern accent; hiçbir durum renginin
+  hue'suna değmiyor ve Tailwind'in birebir indigo/violet default'u değil (jenerik-SaaS hissinden kaçınmak
+  için özel ton).
+- Durum renkleri (dördü de hem beyaz kart hem kendi %12 tint zemini üzerinde WCAG AA 4.5:1'i geçecek şekilde
+  hesaplanarak seçildi - bkz. aşağıdaki kontrast tablosu): `--color-warning`(bekliyor/amber) `#a34b08`,
+  **yeni** `--color-info`(hazırlanıyor/blue-indigo) `#1d4ed8`, `--color-success`(hazır/green) `#146c34`,
+  `--color-danger`(kritik/red) `#b91c1c`. `--color-info`/`--color-info-bg` yeni token - önceki tasarımda
+  "hazırlanıyor" durumu `--color-warning`'i ödünç alıyordu, dört durumun (bekliyor/hazırlanıyor/hazır/kritik)
+  görsel olarak net ayrışması için ayrı bir "info" ekleniyor.
+  - Kontrast (WCAG AA, beyaz zemin / kendi %12 tint'i): fg 16.5:1, fg-muted 4.97:1, primary 6.23:1 (buton
+    metni beyaz-üzerinde-primary de 6.23:1), warning 5.89:1 / 4.93:1, info 6.70:1 / 5.57:1, success 6.51:1 /
+    5.44:1, danger 6.47:1 / 5.29:1.
+- Radius sıkılaştırıldı (`--radius-lg` 20px→14px, `--radius-md` 12px→10px) - warm'ın yumuşak/organik hissi
+  yerine daha kesin/modern köşeler; `--radius-full` (999px) pill/badge için korunuyor.
+- Gölgeler biraz daha düz/sade (daha düşük blur/opacity) - flat modern POS hissi.
+- Dark mode: aynı yapı, nötr koyu lacivert-gri zemin + parlak indigo/durum tonları (önceki Tide dark
+  mantığıyla aynı desen - `data-theme="dark"` explicit attribute, `prefers-color-scheme` yok - ayrı warm
+  dark bloğu kaldırılıyor).
+
+**Layout kararları (Kasa sayfası):**
+- KPI şeridi: ayrı ayrı border/shadow'lu üç kart yerine TEK bir yüzey içinde bölünmüş kompakt segmentler -
+  daha az boşluk, tek bakışta 3 metrik.
+- Kanban kolonu: zemin `--color-surface` (nötr açık gri, "büyük bej kutu" değil); renk yalnızca kolon
+  başlığındaki ikon chip + sayaç rozetinde yaşıyor.
+- Sipariş kartı: fiş/perforasyon dekorasyonu (dashed çizgi) kaldırıldı - yeni yönle uyumsuz fazla dekoratif
+  bir warm-kimlik detayıydı. Yerine: net tek satırlık başlık (masa + sipariş no + tutar aynı satırda),
+  urgency hue'suna göre sabit kalınlıkta renkli sol kenar, tek satır durum rozeti + bekleme süresi, geniş
+  tek-tıkla ana aksiyon butonu - "saniyeler içinde okunabilir" hedefine yönelik.
+- Sidebar: marka bloğu güçlendirildi, grup başlıkları daha belirgin (letter-spacing + weight artırıldı),
+  aktif link dolgun tint arka plan + accent metin + sol accent bar ile daha güçlü hiyerarşi.
+
+Adım adım commit edilecek: (1) design token overhaul (`app/globals.css`), (2) AppShell warm kimliğinin
+kaldırılması + shell restyling (sidebar/topbar), (3) Kasa sayfası (KPI şeridi + kanban + kart) yeniden yazımı,
+(4) font/dark-mode temizliği, (5) gerçek Chrome'da light mode doğrulaması.
