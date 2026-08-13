@@ -18,8 +18,17 @@ import {
   type OwnerNotificationLog,
 } from "@/lib/api";
 import AppShell from "@/components/layout/AppShell";
+import PageHeader from "@/components/ui/PageHeader";
+import KpiCard from "@/components/ui/KpiCard";
+import BarList from "@/components/ui/BarList";
+import DateRangePresets, { presetRange, type DateRange } from "@/components/ui/DateRangePresets";
+import Table from "@/components/ui/Table";
+import EmptyState from "@/components/ui/EmptyState";
+import ErrorState from "@/components/ui/ErrorState";
+import TableSkeleton from "@/components/ui/TableSkeleton";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
+import tableStyles from "@/components/ui/Table.module.css";
 import adminStyles from "@/styles/admin.module.css";
 import styles from "../reports.module.css";
 
@@ -28,19 +37,17 @@ function todayIsoDate(): string {
 }
 
 /**
- * Gap-analysis #8 (product-requirements.md Section 13.1): tek şube için seçilebilir
- * tarih aralığında brüt/net satış, refund, sipariş/kabul/red sayısı, ortalama sepet,
- * ürün/kategori kırılımı, saatlik dağılım. CASHIER/BRANCH_MANAGER/BUSINESS_ADMIN
- * (Permission.REPORT_VIEW) kendi şubeleri için görebilir - backend branch-scope'u
- * zaten zorunlu kılıyor, bu sayfa doğrudan URL ile de (Kasa/Mutfak ekranlarıyla aynı
- * gezinme deseni) erişilebilir.
+ * Gap-analysis #8 (product-requirements.md Section 13.1) + UI/UX Productization Gate
+ * Adım 6 (Bölüm 19.3 "Raporlama"): KPI cards, hızlı tarih presetleri, gelir trendi
+ * (gün sonu kapanışlarından türetilen günlük brüt satış bar'ı), ürün/kategori ranking
+ * bar'ları, saatlik dağılım ve refund etkisi aynı bilgi hiyerarşisinde. CASHIER/
+ * BRANCH_MANAGER/BUSINESS_ADMIN (Permission.REPORT_VIEW) kendi şubeleri için görebilir.
  */
 export default function BranchReportPage() {
   const params = useParams<{ branchId: string }>();
   const branchId = params.branchId;
 
-  const [from, setFrom] = useState(todayIsoDate());
-  const [to, setTo] = useState(todayIsoDate());
+  const [range, setRange] = useState<DateRange>(() => presetRange("today"));
   const [report, setReport] = useState<BranchSalesReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -53,9 +60,8 @@ export default function BranchReportPage() {
 
   const [operatingResult, setOperatingResult] = useState<OperatingResult | null>(null);
 
-  /** setState calls only happen inside the promise callbacks, never synchronously - safe to call from an effect body. */
-  function applyReport(promise: Promise<BranchSalesReport>) {
-    promise
+  function loadReport(nextRange: DateRange) {
+    getBranchSalesReport(branchId, nextRange.from, nextRange.to)
       .then((data) => {
         setReport(data);
         setError(null);
@@ -64,8 +70,8 @@ export default function BranchReportPage() {
       .finally(() => setLoading(false));
   }
 
-  function reloadDailyClose() {
-    getDailyCloseReports(branchId, from, to)
+  function reloadDailyClose(nextRange: DateRange) {
+    getDailyCloseReports(branchId, nextRange.from, nextRange.to)
       .then((data) => {
         setDailyCloseReports(data);
         void reloadNotifications(data);
@@ -91,33 +97,33 @@ export default function BranchReportPage() {
       .finally(() => setResendingReportId(null));
   }
 
-  function reloadOperatingResult() {
-    getOperatingResult(branchId, from, to)
+  function reloadOperatingResult(nextRange: DateRange) {
+    getOperatingResult(branchId, nextRange.from, nextRange.to)
       .then((data) => setOperatingResult(data))
       .catch(() => setOperatingResult(null));
   }
 
   useEffect(() => {
-    applyReport(getBranchSalesReport(branchId, from, to));
-    reloadDailyClose();
-    reloadOperatingResult();
-    // Only re-fetch automatically when the branch changes - date range changes are applied via the "Uygula" button.
+    loadReport(range);
+    reloadDailyClose(range);
+    reloadOperatingResult(range);
+    // Only re-fetch automatically when the branch changes - date range changes are applied via handleRangeChange.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [branchId]);
 
-  function handleSubmit(event: React.FormEvent) {
-    event.preventDefault();
+  function handleRangeChange(nextRange: DateRange) {
+    setRange(nextRange);
     setLoading(true);
-    applyReport(getBranchSalesReport(branchId, from, to));
-    reloadDailyClose();
-    reloadOperatingResult();
+    loadReport(nextRange);
+    reloadDailyClose(nextRange);
+    reloadOperatingResult(nextRange);
   }
 
   function handleCloseToday() {
     setClosingToday(true);
     setDailyCloseError(null);
     generateDailyCloseFinal(branchId, todayIsoDate())
-      .then(() => reloadDailyClose())
+      .then(() => reloadDailyClose(range))
       .catch(() => setDailyCloseError("Gün sonu kapatılamadı."))
       .finally(() => setClosingToday(false));
   }
@@ -126,7 +132,7 @@ export default function BranchReportPage() {
     if (!report) {
       return;
     }
-    downloadBranchDailyCloseExcel(branchId, report.branchName, from, to).catch(() =>
+    downloadBranchDailyCloseExcel(branchId, report.branchName, range.from, range.to).catch(() =>
       setDailyCloseError("Excel indirilemedi."),
     );
   }
@@ -135,59 +141,60 @@ export default function BranchReportPage() {
     (row) => row.businessDate === todayIsoDate() && row.status === "FINAL",
   );
 
+  const revenueTrend = [...dailyCloseReports].sort((a, b) => a.businessDate.localeCompare(b.businessDate));
+
+  const topProducts = report
+    ? [...report.productBreakdown].sort((a, b) => b.revenueMinorUnits - a.revenueMinorUnits).slice(0, 8)
+    : [];
+  const topCategories = report
+    ? [...report.categoryBreakdown].sort((a, b) => b.revenueMinorUnits - a.revenueMinorUnits)
+    : [];
+
   return (
     <AppShell>
       <main className={adminStyles.page}>
-        <div className={adminStyles.header}>
-          <h1 className={adminStyles.title}>Şube Raporu</h1>
-        </div>
+        <PageHeader title="Şube Raporu" description={report ? report.branchName : undefined} />
 
-        <form className={styles.filters} onSubmit={handleSubmit}>
-          <div className={adminStyles.field}>
-            <label className={adminStyles.label} htmlFor="from">
-              Başlangıç
-            </label>
-            <input
-              id="from"
-              type="date"
-              className={adminStyles.input}
-              value={from}
-              max={to}
-              onChange={(event) => setFrom(event.target.value)}
-            />
-          </div>
-          <div className={adminStyles.field}>
-            <label className={adminStyles.label} htmlFor="to">
-              Bitiş
-            </label>
-            <input
-              id="to"
-              type="date"
-              className={adminStyles.input}
-              value={to}
-              min={from}
-              onChange={(event) => setTo(event.target.value)}
-            />
-          </div>
-          <Button type="submit">Uygula</Button>
-        </form>
-
-        {error ? <p className={adminStyles.error}>{error}</p> : null}
+        <DateRangePresets value={range} onChange={handleRangeChange} />
 
         {loading ? (
-          <p className={adminStyles.empty}>Yükleniyor…</p>
+          <TableSkeleton />
+        ) : error ? (
+          <ErrorState message={error} onRetry={() => loadReport(range)} />
         ) : !report ? null : (
           <>
-            <div className={styles.statGrid}>
-              <StatCard label="Brüt satış" value={formatPriceMinorUnits(report.grossSalesMinorUnits)} />
-              <StatCard label="Net satış" value={formatPriceMinorUnits(report.netSalesMinorUnits)} />
-              <StatCard label="Refund toplamı" value={formatPriceMinorUnits(report.refundTotalMinorUnits)} />
-              <StatCard label="Sipariş sayısı" value={String(report.orderCount)} />
-              <StatCard label="Kabul edilen" value={String(report.acceptedOrderCount)} />
-              <StatCard label="Reddedilen" value={String(report.rejectedOrderCount)} />
-              <StatCard label="Ortalama sepet" value={formatPriceMinorUnits(report.averageOrderValueMinorUnits)} />
-              <StatCard label="Masa ziyareti" value={String(report.tableVisitCount)} />
+            <div className={adminStyles.section}>
+              <div className={styles.kpiGrid}>
+                <KpiCard label="Brüt satış" value={formatPriceMinorUnits(report.grossSalesMinorUnits)} />
+                <KpiCard label="Net satış" value={formatPriceMinorUnits(report.netSalesMinorUnits)} />
+                <KpiCard
+                  label="Refund toplamı"
+                  value={formatPriceMinorUnits(report.refundTotalMinorUnits)}
+                  tone={report.refundTotalMinorUnits > 0 ? "danger" : "neutral"}
+                />
+                <KpiCard label="Sipariş sayısı" value={String(report.orderCount)} />
+                <KpiCard label="Kabul edilen" value={String(report.acceptedOrderCount)} tone="success" />
+                <KpiCard label="Reddedilen" value={String(report.rejectedOrderCount)} tone={report.rejectedOrderCount > 0 ? "danger" : "neutral"} />
+                <KpiCard label="Ortalama sepet" value={formatPriceMinorUnits(report.averageOrderValueMinorUnits)} />
+                <KpiCard label="Masa ziyareti" value={String(report.tableVisitCount)} />
+              </div>
             </div>
+
+            <section className={adminStyles.section}>
+              <h2 className={adminStyles.sectionTitle}>Günlük Ciro Trendi (brüt satış)</h2>
+              {revenueTrend.length === 0 ? (
+                <EmptyState title="Bu aralıkta gün sonu kapanışı yok" description="Trend, gün sonu kapanış kayıtlarından türetilir." />
+              ) : (
+                <BarList
+                  items={revenueTrend.map((row) => ({
+                    key: row.businessDate,
+                    label: row.businessDate,
+                    value: row.grossSalesMinorUnits,
+                    valueLabel: formatPriceMinorUnits(row.grossSalesMinorUnits),
+                  }))}
+                />
+              )}
+            </section>
 
             <section className={adminStyles.section}>
               <div className={styles.dailyCloseHeader}>
@@ -203,50 +210,48 @@ export default function BranchReportPage() {
                   )}
                 </div>
               </div>
-              {dailyCloseError ? <p className={adminStyles.error}>{dailyCloseError}</p> : null}
+              {dailyCloseError ? <ErrorState message={dailyCloseError} /> : null}
               {dailyCloseReports.length === 0 ? (
-                <p className={adminStyles.empty}>Bu aralıkta gün sonu kapanışı yok.</p>
+                <EmptyState title="Bu aralıkta gün sonu kapanışı yok" />
               ) : (
-                <div className={styles.tableWrap}>
-                  <table className={styles.table}>
-                    <thead>
-                      <tr>
-                        <th>Tarih</th>
-                        <th>Durum</th>
-                        <th>Brüt Satış</th>
-                        <th>Net Satış</th>
-                        <th>Sipariş</th>
-                        <th>Bildirim</th>
+                <Table>
+                  <thead>
+                    <tr>
+                      <th>Tarih</th>
+                      <th>Durum</th>
+                      <th>Brüt Satış</th>
+                      <th>Net Satış</th>
+                      <th>Sipariş</th>
+                      <th>Bildirim</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dailyCloseReports.map((row) => (
+                      <tr key={row.businessDate}>
+                        <td className={tableStyles.primary}>{row.businessDate}</td>
+                        <td>
+                          <Badge tone={row.status === "FINAL" ? "success" : "neutral"}>
+                            {row.status === "FINAL" ? "FINAL" : "Ön izleme"}
+                          </Badge>
+                        </td>
+                        <td>{formatPriceMinorUnits(row.grossSalesMinorUnits)}</td>
+                        <td>{formatPriceMinorUnits(row.netSalesMinorUnits)}</td>
+                        <td>{row.orderCount}</td>
+                        <td>
+                          {row.status === "FINAL" ? (
+                            <NotificationCell
+                              logs={notificationsByReport[row.id]}
+                              resending={resendingReportId === row.id}
+                              onResend={() => handleResend(row.id)}
+                            />
+                          ) : (
+                            "-"
+                          )}
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {dailyCloseReports.map((row) => (
-                        <tr key={row.businessDate}>
-                          <td>{row.businessDate}</td>
-                          <td>
-                            <Badge tone={row.status === "FINAL" ? "success" : "neutral"}>
-                              {row.status === "FINAL" ? "FINAL" : "Ön izleme"}
-                            </Badge>
-                          </td>
-                          <td>{formatPriceMinorUnits(row.grossSalesMinorUnits)}</td>
-                          <td>{formatPriceMinorUnits(row.netSalesMinorUnits)}</td>
-                          <td>{row.orderCount}</td>
-                          <td>
-                            {row.status === "FINAL" ? (
-                              <NotificationCell
-                                logs={notificationsByReport[row.id]}
-                                resending={resendingReportId === row.id}
-                                onResend={() => handleResend(row.id)}
-                              />
-                            ) : (
-                              "-"
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                    ))}
+                  </tbody>
+                </Table>
               )}
             </section>
 
@@ -256,72 +261,56 @@ export default function BranchReportPage() {
                 <p className={adminStyles.empty} style={{ padding: 0 }}>
                   Vergi, stok maliyeti ve personel tahakkuku gibi kalemler dahil değildir - yasal net kâr değildir.
                 </p>
-                <div className={styles.statGrid}>
-                  <StatCard label="Net satış" value={formatPriceMinorUnits(operatingResult.netSalesMinorUnits)} />
-                  <StatCard label="Onaylı giderler" value={formatPriceMinorUnits(operatingResult.approvedExpensesMinorUnits)} />
-                  <StatCard label="Yönetimsel net sonuç" value={formatPriceMinorUnits(operatingResult.netOperatingResultMinorUnits)} />
+                <div className={styles.kpiGrid}>
+                  <KpiCard label="Net satış" value={formatPriceMinorUnits(operatingResult.netSalesMinorUnits)} />
+                  <KpiCard label="Onaylı giderler" value={formatPriceMinorUnits(operatingResult.approvedExpensesMinorUnits)} />
+                  <KpiCard
+                    label="Yönetimsel net sonuç"
+                    value={formatPriceMinorUnits(operatingResult.netOperatingResultMinorUnits)}
+                    tone={operatingResult.netOperatingResultMinorUnits < 0 ? "danger" : "success"}
+                  />
                 </div>
               </section>
             ) : null}
 
             <section className={adminStyles.section}>
-              <h2 className={adminStyles.sectionTitle}>Ürün Bazında Satış</h2>
-              {report.productBreakdown.length === 0 ? (
-                <p className={adminStyles.empty}>Bu aralıkta satış yok.</p>
+              <h2 className={adminStyles.sectionTitle}>Ürün Bazında Satış (ilk 8)</h2>
+              {topProducts.length === 0 ? (
+                <EmptyState title="Bu aralıkta satış yok" />
               ) : (
-                <div className={styles.tableWrap}>
-                  <table className={styles.table}>
-                    <thead>
-                      <tr>
-                        <th>Ürün</th>
-                        <th>Adet</th>
-                        <th>Ciro</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {report.productBreakdown.map((row) => (
-                        <tr key={row.productId}>
-                          <td>{row.productName}</td>
-                          <td>{row.quantitySold}</td>
-                          <td>{formatPriceMinorUnits(row.revenueMinorUnits)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <BarList
+                  items={topProducts.map((row) => ({
+                    key: row.productId,
+                    label: row.productName,
+                    value: row.revenueMinorUnits,
+                    valueLabel: `${formatPriceMinorUnits(row.revenueMinorUnits)} · ${row.quantitySold} adet`,
+                  }))}
+                />
               )}
             </section>
 
             <section className={adminStyles.section}>
               <h2 className={adminStyles.sectionTitle}>Kategori Bazında Ciro</h2>
-              {report.categoryBreakdown.length === 0 ? (
-                <p className={adminStyles.empty}>Bu aralıkta satış yok.</p>
+              {topCategories.length === 0 ? (
+                <EmptyState title="Bu aralıkta satış yok" />
               ) : (
-                <div className={styles.tableWrap}>
-                  <table className={styles.table}>
-                    <thead>
-                      <tr>
-                        <th>Kategori</th>
-                        <th>Ciro</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {report.categoryBreakdown.map((row) => (
-                        <tr key={row.categoryId}>
-                          <td>{row.categoryName}</td>
-                          <td>{formatPriceMinorUnits(row.revenueMinorUnits)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <BarList
+                  items={topCategories.map((row) => ({
+                    key: row.categoryId,
+                    label: row.categoryName,
+                    value: row.revenueMinorUnits,
+                    valueLabel: formatPriceMinorUnits(row.revenueMinorUnits),
+                  }))}
+                />
               )}
             </section>
 
             <section className={adminStyles.section}>
               <h2 className={adminStyles.sectionTitle}>Saatlik Dağılım</h2>
-              <div className={styles.tableWrap}>
-                <table className={styles.table}>
+              {report.hourlyDistribution.every((row) => row.orderCount === 0) ? (
+                <EmptyState title="Bu aralıkta satış yok" />
+              ) : (
+                <Table>
                   <thead>
                     <tr>
                       <th>Saat</th>
@@ -334,17 +323,14 @@ export default function BranchReportPage() {
                       .filter((row) => row.orderCount > 0)
                       .map((row) => (
                         <tr key={row.hourOfDay}>
-                          <td>{String(row.hourOfDay).padStart(2, "0")}:00</td>
+                          <td className={tableStyles.primary}>{String(row.hourOfDay).padStart(2, "0")}:00</td>
                           <td>{row.orderCount}</td>
                           <td>{formatPriceMinorUnits(row.revenueMinorUnits)}</td>
                         </tr>
                       ))}
                   </tbody>
-                </table>
-                {report.hourlyDistribution.every((row) => row.orderCount === 0) ? (
-                  <p className={adminStyles.empty}>Bu aralıkta satış yok.</p>
-                ) : null}
-              </div>
+                </Table>
+              )}
             </section>
           </>
         )}
@@ -381,15 +367,6 @@ function NotificationCell({
       <Button type="button" variant="secondary" onClick={onResend} disabled={resending}>
         {resending ? "Gönderiliyor…" : "Tekrar Gönder"}
       </Button>
-    </div>
-  );
-}
-
-function StatCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className={styles.statCard}>
-      <span className={styles.statLabel}>{label}</span>
-      <span className={styles.statValue}>{value}</span>
     </div>
   );
 }
