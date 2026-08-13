@@ -1,6 +1,7 @@
 .header {
+  position: relative;
   background: var(--color-bg);
-  padding: var(--space-4) var(--space-4) var(--space-3);
+  padding: var(--space-4) var(--space-4) var(--space-4);
 }
 
 .business {
@@ -13,4 +14,15 @@
   margin-top: var(--space-1);
   font-size: var(--font-size-sm);
   color: var(--color-fg-muted);
+}
+
+/* Tide line: the header's signature mark - a shoreline-like accent that recedes from
+ * the business name, carrying the "Tide" identity into the first screen a guest sees. */
+.tideLine {
+  display: block;
+  margin-top: var(--space-3);
+  height: 3px;
+  width: 56px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(90deg, var(--color-primary) 0%, var(--color-primary-strong) 55%, transparent 100%);
 }

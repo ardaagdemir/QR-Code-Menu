@@ -10,6 +10,7 @@ export default function VisitHeader({ visit }: { visit: TableVisit }) {
       <p className={styles.meta}>
         {visit.branchName} · {visit.tableLabel}
       </p>
+      <span className={styles.tideLine} aria-hidden="true" />
     </header>
   );
 }
