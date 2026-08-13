@@ -2483,7 +2483,7 @@ göründüğü, Menü sayfasına geçilince Dark/Light tercihinin diğer (warm o
 uygulandığı doğrulandı; konsolda hydration/hata mesajı çıkmadı. Test sonunda tercih **Light**'a
 bırakıldı. Backend'e dokunulmadı.
 
-## staff-web Görsel Yön Değişikliği — Warm/Tide'dan Modern POS Kimliğine — 🔄 TASARIM TAMAMLANDI, UYGULAMA SÜRÜYOR
+## staff-web Görsel Yön Değişikliği — Warm/Tide'dan Modern POS Kimliğine — ✅ COMPLETED
 
 Kullanıcı isteği: Mevcut warm/Tide görsel yönünden memnun değil - bunu iyileştirmek değil, **yön
 değiştirmek** isteniyor. Referans: dribbble.com/shots/26146760 ("Restaurant POS UI"). Hedefler: beyaz/çok
@@ -2543,3 +2543,36 @@ Sans) tüm app'te tutarlı kalıyor (font ailesini değiştirmek istekte açık�
 Adım adım commit edilecek: (1) design token overhaul (`app/globals.css`), (2) AppShell warm kimliğinin
 kaldırılması + shell restyling (sidebar/topbar), (3) Kasa sayfası (KPI şeridi + kanban + kart) yeniden yazımı,
 (4) font/dark-mode temizliği, (5) gerçek Chrome'da light mode doğrulaması.
+
+**Uygulama:** Tasarım kararı aynen uygulandı, 5 adımın tamamı ayrı commit'lerle tamamlandı. Business
+logic/API çağrılarına dokunulmadı - yalnızca `app/globals.css`, `components/layout/AppShell.{tsx,module.css}`,
+`app/cashier/[branchId]/page.module.css`, `app/layout.tsx`, `components/ui/Badge.{tsx,module.css}` (yeni
+"info" tone eklendi). Her component zaten yalnızca `var(--color-*)` token'larını okuduğu için (repo genelinde
+hardcoded hex renk taraması sıfır sonuç verdi), token overhaul tek başına tüm staff-web'e (Kasa dahil) yeni
+kimliği taşıdı - Kasa'nın ayrı `.warm` override bloğunu kaldırmak yeterli oldu, başka hiçbir dosyaya
+dokunmaya gerek kalmadı.
+
+**Doğrulama:** `npx tsc --noEmit`, `npx eslint . --max-warnings 0`, `npm run build` (staff-web) her adımda
+temiz. Canlı Chrome testi yapıldı - `infra-staff-web-1` container'ı geçici durdurulup yerine `npx next dev -p
+3002` başlatıldı, standing hesapla (`admin@qrmenu.local`, bkz. yerel hafıza) giriş yapıldı. Kasa'nın dört
+durumunu da (onay bekleyen normal, onay bekleyen kritik, hazırlanıyor uyarı eşiğinde, hazır) gerçek verilerle
+görmek için "Merkez Şube"ye 4 geçici sipariş seed edildi. Doğrulanan: Dashboard + Menü + Kasa'da yeni beyaz/
+charcoal/indigo kimlik, sidebar'ın açık gri zon + koyu kesin aktif-link imzası, KPI şeridinin tek yüzeyde
+bölünmüş segmentleri, kanban kolonlarının artık "büyük renkli kutu" değil nötr zemin + renkli başlık chip'i
+olması (bekliyor=amber, hazırlanıyor=blue/indigo, hazır=green), kritik siparişin kırmızı nabız+kenar+rozetiyle
+öne çıkması, sipariş kartının tek satırlık başlığı (masa+no+tutar) ve tam genişlik tek-tıkla aksiyon butonu.
+Fonksiyonel doğrulama: "Kabul Et" butonuna gerçekten tıklanıp siparişin canlı API çağrısıyla (SSE refetch
+dahil) "Onay Bekleyen"den "Hazırlanıyor"a taşındığı doğrulandı. Dark mode toggle'ı da test edildi, yeni
+paletle birlikte sorunsuz çalıştığı görüldü, sonra Light'a geri alındı. Test sonunda seed edilen 4 sipariş/
+order-item/table-visit/anonymous-session DB'den silindi (her DELETE ayrı komut olarak), yerel `next dev`
+kapatıldı, `infra-staff-web-1` container'ı yeniden başlatılıp `healthy` durumuna döndüğü doğrulandı (container
+imajı henüz yeniden build edilmedi - hâlâ eski koddan çalışıyor, bir sonraki deploy/rebuild'de yeni tasarımı
+alacak).
+
+**Bilinen not:** Doğrulama sırasında "Merkez Şube"de, bu görevle ilgisiz iki eski test siparişi fark edildi -
+`order_number=1` (durum `IN_KITCHEN`, `last_activity_at` ~08-13 06:46, Kasa'da "16 sa+ bekliyor" olarak
+görünüyordu) ve `order_number=2` (durum `REJECTED_BY_STORE`, 08-13 07:53). Bunlar bu oturumda oluşturulmadığı
+için silinmedi - önceki bir test/doğrulama oturumundan kalmış olabilirler (muhtemelen tam temizlenmemiş).
+İsterseniz ayrı bir adımda temizlenebilir.
+
+Backend'e dokunulmadı.
