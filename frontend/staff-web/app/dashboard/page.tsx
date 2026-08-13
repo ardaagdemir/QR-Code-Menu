@@ -125,7 +125,7 @@ export default function DashboardPage() {
                         value={formatPriceMinorUnits(chainReport.totalRefundMinorUnits)}
                         tone={chainReport.totalRefundMinorUnits > 0 ? "danger" : "neutral"}
                       />
-                      <KpiCard label="Toplam sipariş" value={String(chainReport.totalOrderCount)} />
+                      <KpiCard label="Toplam masa siparişi" value={String(chainReport.totalOrderCount)} />
                     </div>
                     {branchesByGross.length > 0 ? (
                       <div className={styles.subsection}>
