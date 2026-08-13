@@ -1456,3 +1456,42 @@ top bar hiyerarşisi ve display-font brand doğru göründü, konsolda hata yok.
 session'ı DB'den silindi, yerel `next dev` kapatıldı, `infra-staff-web-1` container'ı yeniden başlatıldı.
 Işık temasında ayrı doğrulama yapılmadı (Adım 1/2 ile aynı düşük-risk gerekçesi - yalnızca mevcut
 `--color-*` token'ları kullanıldı). Backend değişikliği yok.
+
+## UI/UX Productization Gate — Adım 4 Tasarım Yenilemesi: kasa + KDS — ✅ COMPLETED
+
+Gate'in "Cross-cutting" sırasının 4. adımı. Adım 4'ün işlevsel kapsamı (masa etiketi, statik "Ödeme
+Alındı" rozeti, bekleme süresi rozeti, KDS büyük tipografi/sıralama - bkz. yukarıdaki "Adım 4: Kasa + KDS
+Operasyonel UX") daha önce tamamlanmıştı, ama o adımın kendisi "büyük/dokunmatik/uzaktan okunabilir"
+gereksinimini yalnızca tipografi/spacing ile karşılamıştı - urgency (bekleme süresi) hâlâ sade bir kart
+kenarlığı renk değişimiyle (`border-color`) anlatılıyordu, Adım 1'in "Tide" kimliğiyle hiç bağı yoktu. Bu
+adımda `frontend-design` skill süreciyle (Adım 1/2/3 ile aynı yöntem) yalnızca `app/cashier/[branchId]/`
+ve `app/kitchen/[branchId]/` sayfalarının kendi `page.module.css`'lerine restrained bir geçiş uygulandı -
+`page.tsx`'lerde hiçbir değişiklik yok (salt CSS, urgency mantığı zaten `lib/time.ts`'in ürettiği
+`waitingUrgency` sınıf adına bağlı).
+
+**Tasarım kararı - imza öğesi: "tide edge".** Her sipariş kartının sol kenarına, AppShell sidebar'ının
+"tide marker" imzasını (Adım 3 Tasarım Yenilemesi) yeniden yorumlayan dikey bir çubuk eklendi - ama burada
+çubuğun *yüksekliği* de anlam taşıyor: bekleme süresi arttıkça (aynı normal/warning/danger eşikleri,
+`waitingUrgency`) çubuk hem uzuyor (28px → 56px → 84px kasada, 32px → 64px → 96px KDS'te) hem rengi
+sakin tealden (`--color-primary` → `--color-primary-strong`) amber'e, oradan kırmızıya kayıyor
+(`color-mix` ile koyulaştırılmış gradient). Önceki `border-color` değişimi kaldırıldı - artık urgency tek
+bir yerde, "yükselen gelgit" metaforuyla anlatılıyor: shell'in "buradasın" işareti burada "ne kadar
+bekledi" işaretine dönüşüyor, aynı görsel dilin iki farklı anlamı. Geri kalan her yer sakin bırakıldı:
+
+1. **Bağlantı durumu noktası** - "Canlı" durumdayken customer-web sipariş takip zaman çizelgesindeki
+   (Adım 2 Tasarım Yenilemesi) `timeline-pulse` deseniyle aynı yumuşak halka animasyonunu kazandı; yeni
+   bir motif icat edilmedi, var olan "şu an oluyor" sinyali yeniden kullanıldı.
+2. **KDS finansal özet değerleri** (bugün brüt/net satış, sipariş sayısı) `--font-family-display`'e geçti
+   - marka kimliğinin sayısal verilere de taşınması, Adım 3'te brand wordmark'a uygulanan aynı mantık.
+
+**Doğrulama:** `npx tsc --noEmit` + `npx eslint .` + `npm run build` (staff-web) temiz. Canlı Chrome
+testi yapıldı - `infra-staff-web-1` container'ı geçici durdurulup yerine `npx next dev -p 3002` başlatıldı.
+Gerçek bir sipariş/ödeme akışı simüle etmek yerine (kart görselleri salt CSS/urgency sınıfına bağlı olduğu
+için orantısız olurdu), Postgres'e doğrudan 3 test siparişi (aynı masa, üç farklı `last_activity_at`: az
+önce/7dk/15dk) seed edildi - önce kasada `AWAITING_STORE_ACCEPTANCE`, ekran görüntüsü alındıktan sonra
+aynı siparişler `IN_KITCHEN`'a çevrilip KDS'te tekrar görüntülendi. Her iki ekranda üç tide-edge kademesi
+(kısa teal → orta amber → uzun kırmızı) ve "Canlı" noktasının pulse halkası doğru render edildi, konsolda
+hata yok. Test sonunda seed edilen sipariş/masa ziyareti/anonim oturum satırları ve geçici
+`design-verify@qrmenu.local` hesabı + session'ı DB'den silindi, yerel `next dev` kapatıldı,
+`infra-staff-web-1` container'ı yeniden başlatıldı. Işık temasında ayrı doğrulama yapılmadı (Adım 1/2/3
+ile aynı düşük-risk gerekçesi). Backend değişikliği yok.
