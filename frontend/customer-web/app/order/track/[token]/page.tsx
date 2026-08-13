@@ -116,7 +116,7 @@ export default function OrderTrackingPage() {
   return (
     <main className={styles.page}>
       <div className={styles.header}>
-        <p className={styles.orderNumber}>{tracking.orderNumber !== null ? `Sipariş No: #${tracking.orderNumber}` : "Siparişiniz"}</p>
+        <h1 className={styles.orderNumber}>{tracking.orderNumber !== null ? `Sipariş No: #${tracking.orderNumber}` : "Siparişiniz"}</h1>
         <p className={styles.total}>{formatPriceMinorUnits(tracking.totalMinorUnits)}</p>
       </div>
 
