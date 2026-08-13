@@ -1547,3 +1547,40 @@ iki ton net bir şekilde ayrışıyor, konsolda hata yok. Test sonunda test hesa
 yerel `next dev` kapatıldı, `infra-staff-web-1` container'ı yeniden başlatıldı. Işık temasında ayrı
 doğrulama yapılmadı (Adım 1-4 ile aynı düşük-risk gerekçesi - yalnızca mevcut `--color-*` token'ları
 kullanıldı). Backend değişikliği yok.
+
+## UI/UX Productization Gate — Adım 6 Tasarım Yenilemesi: raporlama/dashboard — 🔄 Tasarım tamamlandı, uygulama sürüyor
+
+Gate'in "Cross-cutting" sırasının 6. adımı (reporting/dashboard visualization). Adım 6'nın işlevsel kapsamı
+(KpiCard/DateRangePresets/BarList component'leri + bunların `dashboard`, `reports` (zincir), `reports/
+[branchId]` sayfalarında kullanılması - bkz. yukarıdaki "Adım 6: Reporting/Dashboard Visualization") daha
+önce tamamlanmıştı. Adım 1 Tasarım Yenilemesi'nin token cascade'i `KpiCard.value`'ye zaten display font +
+`tabular-nums` kazandırmıştı, ama Adım 2/3/4/5'te olduğu gibi bilinçli, sayfaya özgü bir imza öğesi hiç
+eklenmemişti - `BarList`'in çubukları hâlâ düz `--color-primary` dolgu, `DateRangePresets`'in aktif preset
+pili de düz `--color-primary` dolgu kullanıyordu. Bu adımda `frontend-design` skill süreciyle (Adım 1-5 ile
+aynı yöntem) yalnızca `components/ui/BarList.module.css` ve `DateRangePresets.module.css`'e restrained bir
+tasarım geçişi uygulanıyor. Kapsam bilinçli olarak bu iki paylaşılan component'le sınırlı - `KpiCard`'a,
+hiçbir sayfaya (`dashboard`/`reports`/`reports/[branchId]`) veya `page.module.css`'e dokunulmuyor.
+
+**Tasarım kararı - imza öğesi: "tide bar".** Raporlama akışının duygusal karşılığı, bir sıralama veya
+trendin *büyüklüğü* - `BarList` zaten şube/ürün/kategori sıralamasını ve günlük ciro trendini büyüklüğe göre
+çubuk uzunluğuyla anlatıyor, ama rengi anlamsız düz bir tondu. `.bar`'ın dolgusu, shell/dialog'daki aynı Tide
+gradient'ine (`--color-primary` → `--color-primary-strong`) ama bar'ın kendi ekseni boyunca (yatay,
+`to right`) çevrildi - "değer ne kadar yüksekse gelgit o kadar yükseliyor" okuması, tide-edge'in (Adım 4)
+"süre uzadıkça çubuk uzuyor/koyulaşıyor" mantığının raporlamaya çevirisi. `BarList` yalnızca pozitif
+sıralama/trend değerleri için kullanıldığı doğrulandı (`reports`/`reports/[branchId]`/`dashboard`'da refund
+veya net-sonuç gibi "dikkat" değerleri hep `KpiCard tone="danger"` ile ayrı gösteriliyor, `BarList`'e hiç
+geçmiyor) - bu yüzden tek bir sakin gradient yeterli, `ConfirmDialog`'daki gibi ayrı bir `danger` varyantına
+gerek yok.
+
+**İkinci, sakin dokunuş - DateRangePresets aktif pil.** Yeni bir motif icat etmeden aynı "tide bar"
+gradient'i, seçili tarih preset pilinin (`Bugün`/`Dün`/`Bu Hafta`/`Bu Ay`/`Özel`) dolgusuna da taşındı -
+kavramsal olarak zorlama değil: "tide" zaten zamanın gelgitiyle ilgili bir metafor, zaman aralığı seçimi bu
+dile doğal olarak oturuyor. `KpiCard` bilinçli olarak sakin bırakıldı - Adım 1'in cascade'iyle zaten display
+font kimliğini taşıyor, ek bir öğe Chanel prensibini ihlal eder (Adım 5'te `PageHeader`/`EmptyState`/
+`ErrorState`/`Toast`'ın aynı gerekçeyle sakin bırakılmasıyla tutarlı).
+
+**Uygulama planı:** (1) `BarList.module.css` `.bar`'ın `background`'ı düz `--color-primary`'den
+`linear-gradient(to right, var(--color-primary), var(--color-primary-strong))`'a; (2)
+`DateRangePresets.module.css` `.active`'in `background`'ı aynı gradient'e; (3) `npx tsc --noEmit` +
+`npx eslint .` + `npm run build` (staff-web); (4) canlı Chrome testi (`reports` ve/veya `dashboard`
+sayfasında gerçek veriyle bar/preset render'ı).
