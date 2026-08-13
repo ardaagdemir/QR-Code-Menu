@@ -1789,3 +1789,241 @@ kullanıcıya bildirildi - kaynağı bu oturumda araştırılmadı.
 **Doğrulama:** backend `mvn test` (125/125 yeşil) + frontend `tsc`/`eslint`/`build` temiz + canlı Docker
 Compose + gerçek Chrome'da uçtan uca upload/görüntüleme akışı (bulunan Dockerfile izin hatası dahil)
 doğrulandı.
+
+### Ek düzeltme (2026-08-13): Expense receipt artık public `/media/**` üzerinden erişilemiyor
+
+Yukarıdaki Gap-Analysis #15 doğrulamasında receipt dosyalarının product image'larla aynı public
+`/media/**` yolundan (yalnızca yüksek entropili UUID dosya adına güvenerek) servis edildiği görüldü -
+fiş/fatura tutar/satıcı gibi hassas bilgi içerebileceğinden bu yeterli değil. Düzeltme:
+
+- **`MediaResourceConfig`**: static resource handler artık yalnızca `/media/product-images/**`'i
+  `product-images/` dizinine bağlıyor - `receipts/` dizini hiçbir public path'e bağlı değil (eşleşen
+  handler yok → 404).
+- **`MediaStoragePort`**: `load(key)` (dosyayı okuyup content-type'ı yeniden sniff'leyerek döndürür) ve
+  `resolveKeyFromUrl(url)` (daha önce `Expense.receiptImageUrl`'de saklanan public URL'den storage key'i
+  çıkarır) eklendi; tek implementasyon olan `LocalFileMediaStorageAdapter`'da path traversal'a karşı
+  `baseDir` içinde kaldığını doğrulayan bir kontrolle uygulandı.
+- **`ExpenseService`**: yeni `loadReceipt(context, expenseId)` - `requireEditableExpense`'in tenant/branch
+  kontrolünü (`findByIdAndBusinessId` + `canAccessBranch`) editable-state şartı olmadan yeniden kullanan
+  `requireViewableExpense` üzerinden (APPROVED/REJECTED bir giderin fişi de görüntülenebilmeli, sadece
+  düzenlenemez olmalı).
+- **`StaffExpenseController`**: yeni `GET /api/staff/expenses/{expenseId}/receipt` - `Permission.EXPENSE_VIEW`
+  + yukarıdaki tenant/branch scoping ile korunuyor, dosya bytes'ını doğru `Content-Type` ile döndürüyor.
+- **Frontend (`FileUploadField`)**: receipt (`previewAsImage=false`) önizlemesi artık ham URL'e giden bir
+  `<a href>` değil, sade bir "Dosya yüklendi" onayı - URL artık public olmadığından doğrudan link vermenin
+  anlamı kalmadı. Product image davranışı (thumbnail `<img>`, public URL) değişmedi.
+- **Testler**: `MediaUploadFlowIntegrationTest`'e receipt upload sonrası public URL'in artık 404 döndüğünü
+  doğrulayan bir assertion eklendi; `ExpenseFlowIntegrationTest`'e yeni bir test
+  (`receiptIsOnlyDownloadableThroughTheAuthenticatedTenantScopedEndpoint`) eklendi - public path 404,
+  sahibi için authenticated endpoint 200 + doğru bytes, aynı işletmenin başka şubesindeki
+  `BRANCH_MANAGER` için 403, tamamen farklı bir işletme için 404 (tenant enumeration'ı önlemek için, mevcut
+  `requireEditableExpense` deseniyle tutarlı).
+- **Doğrulama:** `mvn test` - tüm backend suite (ilgili iki sınıf dahil) 0 hata/0 başarısız; frontend
+  `tsc --noEmit` temiz.
+
+**Eşzamanlı süreç/oturum araştırması:** Görev kapsamında repo üzerinde başka bir process/Claude oturumunun
+eşzamanlı değişiklik yapıp yapmadığı araştırıldı. Bulgular: (1) çalışan tek `claude` process'i bu oturumun
+kendisiydi, repo dizininde açık dosya tutan başka bir process (node/next dev, mvn, editör) yoktu; (2)
+`frontend/staff-web/app/dashboard/page.tsx`'teki commit edilmemiş değişiklik ("Toplam sipariş" →
+"Toplam masa siparişi") ve `frontend/{staff-web,customer-web}/{AGENTS.md,CLAUDE.md}` untracked dosyaları bu
+oturumdan önce, ayrı zamanlarda oluşmuş: dashboard değişikliği `e3ad1619-...` ID'li, saat 11:19 UTC'de
+biten daha önceki bir Claude oturumuna ait (session log'unda doğrulandı) ve hiç commit edilmemiş kalmış;
+`AGENTS.md`/`CLAUDE.md` dosyaları ise Claude'a değil, Next.js'in kendisine ait - içerikleri `next dev`
+tarafından otomatik yazıldığını belirtiyor (`node_modules/next/dist/server/lib/generate-agent-files.js`),
+yani bir noktada `next dev` çalıştırılmış ve bu dosyaları üretmiş. Sonuç: **şu anda eşzamanlı çalışan başka
+bir process/oturum yok**; görülen değişiklikler daha önce biten bir oturumun commit edilmemiş kalıntısı ve
+bir `next dev` çalıştırmasının yan etkisi. Talimata uyularak bu dosyalara dokunulmadı.
+
+## Gap-Analysis #16 — Kasa Kabul Bekleme Süresi Politikası (Section 6/27 açık kararı) — ✅ COMPLETED
+
+Bölüm 27'deki açık karar ("❓ İşletme bazında kasa accept timeout politikası") kullanıcı tarafından somut
+bir politikayla kapatıldı: `AWAITING_STORE_ACCEPTANCE` bekleme süresi takip edilir, varsayılan 5 dakika,
+süre dolduğunda **hiçbir otomatik red/refund tetiklenmez** - yalnızca kasa ekranında belirgin
+gecikmiş/kritik işaretleme + mümkünse sesli/görsel uyarı, ve timeout branch seviyesinde configurable.
+
+**Tasarım:** `CustomerOrder.lastActivityAt` zaten `markAwaitingStoreAcceptance()` transition'ında
+damgalanıyor ve accept/reject'e kadar değişmiyor (`OrderControlOrderResponse.statusSince` olarak API'de
+zaten dışa açıktı) - "bekleme süresini takip et" ihtiyacı için yeni bir alan/scheduler gerekmedi, mevcut
+alan zaten doğru anlamı taşıyordu. Asıl eksik: eşiğin branch bazında configurable olmaması (frontend'de
+`WARNING_THRESHOLD_MINUTES=5`/`DANGER_THRESHOLD_MINUTES=10` sabit kodlanmıştı) ve "otomatik red/refund
+YOK" garantisinin açık olması - bu yüzden hiçbir scheduler/otomatik aksiyon eklenmedi (Section 6'nın refund
+başarısızlığı için zaten kurduğu "sessizce iptal edilmiş sayılmaz" ilkesiyle aynı ruh: kabul bekleme
+süresinin dolması da sessiz bir otomatik sonuca yol açmaz).
+
+- **Backend:** `branch.store_acceptance_timeout_seconds` (V21 migration, `NOT NULL DEFAULT 300`) -
+  `Branch` entity'sine `timezone`/`orderingEnabled` ile aynı setter/audit deseninde eklendi
+  (`TenantService.setStoreAcceptanceTimeoutSeconds`, `StaffTenantController POST
+  /branches/{branchId}/store-acceptance-timeout`, `Permission.BRANCH_MANAGE`, sıfır/negatif değer
+  `@Positive` + entity-level guard ile reddediliyor). `OrderControlController.getPendingAcceptance` artık
+  branch'in timeout'unu bir kez okuyup her sipariş satırına `OrderControlOrderResponse
+  .storeAcceptanceTimeoutSeconds` olarak ekliyor - kasa ekranı ayrı bir branch-settings çağrısı yapmadan,
+  zaten SSE ile sürekli refetch ettiği aynı listeden eşiği okuyor.
+- **Frontend:** `lib/time.ts`'teki `waitingUrgency` artık opsiyonel bir `timeoutSeconds` parametresi
+  alıyor - verildiğinde "danger/kritik" tam olarak o timeout'ta, "warning" ise %60'ında tetikleniyor; KDS
+  (mutfak hazırlama süresi, timeout kavramı olmayan bir bağlam) parametre vermediği için eski sabit 5/10
+  dakikalık davranışını koruyor. Kasa dashboard'u (`cashier/[branchId]/page.tsx`) her siparişin kendi
+  `storeAcceptanceTimeoutSeconds`'ını geçiyor; kritik hale gelen bir sipariş için `lib/alertSound.ts`
+  (Web Audio API ile anlık üretilen kısa çift bip - harici ses dosyası yok) sipariş başına yalnızca bir
+  kez çalıyor (`alertedOrderIdsRef` ile 15sn'lik "now" tazelemesinde tekrar tekrar öttürmüyor), kart da
+  "Kritik ·" etiketli rozet + yumuşak kırmızı nabız animasyonuyla (`.card--critical`) ayrışıyor. Şube
+  ayarları sayfasına (`branches/[branchId]/page.tsx`) dakika cinsinden giriş alan bir form eklendi
+  (timezone formuyla aynı desen), backend'e saniyeye çevrilerek gönderiliyor.
+- **Testler:** `BusinessSettingsFlowIntegrationTest`'e üç yeni test (yeni branch varsayılan 300sn,
+  BUSINESS_ADMIN değiştirebiliyor, sıfır/negatif reddediliyor); `OrderControlFlowIntegrationTest`'e
+  pending-acceptance yanıtının varsayılan 300sn'i taşıdığını ve branch'in timeout'u değiştirildiğinde
+  (600sn) pending listesine yansıdığını doğrulayan testler eklendi. Mevcut accept/reject/refund akışları
+  (aynı entegrasyon testleri) değişmeden geçiyor.
+- **Doğrulama:** backend `mvn test` - tüm suite 130/130 yeşil (0 hata/0 başarısız); frontend `tsc --noEmit`
+  + `eslint` + `next build` (17 route) temiz.
+
+---
+
+## Gap-Analysis #17 — Gerçek Ziyaretçi Sayısı (`TableVisit.guestCount`) — ✅ COMPLETED
+
+Section 13.3'ün 💡 notu: QR sistemi `TableVisit`/session sayısından gerçek fiziksel müşteri sayısını
+türetemez (bir kişi bütün masa için sipariş verebilir). Bu nedenle opsiyonel `TableVisit.guestCount`
+alanı ekleniyor - müşteri ziyaret başında düşük-friction bir adımda (bir kez, atlanabilir, sonra
+değiştirilebilir) kişi sayısını girebilir. Girilmezse alan `NULL` kalır; **hiçbir yerde "bilinmiyor" 1
+kabul edilmez** - raporlama yalnızca gerçekten girilmiş değerleri toplar.
+
+**Tasarım:**
+- **Backend:** `table_visit.guest_count` (yeni migration, nullable, default yok). `TableVisit.
+  setGuestCount(Integer)` `null` veya `>=1` kabul eder, `0`/negatif `IllegalArgumentException` (mevcut
+  `ApiExceptionHandler.handleBadRequest` ile 400'e düşer). Yeni `PATCH /api/table-visits/{tableVisitId}/
+  guest-count` (mevcut `CartController` ile aynı desende - anonim, `qrmenu_session` cookie'siyle
+  `CustomerSessionService.getOwnedTableVisit` ownership kontrolü, tableVisitId erişim credential'ı
+  değil). Check-in response'una (`TableVisitResponse.guestCount`) de eklendi ki aynı session bir masaya
+  geri döndüğünde zaten girilmiş değeri görüp tekrar sorulmasın.
+- **Reporting:** `ReportingService`/`BranchSalesReportView` mevcut `tableVisitCount`'un yanına **ayrı**
+  iki yeni alan alıyor: `guestCountTotal` (yalnızca `guestCount IS NOT NULL` olan ziyaretlerin toplamı)
+  ve `guestCountRecordedVisitCount` (kaç ziyarette gerçekten girildiği - UI'da "X ziyaretin Y'sinde
+  kişi sayısı girildi" şeffaflığı için, toplamın kaç ziyaretten geldiğini gizlememek amacıyla).
+  `tableVisitCount` değişmeden kalıyor - iki metrik birbirinden türetilmiyor, gerçekten ayrı gösteriliyor.
+- **Frontend (customer-web):** `VisitHeader`'a küçük bir "Kaç kişisiniz?" kontrolü eklenecek
+  (`guestCount` doluysa "X kişi · değiştir", boşsa "Ekle"); ziyarette ilk kez `guestCount === null`
+  görüldüğünde bir `BottomSheet` + `QuantityStepper` ile bir kez otomatik sorulacak (atlanabilir,
+  `sessionStorage`'da tableVisitId bazında "bir daha otomatik sorma" işaretlenecek ama header'daki
+  kontrolden her zaman değiştirilebilir kalacak). Mevcut QR/check-in/menü akışı değişmiyor.
+- **Frontend (staff-web):** `reports/[branchId]` KPI grid'ine `tableVisitCount`'un yanına ayrı "Misafir
+  sayısı" kartı eklenecek.
+- **Kapsam dışı:** `DailyBranchCloseReport.guestCount`, zincir (`ChainComparisonService`) footfall
+  karşılaştırması, unique-session metriği - bunlar ayrı roadmap maddeleri (M14.1, #7), bu gap yalnızca
+  Section 13.3'ün asıl istediğini kapatıyor.
+
+**Uygulama:** Yukarıdaki tasarım aynen uygulandı.
+
+- **Backend:** V22 migration (`table_visit.guest_count`, nullable). `TableVisit.setGuestCount`/
+  `getGuestCount`; `CustomerSessionService.setGuestCount/sumGuestCountBetween/
+  countVisitsWithGuestCountBetween`; `TableVisitRepository`'ye
+  `countByBranchIdAndStartedAtBetweenAndGuestCountIsNotNull` (derived) +
+  `sumGuestCountByBranchIdAndStartedAtBetween` (`@Query`, yalnızca `guestCount IS NOT NULL`
+  satırları topluyor). Yeni `TableVisitController` → `PATCH /api/table-visits/{tableVisitId}/
+  guest-count` (`SetGuestCountRequest.guestCount` nullable + `@Min(1)`), `QrCheckinController`'ın
+  check-in yanıtına `guestCount` eklendi. `BranchSalesReportView`/`BranchSalesReportResponse`
+  mevcut `tableVisitCount`'un yanına `guestCountTotal` + `guestCountRecordedVisitCount` aldı
+  (`ReportingService.buildReport`, `StaffReportingController.toResponse`).
+- **Frontend (customer-web):** `VisitHeader`'a "Kaç kişisiniz? Ekle" / "X kişi · Değiştir"
+  kontrolü; yeni `GuestCountSheet` (`BottomSheet` + `QuantityStepper`, "Atla"/"Kaydet").
+  `page.tsx` check-in sonrası `guestCount === null` ve bu ziyaret için daha önce
+  `sessionStorage`'da atlanmamışsa sheet'i bir kez otomatik açıyor; atlama da onaylama da
+  `sessionStorage`'a "bir daha otomatik sorma" işareti koyuyor, header'daki kontrol her zaman
+  açık kalıyor. `lib/api.ts`'e `setGuestCount` (PATCH) eklendi.
+- **Frontend (staff-web):** `reports/[branchId]` KPI grid'inde "Masa ziyareti"nin yanına ayrı
+  "Misafir sayısı" kartı (`guestCountRecordedVisitCount === 0` ise "-", hint'te "X ziyarette
+  girildi"/"Henüz girilmedi").
+- **Testler:** yeni `TableVisitGuestCountFlowIntegrationTest` (boş check-in `guestCount`
+  taşımıyor, geçerli değer set edilip sonraki check-in'de aynı değerin döndüğü, değiştirme +
+  `null` ile temizleme, 0/negatif değerin 400 ile reddi, başka session'ın 404 alması);
+  `ReportingFlowIntegrationTest`'e iki ziyaretten yalnızca birinde `guestCount` girildiğinde
+  `tableVisitCount=2` ama `guestCountTotal=3`/`guestCountRecordedVisitCount=1` kaldığını
+  doğrulayan assertion'lar eklendi. Mevcut QR/check-in/cart/reporting akışları değişmeden geçiyor.
+- **Doğrulama:** backend `mvn test` - tüm suite 135/135 yeşil (0 hata/0 başarısız, +5 yeni
+  test); customer-web ve staff-web `tsc --noEmit` + `eslint` + `next build` temiz.
+
+---
+
+## Production Readiness — CRITICAL #1-3 (API base URL, TLS reverse proxy, healthcheck/restart) — ✅ COMPLETED
+
+Production-readiness değerlendirmesinin en kritik 3 maddesi kapatıldı. Backup/scheduler-isolation/logging/CI/
+resource-limit işleri bu turun **kapsamı dışında** bırakıldı (kullanıcı talimatı). Mevcut domain/business logic'e
+dokunulmadı; yalnızca `infra/` + iki frontend Dockerfile'ı + `application.yml`'de bir health-indicator ayarı
+değişti. Local `docker compose up` akışı değişmeden çalışıyor (aşağıda doğrulandı).
+
+**Tasarım:**
+
+1. **API base URL (customer-web/staff-web):** `NEXT_PUBLIC_API_BASE_URL` Next.js standalone build'inde
+   **build-time'da** JS bundle'a gömülüyor, container start'ta okunmuyor - `lib/api.ts`'teki
+   `?? "http://localhost:8080"` fallback'i bu yüzden yalnızca Docker olmadan `next dev` çalıştırıldığında devreye
+   giriyordu, ama Dockerfile'larda hiç `ARG` tanımlı olmadığı için **production build'i de sessizce aynı
+   fallback'i inliyordu**. Çözüm kod tarafında değil, build/deploy tarafında: her iki Dockerfile'a
+   `ARG NEXT_PUBLIC_API_BASE_URL` + `ENV` eklendi (build stage, `npm run build`'dan hemen önce); local
+   `docker-compose.yml` bunu `${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8080}` default'uyla build arg olarak
+   geçiyor (local akış değişmiyor), yeni `docker-compose.prod.yml` ise aynı değişkeni
+   `${NEXT_PUBLIC_API_BASE_URL:?...}` ile **zorunlu** kılıyor - eksikse `docker compose` build'e hiç girmeden
+   loud-fail veriyor (mevcut `INTERNAL_ADMIN_TOKEN` deseniyle aynı disiplin).
+2. **TLS termination / reverse proxy:** nginx yerine **Caddy** seçildi - otomatik Let's Encrypt sertifikası/yenileme
+   (ayrı certbot container/cron gerekmiyor), HTTP→HTTPS redirect default, tek küçük `Caddyfile`. Üç subdomain
+   (`API_DOMAIN`, `CUSTOMER_WEB_DOMAIN`, `STAFF_WEB_DOMAIN`) → sırasıyla `backend:8080`/`customer-web:3000`/
+   `staff-web:3002`'ye reverse proxy. Subdomain seçimi bilinçli: backend zaten `ResponseCookie.secure(true)
+   .sameSite("Lax")` kullanıyor (`QrCheckinController`, `StaffAuthController`) ve `CorsConfig` credential'lı,
+   explicit-origin CORS uyguluyor - aynı kayıtlı domain altındaki subdomain'ler SameSite=Lax için "same-site"
+   sayıldığından, mevcut cookie/CORS kodu **hiç değiştirilmeden** çalışmaya devam ediyor; tek gereken production
+   domain'lerini `CORS_ALLOWED_ORIGINS`/`NEXT_PUBLIC_API_BASE_URL`/`MEDIA_STORAGE_PUBLIC_BASE_URL` olarak doğru
+   girmek.
+3. **Healthcheck + restart policy + gerçek readiness:** `postgres` zaten healthcheck'liydi; `backend`'e
+   `curl .../actuator/health` (actuator zaten pom'da vardı, `management.endpoints.web.exposure.include: health,info`
+   zaten açıktı, Spring Security yok → korumasız, container-içi curl için sorun değil), `customer-web`/`staff-web`'e
+   yeni `GET /api/health` route (Next.js server'ın ayakta olduğunu doğrulayan, bağımlılıksız minimal endpoint) +
+   `wget` healthcheck'i eklendi. Üç servise de `restart: unless-stopped`. `depends_on` gerçek readiness'e göre
+   düzenlendi: frontend'ler artık `backend: condition: service_healthy` bekliyor (önceden yalnızca `service_started`
+   yani backend henüz DB migration'ı bitirmeden/ayakta olmadan frontend'ler başlıyordu).
+
+**Uygulama sırasında bulunan iki yan-etki düzeltmesi (tasarımın doğal sonucu, kapsam dışına çıkmadan):**
+
+- Next.js standalone `server.js` dinleme adresi için `$HOSTNAME` env'ini okuyor; Docker her container'a otomatik
+  `HOSTNAME=<container-id>` set ettiğinden, bu olmadan server yalnızca container'ın kendi arayüz IP'sinde dinliyor,
+  `localhost`/`127.0.0.1`'de değil - container-içi healthcheck bu yüzden "Connection refused" veriyordu. Her iki
+  Dockerfile'ın runtime stage'ine `ENV HOSTNAME=0.0.0.0` eklendi (resmi Next.js Docker örneğindeki bilinen düzeltme).
+- Alpine'in BusyBox `wget`'i `localhost`'u önce `::1`'e çözüyor ve IPv4'e fallback yapmıyor (Node server IPv4-only
+  dinliyor) - healthcheck komutlarında `localhost` yerine `127.0.0.1` kullanıldı.
+- Spring Boot Actuator'ın default `MailHealthIndicator`'ı her health check'te SMTP sunucusuna bağlanmayı deniyor;
+  production compose'da dev-only `mailhog` servisi yok, gerçek SMTP sağlayıcısı yavaş/geçici olarak erişilemez
+  olabilir - Section 15'in "email blocker değildir" ilkesiyle tutarlı olarak `management.health.mail.enabled: false`
+  eklendi, yoksa SMTP kesintisi backend'in Docker healthcheck'ini (→ restart policy + frontend'lerin
+  `depends_on: service_healthy`'si) email'le hiç ilgisi olmayan bir sebeple kırardı.
+
+**Yeni/değişen dosyalar:**
+
+- `frontend/customer-web/Dockerfile`, `frontend/staff-web/Dockerfile`: `ARG`/`ENV NEXT_PUBLIC_API_BASE_URL`,
+  `ENV HOSTNAME=0.0.0.0`.
+- `frontend/customer-web/app/api/health/route.ts`, `frontend/staff-web/app/api/health/route.ts`: yeni, minimal
+  `GET → {status:"ok"}`.
+- `infra/docker-compose.yml`: backend/customer-web/staff-web'e healthcheck + `restart: unless-stopped`;
+  frontend'lerin build'ine `NEXT_PUBLIC_API_BASE_URL` build-arg'ı (local default korunuyor); `depends_on` →
+  `service_healthy`.
+- `infra/docker-compose.prod.yml` (yeni): standalone production stack - `postgres`/`backend`/`customer-web`/
+  `staff-web`/`caddy`. Tüm önceden opsiyonel/default'lu env değişkenleri `:?...` ile zorunlu; backend/frontend/
+  postgres portları host'a açılmıyor, yalnızca Caddy'nin 80/443'ü açık. Ayrı overlay değil bilinçli olarak
+  standalone dosya - compose'un `ports`/`depends_on` merge semantiği overlay'de host'a sızabilirdi.
+- `infra/Caddyfile` (yeni): 3 subdomain reverse proxy, otomatik HTTPS.
+- `infra/.env.prod.example` (yeni): production için gereken tüm değişkenlerin dokümantasyonu (gerçek secret yok).
+- `.gitignore`: `infra/.env.prod` eklendi (daha önce yalnızca `infra/.env` kapsanıyordu).
+- `backend/src/main/resources/application.yml`: `management.health.mail.enabled: false`.
+
+**Doğrulama:**
+
+- Backend `mvn test`: tüm suite 135/135 yeşil (0 hata/0 başarısız) - `application.yml` değişikliği sonrası.
+- `customer-web`/`staff-web`: `tsc --noEmit` + `eslint` (yeni `api/health/route.ts` dahil) temiz; her iki Dockerfile
+  `docker compose build` ile gerçekten build edildi (Next `next build` başarıyla `/api/health` route'unu üretti).
+- **Local senaryo:** `docker compose up -d` ile gerçek stack ayağa kaldırıldı - `postgres`→`backend`→
+  `customer-web`/`staff-web` sırasıyla `healthy` oldu (`depends_on: service_healthy` doğrulandı), üçü de host
+  portlarından (3000/3002/8080) 200 döndü.
+- **Production-benzeri senaryo:** izole bir Docker Compose projesinde (`-p qrmenu-prod-test`, ayrı network/volume,
+  local stack'e dokunulmadı) `docker-compose.prod.yml` gerçek domain isimleriyle (`*.qrmenu.test`) build edilip
+  ayağa kaldırıldı; Caddy `tls internal` (yalnızca bu doğrulama için, gerçek dosyada yok - Let's Encrypt ACME bu
+  sandbox'tan internete çıkamıyor) ile self-signed sertifika üretti. Sonuç: `https://api.qrmenu.test/actuator/health`
+  → `{"status":"UP"}`, `https://order.qrmenu.test/` ve `https://staff.qrmenu.test/` → 200, `http://order.qrmenu.test/`
+  → 308 ile otomatik `https://`'ye redirect. Zorunlu env değişkeni eksik bırakıldığında `docker compose config`'in
+  loud-fail verdiği ayrıca doğrulandı (`INTERNAL_ADMIN_TOKEN` deseniyle tutarlı). İzole test stack'i ve imajları
+  doğrulama sonrası temizlendi.
+- Kapsam dışı bırakılanlar (kullanıcı talimatıyla): backup, scheduler isolation, logging, CI, resource limits.
