@@ -40,29 +40,31 @@
   --color-skeleton-shine: rgba(43, 27, 18, 0.16);
 }
 
-@media (prefers-color-scheme: dark) {
-  .warm {
-    --color-bg: #1c130b;
-    --color-surface: #241a10;
-    --color-surface-raised: #2e2117;
-    --color-fg: #f5e9da;
-    --color-fg-muted: #b79a80;
-    --color-border: rgba(255, 255, 255, 0.1);
-    --color-border-strong: rgba(255, 255, 255, 0.2);
-    --color-primary: #f0894a;
-    --color-primary-strong: #f7a874;
-    --color-primary-fg: #1c130b;
-    --color-danger: #e88478;
-    --color-danger-bg: rgba(232, 132, 120, 0.14);
-    --color-success: #7fbf8c;
-    --color-success-bg: rgba(127, 191, 140, 0.14);
-    --color-warning: #e3b24e;
-    --color-warning-bg: rgba(227, 178, 78, 0.14);
-    --color-badge-bg: rgba(255, 255, 255, 0.1);
-    --color-overlay: rgba(0, 0, 0, 0.65);
-    --color-skeleton: rgba(255, 255, 255, 0.08);
-    --color-skeleton-shine: rgba(255, 255, 255, 0.16);
-  }
+/* Opt-in dark variant of the warm Kasa identity - keyed off the same explicit
+ * `data-theme="dark"` attribute as app/globals.css (not `prefers-color-scheme`, see the
+ * comment there), so Kasa's dark mode only activates when the user picks it via
+ * ThemeToggle, never from the OS setting alone. */
+:global(html[data-theme="dark"]) .warm {
+  --color-bg: #1c130b;
+  --color-surface: #241a10;
+  --color-surface-raised: #2e2117;
+  --color-fg: #f5e9da;
+  --color-fg-muted: #b79a80;
+  --color-border: rgba(255, 255, 255, 0.1);
+  --color-border-strong: rgba(255, 255, 255, 0.2);
+  --color-primary: #f0894a;
+  --color-primary-strong: #f7a874;
+  --color-primary-fg: #1c130b;
+  --color-danger: #e88478;
+  --color-danger-bg: rgba(232, 132, 120, 0.14);
+  --color-success: #7fbf8c;
+  --color-success-bg: rgba(127, 191, 140, 0.14);
+  --color-warning: #e3b24e;
+  --color-warning-bg: rgba(227, 178, 78, 0.14);
+  --color-badge-bg: rgba(255, 255, 255, 0.1);
+  --color-overlay: rgba(0, 0, 0, 0.65);
+  --color-skeleton: rgba(255, 255, 255, 0.08);
+  --color-skeleton-shine: rgba(255, 255, 255, 0.16);
 }
 
 .backdrop {

@@ -92,32 +92,38 @@
   --z-overlay: 30;
   --z-sheet: 31;
 
-  color-scheme: light dark;
+  color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-bg: #0b1211;
-    --color-surface: #121b19;
-    --color-surface-raised: #17211f;
-    --color-fg: #edf3f1;
-    --color-fg-muted: #93a3a0;
-    --color-border: rgba(255, 255, 255, 0.1);
-    --color-border-strong: rgba(255, 255, 255, 0.2);
-    --color-primary: #4fd0c6;
-    --color-primary-strong: #7be0d6;
-    --color-primary-fg: #0b1211;
-    --color-danger: #f0847a;
-    --color-danger-bg: rgba(240, 132, 122, 0.14);
-    --color-success: #6fce93;
-    --color-success-bg: rgba(111, 206, 147, 0.14);
-    --color-warning: #f0ae5c;
-    --color-warning-bg: rgba(240, 174, 92, 0.14);
-    --color-badge-bg: rgba(255, 255, 255, 0.1);
-    --color-overlay: rgba(0, 0, 0, 0.65);
-    --color-skeleton: rgba(255, 255, 255, 0.08);
-    --color-skeleton-shine: rgba(255, 255, 255, 0.16);
-  }
+/* Theme is an explicit user choice, not the OS preference (product decision - staff-web
+ * should never silently open in dark mode because a device's system setting is dark).
+ * `data-theme` is set on <html> by a blocking inline script in app/layout.tsx (reads
+ * localStorage before first paint, so there's no light->dark flash for returning users
+ * who picked dark) and by the ThemeToggle button in AppShell afterwards. No
+ * `@media (prefers-color-scheme: dark)` block here on purpose - light stays the default
+ * for every visitor until they opt into dark themselves. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-bg: #0b1211;
+  --color-surface: #121b19;
+  --color-surface-raised: #17211f;
+  --color-fg: #edf3f1;
+  --color-fg-muted: #93a3a0;
+  --color-border: rgba(255, 255, 255, 0.1);
+  --color-border-strong: rgba(255, 255, 255, 0.2);
+  --color-primary: #4fd0c6;
+  --color-primary-strong: #7be0d6;
+  --color-primary-fg: #0b1211;
+  --color-danger: #f0847a;
+  --color-danger-bg: rgba(240, 132, 122, 0.14);
+  --color-success: #6fce93;
+  --color-success-bg: rgba(111, 206, 147, 0.14);
+  --color-warning: #f0ae5c;
+  --color-warning-bg: rgba(240, 174, 92, 0.14);
+  --color-badge-bg: rgba(255, 255, 255, 0.1);
+  --color-overlay: rgba(0, 0, 0, 0.65);
+  --color-skeleton: rgba(255, 255, 255, 0.08);
+  --color-skeleton-shine: rgba(255, 255, 255, 0.16);
 }
 
 *,

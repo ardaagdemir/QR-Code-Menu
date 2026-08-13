@@ -8,6 +8,7 @@ import { logout, me, type StaffContext } from "@/lib/api";
 import { NAV_GROUPS, ROLE_LABELS } from "@/lib/staffNav";
 import IconButton from "@/components/ui/IconButton";
 import AnnouncementBanner from "./AnnouncementBanner";
+import ThemeToggle from "./ThemeToggle";
 import styles from "./AppShell.module.css";
 
 type Props = {
@@ -114,6 +115,7 @@ export default function AppShell({ children, theme = "default" }: Props) {
             ) : null}
           </div>
           <div className={styles.topbarRight}>
+            <ThemeToggle />
             {context ? (
               <span className={styles.identity}>
                 {context.email} · {ROLE_LABELS[context.role] ?? context.role}

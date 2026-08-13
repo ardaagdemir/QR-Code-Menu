@@ -2243,6 +2243,111 @@ kaldırmak gereksiz migration churn'ü olurdu.
 
 ---
 
+## Production Readiness — CRITICAL #4 (PostgreSQL backup/restore) — ✅ COMPLETED
+
+CRITICAL #1-3'ün (yukarıda) kapsam dışı bıraktığı backup/restore maddesi bu turda kapatılıyor.
+S3/cloud storage entegrasyonu kullanıcı talimatıyla kapsam dışı - backup'lar host'ta local kalıyor.
+Diğer production-readiness maddelerine (scheduler isolation, logging, CI, resource limits) bu turda
+geçilmiyor.
+
+**Tasarım (uygulamadan önce):**
+
+1. **Otomatik backup + retention — ayrı bir sidecar container (`postgres-backup`):** `backend`
+   (uygulama) container'ından tamamen bağımsız, `postgres:16-alpine` tabanlı yeni bir servis
+   (`infra/docker/postgres-backup/`). `postgres` servisiyle aynı image ailesi olduğundan `pg_dump`
+   zaten mevcut, ekstra bağımlılık gerekmiyor. Cron yerine basit bir `entrypoint.sh` loop'u
+   (`backup.sh` çalıştır → `sleep $BACKUP_INTERVAL_SECONDS`) tercih edildi - busybox `crond`'un env
+   inheritance'ı ekstra dolambaç gerektiriyor, halbuki bu servisin tek işi periyodik dump, cron'un
+   sunduğu zamanlama esnekliğine ihtiyaç yok. `backup.sh`: `pg_dump --format=plain --no-owner
+   --no-privileges | gzip` ile `${POSTGRES_DB}_<UTC-timestamp>.sql.gz` üretir (geçici `.tmp` adıyla
+   yazılıp atomically `mv` edilir - yarım kalan dosya asla "tamamlanmış backup" gibi görünmez),
+   ardından `find ... -mtime +$BACKUP_RETENTION_DAYS -delete` ile eski dosyaları temizler (default 7
+   gün). Depolama, adlandırılmış bir Docker volume değil, host bind-mount (`infra/backups/`) - operatör
+   bunu doğrudan `rsync`/`scp` ile başka bir yere kopyalayabilir, `docker volume` API'siyle uğraşmaz
+   (S3 entegrasyonu kapsam dışı olduğundan bu, "backup'ı host dışına taşımanın" en basit yolu).
+   `docker-compose.yml`/`docker-compose.prod.yml`'de `depends_on: postgres: condition: service_healthy`
+   ile postgres hazır olmadan ilk backup denenmiyor.
+2. **Manuel backup/restore script'leri (`infra/scripts/backup.sh`, `restore.sh`):** Host'tan
+   `docker compose exec postgres pg_dump/psql` çağırır - host'a ayrıca postgres-client kurulması
+   gerekmez, tüm iş zaten postgres image'ında var olan araçlarla container içinde yapılır. Dev
+   (`docker-compose.yml` + `infra/.env`) ve prod (`docker-compose.prod.yml` + `infra/.env.prod`)
+   ikisini de `[dev|prod]` argümanıyla destekler - CRITICAL #1-3'teki `docker compose --env-file
+   .env.prod -f docker-compose.prod.yml` deseniyle tutarlı. `restore.sh` yıkıcı bir işlem olduğundan
+   (hedef DB drop+recreate edilir) veritabanı adının elle yazılmasını isteyen bir onay adımı var.
+3. **Doğrulama planı:** Gerçek dev stack'te (`docker compose up`) mevcut veriye bakılıp bir referans
+   snapshot alınacak (örn. `pg_dump` çıktısının satır sayısı/hash'i veya bir tablo `SELECT count(*)`),
+   `scripts/backup.sh` ile gerçek bir backup üretilecek, ardından DB kasıtlı olarak drop edilip temiz
+   bir DB'ye `scripts/restore.sh` ile geri yüklenecek, restore sonrası veri referans snapshot'la
+   karşılaştırılacak. Ayrıca `postgres-backup` sidecar'ının build olup ilk otomatik backup'ı gerçekten
+   ürettiği de ayrı doğrulanacak.
+
+**Uygulama:** Tasarım aynen uygulandı, yol boyunca tasarımı değiştiren bir bulgu çıkmadı.
+
+**Yeni/değişen dosyalar:**
+
+- `infra/docker/postgres-backup/Dockerfile` (yeni): `postgres:16-alpine` tabanlı, `backup.sh` +
+  `entrypoint.sh` kopyalanıp executable yapılıyor.
+- `infra/docker/postgres-backup/backup.sh` (yeni): `pg_dump | gzip` → `.tmp` → atomic `mv`, ardından
+  `find -mtime +$BACKUP_RETENTION_DAYS -delete` (busybox `find`'ın `-mtime`/`-delete` desteği
+  doğrulandı - `docker run --rm postgres:16-alpine find --help`).
+- `infra/docker/postgres-backup/entrypoint.sh` (yeni): `mkdir -p $BACKUP_DIR` → sonsuz `backup.sh` →
+  `sleep $BACKUP_INTERVAL_SECONDS` loop'u; `backup.sh` başarısız olsa da loop kırılmıyor (bir sonraki
+  interval'de tekrar denenir).
+- `infra/docker-compose.yml`, `infra/docker-compose.prod.yml`: yeni `postgres-backup` servisi
+  (`depends_on: postgres: condition: service_healthy`, `./backups:/backups` bind-mount); prod'da
+  `POSTGRES_DB`/`USER`/`PASSWORD` diğer servislerdeki gibi `:?...` ile zorunlu. `volumes:` bloğuna,
+  backup'ların bilinçli olarak named volume değil bind-mount kullandığını açıklayan bir not eklendi.
+  Her iki dosya `docker compose config` ile doğrulandı.
+- `infra/scripts/backup.sh`, `infra/scripts/restore.sh` (yeni): host'tan `docker compose exec postgres
+  pg_dump`/`psql` çağıran manuel script'ler, `[dev|prod]` argümanıyla `infra/.env`/`infra/.env.prod`'u
+  okuyor. `restore.sh`: `pg_terminate_backend` ile açık bağlantılar kapatılıyor → `DROP DATABASE` →
+  `CREATE DATABASE` → `gunzip | psql -v ON_ERROR_STOP=1`; DB adının elle yazılmasını isteyen bir onay
+  adımı var (yanlışlıkla yanlış ortamda çalıştırmaya karşı).
+- `infra/.env.example`, `infra/.env.prod.example`: opsiyonel `BACKUP_INTERVAL_SECONDS`/
+  `BACKUP_RETENTION_DAYS` dokümante edildi (default 86400s/7 gün).
+- `.gitignore`: `infra/backups/` eklendi (gerçek yedekler asla commit'lenmemeli).
+- `README.md`: "Backup / restore" başlığı altında otomatik sidecar'ın davranışı + manuel
+  `backup.sh`/`restore.sh` kullanımı özetlendi ("Production'a çalıştırma" bölümünden hemen sonra).
+
+**Doğrulama (gerçek Docker Compose, çalışan dev stack üzerinde):**
+
+- `docker compose -f docker-compose.yml config` ve `--env-file .env.prod.example -f
+  docker-compose.prod.yml config`: ikisi de hatasız (syntax + zorunlu değişken doğrulaması).
+- `docker compose build postgres-backup` + `docker compose up -d postgres-backup`: gerçek stack'e
+  (postgres/backend/customer-web/staff-web/mailhog zaten ayaktaydı) eklendi, `depends_on:
+  service_healthy` bekleyip **ilk otomatik backup'ı gerçekten üretti** (log: `dump complete:
+  /backups/qrmenu_20260813T211406Z.sql.gz (32.0K)`), dosya host'ta `infra/backups/`'ta göründü ve
+  `gunzip -c ... | head` ile gerçek bir `pg_dump` çıktısı olduğu doğrulandı.
+- **Referans snapshot:** restore öncesi gerçek (o an backend'in kullandığı) veritabanının tüm 34
+  public tablosu için `information_schema` üzerinden **exact** (estimate değil) `COUNT(*)` alındı (35
+  satır → örn. `business:14, staff_user:12, table_visit:28, ...`), ayrıca `business` ve `staff_user`
+  tablolarının içerik `md5` checksum'ı hesaplandı.
+- **Manuel backup:** `./scripts/backup.sh` → `backups/qrmenu_manual_<ts>.sql.gz` gerçekten üretildi.
+- **Yıkıcı restore testi:** `./scripts/restore.sh backups/qrmenu_manual_<ts>.sql.gz dev` çalıştırıldı -
+  script açık bağlantıları sonlandırdı, **gerçek `qrmenu` veritabanını drop edip temiz olarak yeniden
+  oluşturdu**, ardından manuel backup'tan restore etti (`COPY 15`, `COPY 51`, `COPY 14`, ... - her satır
+  sayısı canlı `pg_dump` çıktısıyla bire bir eşleşti).
+- **Restore sonrası doğrulama:** aynı exact-`COUNT(*)` sorgusu tekrar çalıştırıldı → **34 tablonun
+  tamamında satır sayısı referansla birebir aynı** (`diff` boş çıktı verdi). `business`/`staff_user`
+  içerik `md5` checksum'ları da **birebir eşleşti** (satır sayısının ötesinde gerçek veri içeriğinin de
+  değişmediğini kanıtlıyor).
+- **Uygulama düzeyinde doğrulama:** `backend` container'ı restore edilmiş DB'ye karşı yeniden başlatıldı
+  - `GET /actuator/health` → `{"status":"UP"}`, `customer-web`/`staff-web` → 200 (restore edilen
+  veritabanının gerçekten çalışan uygulama tarafından sorunsuz kullanılabildiği doğrulandı, yalnızca SQL
+  seviyesinde değil).
+- **Retention testi:** `infra/backups/`'a mtime'ı 10 gün öncesine ayarlanmış sahte bir `.sql.gz` dosyası
+  bırakıldı, sidecar'ın `backup.sh`'ı container içinde manuel tetiklendi → yeni bir dump üretildi **ve**
+  10 günlük sahte dosya `retention (7d) deleted:` logu ile silindi; aynı anda duran diğer (güncel)
+  dosyalar dokunulmadan kaldı.
+- Test sırasında oluşan fazladan yedek dosyası temizlendi, `infra/backups/`'ta bir otomatik + bir manuel
+  örnek yedek bırakıldı (kanıt olarak, gitignore'lu). Stack'in geri kalanı (postgres/backend/frontend'ler)
+  test boyunca kesintisiz `healthy` kaldı.
+- Kapsam dışı bırakılanlar (kullanıcı talimatıyla): S3/cloud storage entegrasyonu, diğer
+  production-readiness maddeleri (scheduler isolation, logging, CI, resource limits).
+- Git commit/push kullanıcı istemedikçe yapılmadı.
+
+---
+
 ## Kasa Ekranı Görsel Kimlik Yenilemesi — "sıcak" tema — ✅ COMPLETED
 
 Kullanıcı isteği: mevcut siyah/gri "Tide" kimliğinden memnun değil, bir Dribbble referansına
@@ -2337,3 +2442,43 @@ tablosundaki 12 kayıt da silindi. Yerine `/internal/businesses/{id}/staff-users
 Giriş `/api/staff/auth/login` ile doğrulandı (200 OK). Hesap bilgileri (email + şifre) buraya **bilerek
 yazılmadı** — repo GitHub'a push ediliyor; kimlik bilgileri yalnızca yerel hafıza kaydında tutuluyor.
 Bundan sonraki tüm manuel/canlı test ihtiyaçlarında yeni geçici hesap açmak yerine bu tek hesap kullanılmalı.
+
+## staff-web Tema Davranışı — Light Varsayılan + Opsiyonel Dark Toggle — ✅ COMPLETED
+
+Kullanıcı isteği: staff-web sistem `prefers-color-scheme: dark` nedeniyle otomatik dark açılmasın,
+varsayılan tema Light olsun, AppShell topbar'a Light/Dark toggle eklensin, seçim localStorage'da
+saklansın, Kasa'nın warm görsel dilinin light varyantı ana deneyim olsun, dark opsiyonel kalsın,
+business logic'e dokunulmasın.
+
+**Tasarım:** Var olan tema mimarisi zaten CSS custom-property override'larına dayanıyordu
+(`app/globals.css` içinde `@media (prefers-color-scheme: dark) { :root { ... } }`, Kasa'nın kendi
+`.warm` scope'unda da aynı deseni tekrar eden ikinci bir `@media` bloğu) - sorunun kaynağı bu iki
+blok, OS tercihini doğrudan okuyordu. Çözüm: `@media (prefers-color-scheme: dark)` yerine açık bir
+`data-theme="dark"` attribute'una (varsayılan yok, yalnızca kullanıcı seçerse `<html>`'e eklenir)
+geçildi - `:root[data-theme="dark"]` (globals.css) ve `:global(html[data-theme="dark"]) .warm`
+(AppShell.module.css, CSS Modules'de global bir attribute selector'ı yerel `.warm` class'ıyla
+birleştirmek için `:global()` gerekiyor). Yeni dosyalar: `lib/theme.ts` (tip + localStorage anahtarı
++ `useSyncExternalStore` için store fonksiyonları + `<html>`'e uygulanan blocking init script'in
+string hali) ve `components/layout/ThemeToggle.tsx` (AppShell topbar'a eklenen ikon buton, `lucide-react`
+Sun/Moon). `app/layout.tsx`'in `<body>`'sindeki ilk eleman olarak bu init script senkron çalıştırılıyor
+- yalnızca localStorage'daki *kayıtlı* seçimi okuyup uyguluyor (`prefers-color-scheme`'e hiç bakmıyor),
+böylece dönen bir kullanıcı dark seçmişse hydration'dan önce bile flaş olmadan dark açılıyor, ama hiçbir
+zaman salt OS ayarından dolayı dark açılmıyor.
+**`ThemeToggle`'da `useEffect` içinde `setState` çağırmak** (`document.documentElement`'ten okunan
+gerçek tema ile mount sonrası senkronize etmek için) `react-hooks/set-state-in-effect` lint kuralına
+takıldı - React'ın önerdiği çözüm olan `useSyncExternalStore` kullanıldı (`lib/theme.ts`'teki modül
+seviyesi listener `Set`'i + `applyTheme`'in bunları bildirmesi), bu hem lint'i geçti hem de hydration
+mismatch riskini ortadan kaldırdı (server/pre-hydration snapshot hep `"light"`, DOM zaten farklıysa
+React kendisi güvenle senkronize ediyor). Business logic dosyalarına dokunulmadı - yalnızca
+`app/globals.css`, `components/layout/AppShell.{tsx,module.css}`, iki yeni dosya.
+
+**Doğrulama:** `npx tsc --noEmit`, `npx eslint . --max-warnings 0`, `npm run build` temiz. Docker
+image yeniden build edilip `infra-staff-web-1` yeniden başlatıldı (`healthy`). Gerçek Chrome'da: sistem
+dark iken login sayfası ve Dashboard **Light** açıldı (regression doğrulandı); topbar'daki toggle'a
+tıklanınca **Dashboard gerçekten Dark'a geçti**, sayfa yenilenince (`navigate` ile reload) flaşsız
+şekilde Dark kaldı (`localStorage`/`data-theme` ikisi de `"dark"` - JS ile doğrulandı); Kasa ekranına
+gidilip **warm kimliğin dark varyantı** (koyu kahve zemin + turuncu accent) doğrulandı; toggle tekrar
+Light'a çevrilip **Kasa'nın light warm kimliği** (Adım 4/5'te WCAG için koyultulmuş tonlar dahil) bozulmadan
+göründüğü, Menü sayfasına geçilince Dark/Light tercihinin diğer (warm olmayan) ekranlara da tutarlı
+uygulandığı doğrulandı; konsolda hydration/hata mesajı çıkmadı. Test sonunda tercih **Light**'a
+bırakıldı. Backend'e dokunulmadı.
