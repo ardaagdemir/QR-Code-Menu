@@ -137,6 +137,7 @@ public class StaffMenuController {
                 request.active(),
                 request.estimatedPreparationMinutes(),
                 request.allergensOrEmpty(),
+                request.imageUrl(),
                 context.staffUserId());
         return ResponseEntity.ok(toResponse(product));
     }

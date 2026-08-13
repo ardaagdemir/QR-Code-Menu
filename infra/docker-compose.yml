@@ -39,6 +39,13 @@ services:
       SMTP_HOST: ${SMTP_HOST:-mailhog}
       SMTP_PORT: ${SMTP_PORT:-1025}
       OWNER_NOTIFICATION_FROM_EMAIL: ${OWNER_NOTIFICATION_FROM_EMAIL:-no-reply@qrmenu.local}
+      # Gap-analysis #15: MediaStoragePort's local adapter - container-internal path
+      # (backed by the media_data volume below, survives container recreation);
+      # public-base-url is the browser-facing origin, not this container-internal one.
+      MEDIA_STORAGE_LOCAL_BASE_DIR: /data/media
+      MEDIA_STORAGE_PUBLIC_BASE_URL: ${MEDIA_STORAGE_PUBLIC_BASE_URL:-http://localhost:8080}
+    volumes:
+      - media_data:/data/media
     ports:
       - "8080:8080"
 
@@ -67,3 +74,4 @@ services:
 
 volumes:
   postgres_data:
+  media_data:

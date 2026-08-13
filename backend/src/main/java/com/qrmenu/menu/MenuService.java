@@ -98,11 +98,12 @@ public class MenuService {
             boolean active,
             Integer estimatedPreparationMinutes,
             Set<Allergen> allergens,
+            String imageUrl,
             UUID actorStaffUserId) {
         Product product = productRepository
                 .findByIdAndBusinessId(productId, businessId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found for business: " + productId));
-        product.updateDetails(active, estimatedPreparationMinutes, allergens);
+        product.updateDetails(active, estimatedPreparationMinutes, allergens, imageUrl);
         Product saved = productRepository.save(product);
         auditService.record(
                 businessId, actorStaffUserId, "Product", saved.getId(), "UPDATED", Map.of("active", String.valueOf(active)));

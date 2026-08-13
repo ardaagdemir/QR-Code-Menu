@@ -11,6 +11,14 @@ spring:
     open-in-view: false
     hibernate:
       ddl-auto: validate
+  # Gap-analysis #15: uploads go through MediaStoragePort (product images, expense
+  # receipts) - the receipt category's own 10MB cap (MediaCategory) is the real limit;
+  # these are just Spring's multipart-parsing ceiling, kept a little above it for
+  # multipart framing overhead.
+  servlet:
+    multipart:
+      max-file-size: 12MB
+      max-request-size: 12MB
   # Gap-analysis #11 (Section 15): OwnerNotificationPort's email adapter. Not a blocker
   # (spec: "WhatsApp entegrasyonu çekirdek raporlama için blocker değildir"), so unlike
   # internal.admin.token/payment.mock.webhook-secret below these have real defaults
@@ -52,6 +60,16 @@ payment:
 owner-notification:
   email:
     from: ${OWNER_NOTIFICATION_FROM_EMAIL:no-reply@qrmenu.local}
+
+# Gap-analysis #15 (Section 3.2/16.1): MediaStoragePort's only adapter today is local
+# filesystem (Section 27 - production provider not chosen yet). public-base-url must be
+# the origin browsers can reach the backend at (not container-internal), since it's
+# embedded in the Product.imageUrl/Expense.receiptImageUrl values returned to the client.
+media:
+  storage:
+    local:
+      base-dir: ${MEDIA_STORAGE_LOCAL_BASE_DIR:./data/media}
+    public-base-url: ${MEDIA_STORAGE_PUBLIC_BASE_URL:http://localhost:8080}
 
 management:
   endpoints:

@@ -1677,3 +1677,60 @@ olmadığından bu bölümler boş-durum metni gösterdi - tasarım değişikli�
 Konsolda hata yok. Test sonunda test hesabı + session'ı DB'den silindi, yerel `next dev` kapatıldı,
 `infra-staff-web-1` container'ı yeniden başlatıldı. Işık temasında ayrı doğrulama yapılmadı (Adım 1-5 ile
 aynı düşük-risk gerekçesi - yalnızca mevcut `--color-*` token'ları kullanıldı). Backend değişikliği yok.
+
+---
+
+## Gap-Analysis #15 — Görsel/Receipt Storage (MediaStoragePort) — 🚧 IN PROGRESS
+
+Önceki bir oturumun requirements-vs-kod taramasında bulunan tek somut PARTIAL: `Product.imageUrl` /
+`Expense.receiptImageUrl` yalnızca birer plain string kolon - Bölüm 3.2/16.1'in istediği "media/storage
+adapter'ın döndürdüğü URL/key" hiç kurulmamıştı, staff-web'de de bu alanları dolduran hiçbir UI yoktu
+(`ProductsSection`'ın oluşturma formu `imageUrl` hiç göndermiyordu, `ExpenseForm` `receiptImageUrl: null`
+sabit gönderiyordu) - kullanıcı bugüne kadar bu alanları yalnızca doğrudan API çağrısıyla doldurabilirdi.
+
+**Tasarım:**
+- **`com.qrmenu.shared.media`** (yeni, `shared.outbox` ile aynı statü - modül değil, ArchUnit sınırı yok,
+  persistence'ı yok): `MediaStoragePort` arayüzü (`store(MediaCategory, filename, contentType, bytes) ->
+  StoredMedia(key, url)`), `MediaCategory` enum (`PRODUCT_IMAGE`, `EXPENSE_RECEIPT` - kategori başına ayrı
+  izin verilen content-type seti + boyut limiti), `LocalFileMediaStorageAdapter` (tek adapter, "production
+  storage sağlayıcısı seçme" kullanıcı talimatıyla uyumlu - ❓ Bölüm 27'de zaten açık karar). Doğrulama:
+  magic-byte sniffing (deklare edilen `Content-Type`'a güvenilmiyor - JPEG/PNG/WEBP/PDF imzaları elle
+  kontrol ediliyor, yeni bağımlılık gerekmedi), boyut limiti (ürün görseli 5MB, gider fişi 10MB - fişler
+  PDF/taranmış doküman olabilir, Bölüm 16.1: "fotoğrafı/dokümanı"), boş dosya reddi, dosya adı her zaman
+  sunucu tarafında üretilen bir UUID + sniff edilen uzantı (kullanıcı dosya adı hiç güvenilmiyor - path
+  traversal/uzantı sahteciliği yüzeyi yok). `MediaValidationException extends IllegalArgumentException` -
+  mevcut `ApiExceptionHandler`'ın zaten `IllegalArgumentException`'ı 400'e çevirdiği kural yeniden
+  kullanıldı, handler'a yeni case eklenmedi.
+- **Sunum:** yeni dosyalar `/media/**` altında Spring'in `WebMvcConfigurer.addResourceHandlers` static
+  resource handler'ıyla (dosya sistemi -> HTTP, ETag/cache header'ları ücretsiz) sunuluyor - hem ürün
+  görseli (müşteri menüsünde herkese açık gösteriliyor, zaten kimliksiz) hem gider fişi bu yoldan sunuluyor.
+  Fiş dosya adı da sunucu tarafında üretilen yüksek-entropili bir UUID (tahmin edilemez) - bu, projenin QR
+  token/orderTrackingToken'da zaten kullandığı "yüksek entropi = düşük blast radius, ayrı bir auth katmanı
+  yerine" kararıyla aynı gerekçe (Bölüm 21/22); yükleme (upload) tarafı zaten `EXPENSE_MANAGE` permission'ı
+  arkasında, yalnızca okuma/sunum tarafı bu şekilde basitleştirildi. Gerçek bir prod storage sağlayıcısı
+  seçildiğinde (❓ açık karar) bu adapter S3/GCS gibi imzalı-URL veren bir adapter'la değiştirilebilir, port
+  arayüzü değişmez.
+- **Upload endpoint'leri (additive, mevcut Product/Expense create/update DTO'larına dokunmadan):**
+  `POST /api/staff/media/product-images` (`Permission.MENU_MANAGE`, multipart `file`) ve
+  `POST /api/staff/media/receipts` (`Permission.EXPENSE_MANAGE`, multipart `file`) - ikisi de yalnızca
+  `{url}` döner. Frontend dosyayı seçer seçmez hemen yükler, dönen URL'i mevcut `imageUrl`/`receiptImageUrl`
+  form state'ine yazar, ardından mevcut create/update akışı **hiç değişmeden** aynı URL string'ini gönderir
+  - `Product`/`Expense` entity/tablo şeması bu adımda hiç değişmiyor (kullanıcı talimatı: "mevcut yapıyı
+    mümkün olduğunca koru").
+- **Var olan boşluk:** `updateProductDetails`/`Product.updateDetails` şu ana kadar `imageUrl` hiç
+  almıyordu (yalnızca creation'da set edilebiliyordu, DB'de zaten var ama hiçbir UI yolu yoktu) - bu adımda
+  `UpdateProductDetailsRequest`/`MenuService.updateProductDetails`/`Product.updateDetails`'e `imageUrl`
+  eklenip staff-web'in "Düzenle" paneline taşınıyor; böylece zaten oluşturulmuş ürünlere de sonradan görsel
+  eklenebiliyor. `Expense` tarafında `receiptImageUrl` zaten `createExpense`/`updateDraft`'ta vardı, backend
+  değişikliği gerekmedi - yalnızca frontend'in bu alanı artık dolu göndermesi gerekiyordu.
+- **Frontend:** yeni shared `components/ui/FileUploadField` (dosya seç -> anında yükle -> `value` prop'una
+  URL yaz, "Kaldır" ile temizle - manuel URL text input'u hiçbir yerde yok), `ProductsSection` (oluşturma
+  formu) + `ProductRow` (mevcut ürünü düzenleme paneli) + `ExpenseForm` (oluşturma formu) bu component'i
+  kullanıyor.
+- **Docker:** `infra/docker-compose.yml`'e backend için adlandırılmış bir `media_data` volume'u (container
+  içi sabit bir path'e mount, konteyner yeniden oluşturulsa bile yüklenen dosyalar korunuyor - `postgres_data`
+  ile aynı desen).
+
+Bu tasarım kullanıcının kendi talimatındaki 8 maddeyi birebir karşılıyor; ayrı bir netleştirme turu
+gerekmedi (talimat zaten tüm ana kararları - provider-bağımsız port, local adapter, upload UI, mevcut şema
+korunması, content-type/boyut/güvenlik kontrolü, prod sağlayıcı seçilmemesi - içeriyordu).

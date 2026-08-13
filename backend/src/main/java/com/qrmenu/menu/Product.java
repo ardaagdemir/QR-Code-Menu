@@ -113,11 +113,17 @@ public class Product {
         this.updatedAt = now;
     }
 
-    /** Gap-analysis "Product alanları" - staff-web edit form for the fields not fixed at creation. */
-    public void updateDetails(boolean active, Integer estimatedPreparationMinutes, Set<Allergen> allergens) {
+    /**
+     * Gap-analysis "Product alanları" - staff-web edit form for the fields not fixed at
+     * creation. Gap-analysis #15 added imageUrl here too: it was only settable at
+     * creation before, so an already-created product had no UI path to attach an image.
+     */
+    public void updateDetails(
+            boolean active, Integer estimatedPreparationMinutes, Set<Allergen> allergens, String imageUrl) {
         this.active = active;
         this.estimatedPreparationMinutes = estimatedPreparationMinutes;
         this.allergens = allergens == null ? new LinkedHashSet<>() : new LinkedHashSet<>(allergens);
+        this.imageUrl = imageUrl;
         this.updatedAt = Instant.now();
     }
 

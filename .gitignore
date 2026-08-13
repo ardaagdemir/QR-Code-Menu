@@ -13,6 +13,9 @@ backend/target/
 *.log
 HELP.md
 
+# Gap-analysis #15: LocalFileMediaStorageAdapter's default dir when running outside Docker.
+backend/data/
+
 # --- Frontend (Next.js) ---
 frontend/*/node_modules/
 frontend/*/.next/

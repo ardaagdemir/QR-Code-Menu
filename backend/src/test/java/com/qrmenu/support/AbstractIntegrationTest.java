@@ -1,6 +1,9 @@
 package com.qrmenu.support;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -45,5 +48,15 @@ public abstract class AbstractIntegrationTest {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
+        registry.add("media.storage.local.base-dir", AbstractIntegrationTest::createTempMediaDir);
+    }
+
+    /** Gap-analysis #15: keeps LocalFileMediaStorageAdapter writes out of the repo working directory during tests. */
+    private static String createTempMediaDir() {
+        try {
+            return Files.createTempDirectory("qrmenu-test-media").toAbsolutePath().toString();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 }
