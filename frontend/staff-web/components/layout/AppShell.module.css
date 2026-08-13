@@ -3,82 +3,22 @@
   min-height: 100vh;
 }
 
-/* Kasa'nın kendi "sıcak" kimliği (ürün kararı: sıcak/modern restoran-POS hissi) - yalnızca
- * bu AppShell örneğine scoped bir --color-* override bloğu. Her component zaten yalnızca
- * var(--color-*) token'larını okuduğu için (Button/Badge/Card/Select/...), bu tek blok
- * sidebar+topbar+içerik zincirinin tamamını yeniden temalar - başka hiçbir route bu class'ı
- * almadığından "Tide" kimliği geri kalan her ekranda birebir korunur. */
-.warm {
-  --font-family-display: var(--font-display-warm), var(--font-family);
-  --color-bg: #fbf1e6;
-  --color-surface: #f1e0c8;
-  --color-surface-raised: #ffffff;
-  --color-fg: #2b1b12;
-  --color-fg-muted: #8a6f58;
-  --color-border: rgba(43, 27, 18, 0.1);
-  --color-border-strong: rgba(43, 27, 18, 0.2);
-  /* primary/warning/success buradaki değerler görsel taslaktan (Adım 4/Kasa Redesign)
-   * bilinçli olarak koyulaştırıldı - orijinal daha canlı tonlar kendi %10-16 tint
-   * arka planları üzerinde (Badge/kolon başlığı metni) WCAG AA 4.5:1'in altına
-   * düşüyordu (örn. #C98A1D kendi tint'i üzerinde yalnızca ~2:1). Değerler, hem
-   * beyaz/kart hem de kanban tepsi zemini üzerindeki en kötü durum için 4.5:1'i
-   * geçecek şekilde ikisi karşı da hesaplanarak seçildi - üç durum rengi hâlâ
-   * birbirinden hue olarak net ayrışıyor (kiremit/zeytin-hardal/orman yeşili).
-   */
-  --color-primary: #963b1a;
-  --color-primary-strong: #7c3115;
-  --color-primary-fg: #ffffff;
-  --color-danger: #b23a2e;
-  --color-danger-bg: rgba(178, 58, 46, 0.1);
-  --color-success: #31623d;
-  --color-success-bg: rgba(63, 125, 78, 0.12);
-  --color-warning: #775111;
-  --color-warning-bg: rgba(201, 138, 29, 0.12);
-  --color-badge-bg: rgba(43, 27, 18, 0.06);
-  --color-overlay: rgba(20, 12, 6, 0.55);
-  --color-skeleton: rgba(43, 27, 18, 0.08);
-  --color-skeleton-shine: rgba(43, 27, 18, 0.16);
-}
-
-/* Opt-in dark variant of the warm Kasa identity - keyed off the same explicit
- * `data-theme="dark"` attribute as app/globals.css (not `prefers-color-scheme`, see the
- * comment there), so Kasa's dark mode only activates when the user picks it via
- * ThemeToggle, never from the OS setting alone. */
-:global(html[data-theme="dark"]) .warm {
-  --color-bg: #1c130b;
-  --color-surface: #241a10;
-  --color-surface-raised: #2e2117;
-  --color-fg: #f5e9da;
-  --color-fg-muted: #b79a80;
-  --color-border: rgba(255, 255, 255, 0.1);
-  --color-border-strong: rgba(255, 255, 255, 0.2);
-  --color-primary: #f0894a;
-  --color-primary-strong: #f7a874;
-  --color-primary-fg: #1c130b;
-  --color-danger: #e88478;
-  --color-danger-bg: rgba(232, 132, 120, 0.14);
-  --color-success: #7fbf8c;
-  --color-success-bg: rgba(127, 191, 140, 0.14);
-  --color-warning: #e3b24e;
-  --color-warning-bg: rgba(227, 178, 78, 0.14);
-  --color-badge-bg: rgba(255, 255, 255, 0.1);
-  --color-overlay: rgba(0, 0, 0, 0.65);
-  --color-skeleton: rgba(255, 255, 255, 0.08);
-  --color-skeleton-shine: rgba(255, 255, 255, 0.16);
-}
-
 .backdrop {
   display: none;
 }
 
+/* Sidebar zemini bilinçli olarak content'ten (--color-bg, beyaz) bir ton koyu tutuluyor
+ * (--color-surface, açık gri) - iki bölge arasındaki zon kontrastı, tek başına bir
+ * "güçlü sidebar hiyerarşisi" katmanı kuruyor; nav linkleri de kendi zeminlerinden
+ * (hover/active) bu sayede daha net ayrışıyor. */
 .sidebar {
-  width: 260px;
+  width: 264px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-6);
   padding: var(--space-5) var(--space-4);
-  background: var(--color-surface-raised);
+  background: var(--color-surface);
   border-right: 1px solid var(--color-border);
   position: sticky;
   top: 0;
@@ -87,17 +27,38 @@
 }
 
 .brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-2);
+}
+
+.brandMark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary);
+  color: var(--color-primary-fg);
   font-family: var(--font-family-display);
-  font-size: var(--font-size-lg);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+}
+
+.brandWordmark {
+  font-family: var(--font-family-display);
+  font-size: var(--font-size-base);
   font-weight: var(--font-weight-bold);
   letter-spacing: -0.01em;
-  padding: 0 var(--space-2);
 }
 
 .nav {
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
+  gap: var(--space-6);
 }
 
 .group {
@@ -107,13 +68,13 @@
 }
 
 .groupTitle {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
+  font-size: 0.6875rem;
+  font-weight: var(--font-weight-bold);
   color: var(--color-fg-muted);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  padding: 0 var(--space-2);
-  margin-bottom: var(--space-1);
+  letter-spacing: 0.07em;
+  padding: 0 var(--space-3);
+  margin-bottom: var(--space-2);
 }
 
 .link {
@@ -122,7 +83,7 @@
   font-weight: var(--font-weight-medium);
   color: var(--color-fg-muted);
   text-decoration: none;
-  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
   transition:
     background var(--transition-fast),
@@ -131,32 +92,31 @@
 
 .link:hover {
   color: var(--color-fg);
-  background: var(--color-surface);
+  background: var(--color-surface-raised);
 }
 
-/* Tide marker: a vertical accent on the current page's link, echoing the customer-web
- * VisitHeader signature (docs/development-progress.md "Adım 2 Tasarım Yenilemesi") as
- * the shell's own wayfinding mark - shows where you are, not just what's clickable. */
+/* Aktif sayfanın imzası: dolgun tint zemin + accent metin + sol accent bar - "neredesin"i
+ * yalnızca renkle değil üç katmanla (zemin/metin/kenar) birlikte işaretliyor. */
 .active {
   color: var(--color-primary);
   font-weight: var(--font-weight-semibold);
-  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  background: color-mix(in srgb, var(--color-primary) 10%, var(--color-surface-raised));
 }
 
 .active::before {
   content: "";
   position: absolute;
-  left: 2px;
-  top: 4px;
-  bottom: 4px;
+  left: -2px;
+  top: 5px;
+  bottom: 5px;
   width: 3px;
   border-radius: var(--radius-full);
-  background: linear-gradient(180deg, var(--color-primary) 0%, var(--color-primary-strong) 100%);
+  background: var(--color-primary);
 }
 
 .active:hover {
   color: var(--color-primary);
-  background: color-mix(in srgb, var(--color-primary) 18%, transparent);
+  background: color-mix(in srgb, var(--color-primary) 14%, var(--color-surface-raised));
 }
 
 .main {
@@ -171,7 +131,7 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
-  padding: var(--space-3) var(--space-5);
+  padding: var(--space-3) var(--space-6);
   border-bottom: 1px solid var(--color-border);
   background: var(--color-surface-raised);
   position: sticky;

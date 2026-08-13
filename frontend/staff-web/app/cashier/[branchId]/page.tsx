@@ -255,7 +255,7 @@ export default function CashierDashboardPage() {
   }
 
   return (
-    <AppShell theme="warm">
+    <AppShell>
       <main className={styles.page}>
         <div className={styles.header}>
           <h1 className={styles.title}>Kasa</h1>

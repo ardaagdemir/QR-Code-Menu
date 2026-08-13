@@ -13,13 +13,6 @@ import styles from "./AppShell.module.css";
 
 type Props = {
   children: ReactNode;
-  /**
-   * "warm": scopes the "Kasa" screen's own identity (Bölüm 19.1 dışı, ürün kararı)
-   * onto this AppShell instance only via a CSS custom-property override (see
-   * AppShell.module.css `.warm`) - every other route renders its own AppShell without
-   * this prop, so the shared "Tide" chrome elsewhere is untouched.
-   */
-  theme?: "default" | "warm";
 };
 
 /**
@@ -27,9 +20,10 @@ type Props = {
  * StaffNav). Fetches /me once to confirm the session is still valid (redirecting to
  * the login page on 401) and to decide which nav links to show. Desktop (>=1024px):
  * persistent left sidebar + top bar. Smaller screens: hamburger-triggered drawer
- * (Bölüm 19.3/19.4).
+ * (Bölüm 19.3/19.4). Every screen (Kasa included) shares one visual identity - see
+ * development-progress.md "staff-web Görsel Yön Değişikliği".
  */
-export default function AppShell({ children, theme = "default" }: Props) {
+export default function AppShell({ children }: Props) {
   const [context, setContext] = useState<StaffContext | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const router = useRouter();
@@ -64,7 +58,12 @@ export default function AppShell({ children, theme = "default" }: Props) {
 
   const navContent = (
     <>
-      <div className={styles.brand}>QR Menü</div>
+      <div className={styles.brand}>
+        <span className={styles.brandMark} aria-hidden="true">
+          Q
+        </span>
+        <span className={styles.brandWordmark}>QR Menü</span>
+      </div>
       <nav className={styles.nav}>
         {NAV_GROUPS.map((group) => {
           const visibleItems = context
@@ -94,7 +93,7 @@ export default function AppShell({ children, theme = "default" }: Props) {
   );
 
   return (
-    <div className={theme === "warm" ? `${styles.shell} ${styles.warm}` : styles.shell}>
+    <div className={styles.shell}>
       {drawerOpen ? <div className={styles.backdrop} onClick={() => setDrawerOpen(false)} /> : null}
       <aside className={drawerOpen ? `${styles.sidebar} ${styles.sidebarOpen}` : styles.sidebar}>{navContent}</aside>
       <div className={styles.main}>
