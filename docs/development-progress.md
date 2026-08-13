@@ -1203,3 +1203,59 @@ görünmüyor ama bu, kod tabanındaki mevcut (`cashier`) davranışla tutarlı.
 
 **Doğrulama:** backend değişikliği yok (bu adım tamamen staff-web frontend). Her commit'ten sonra
 `npx tsc --noEmit` + `npx eslint .` + `npm run build` temiz. Canlı Chrome testi yapılmadı (proje hafızası).
+
+## UI/UX Productization Gate — Adım 6: Reporting/Dashboard Visualization — ✅ COMPLETED
+
+`product-requirements.md` Bölüm 19.5'in "Cross-cutting" uygulama sırasının 6. adımı: Bölüm 19.3'ün
+"Dashboard" ve "Raporlama" alt-bölümleri (kriter 6: "Rapor ekranı dashboard seviyesinde bilgi
+hiyerarşisine sahiptir"). Adım 5'te bilinçli olarak bu adıma bırakılan üç sayfa: `dashboard` (yalnızca
+rol bazlı kısayol kartları taşıyan bir placeholder), `reports` (zincir) ve `reports/[branchId]` (şube) -
+ikisi de KPI'ları ham `reports.module.css` `.statCard`/`.table` deseninde gösteriyordu; tarih aralığı
+seçimi yalnızca serbest metin `type="date"` alanları + "Uygula" butonuydu (hızlı preset yok); ürün/
+kategori/şube verisi yalnızca tablo satırı olarak vardı (görsel ranking/trend yok).
+
+**Yeni shared component'ler (staff-web, `components/ui/`):** `KpiCard` (label+value+opsiyonel hint,
+`tone` prop'u refund/net-sonuç gibi dikkat gerektiren değerleri `danger`/`success` rengiyle vurgular -
+`reports.module.css`'teki ad-hoc StatCard'ın shared hali), `DateRangePresets` (Bölüm 19.3: "hızlı tarih
+presetleri: Bugün / Dün / Bu Hafta / Bu Ay / Özel" - preset butonları + özel aralık için `FormField`+
+`Input` tarih alanları; `presetRange()` saf fonksiyonu dashboard'da da "bugün" aralığını hesaplamak için
+kullanılıyor), `BarList` (Bölüm 19.3: "gelir trendi", "ürün/kategori ranking", "branch comparison" -
+CSS genişlikli yatay bar listesi; spec'in "grafik için ağır bir framework eklenmesi zorunlu değildir"
+notu gereği harici bir chart kütüphanesi eklenmedi, tamamen bağımlılıksız/küçük bir çözüm).
+
+**Sayfa bazlı değişiklikler:**
+- `reports` (zincir): `PageHeader` + `DateRangePresets` (preset seçilince anında yeniden yükleniyor,
+  ayrı "Uygula" butonu yok) + `KpiCard` grid (toplam brüt/net satış, refund - `>0` ise `danger` tone,
+  toplam sipariş) + brüt satışa göre sıralı şube `BarList` + detay için Adım 5'in `Table` component'i
+  (satırlar hâlâ `/reports/{branchId}`'ye bağlı).
+- `reports/[branchId]` (şube): aynı `PageHeader`+`DateRangePresets`+`KpiCard` grid deseni (8 KPI: brüt/
+  net satış, refund toplamı, sipariş/kabul/red sayısı, ortalama sepet, masa ziyareti). **Günlük ciro
+  trendi** yeni bir backend endpoint'i gerektirmeden, mevcut gün sonu kapanış kayıtlarından (`Gün Sonu
+  Kapanışları` bölümünün zaten çektiği `DailyCloseReport[]`) türetilen kronolojik bir `BarList` olarak
+  eklendi (gate kuralı: "backend business logic yeniden yazılmaz"). Ürün bazında satış artık hem ilk 8'i
+  gösteren ciro sıralı bir `BarList` (adet bilgisi `valueLabel` içinde) hem de -Adım 5'te zaten var olan-
+  tam `Table`; kategori bazında ciro tablosu tek değerli olduğu için doğrudan `BarList`'e çevrildi (ayrı
+  bir tablo tutulmadı - gereksiz tekrar). Saatlik dağılım kronolojik bir zaman serisi olduğu için `Table`
+  olarak kaldı (ranking değil). Yönetimsel net sonuç bölümü `KpiCard` grid'e taşındı; negatif net sonuç
+  `danger` tone ile vurgulanıyor.
+- `dashboard`: placeholder'a gerçek "Bugün" KPI bölümü eklendi - `Permission.REPORT_VIEW`'ı olmayan
+  `KITCHEN_STAFF` hariç her rol için (`StaffRole.java`'daki `permissions()` ile birebir, `lib/staffNav.ts`
+  zaten aynı rol listesini nav filtrelemesinde kullanıyordu). Zincir geneli rol (`BUSINESS_ADMIN`/
+  `PLATFORM_ADMIN`, `isBusinessWide()`) `getChainSalesReport(today, today)` ile toplam KPI'lar + şube
+  sıralama `BarList` görür; tek şubeye bağlı rol (`BRANCH_MANAGER`/`CASHIER`) kendi ilk şubesinin
+  `getBranchSalesReport(today, today)` KPI'larını + en çok satan ürünler `BarList`'ini + (Bölüm 19.3
+  "Dashboard": "aktif/bekleyen operasyon bilgileri") `getPendingAcceptanceOrders(branchId).length`'ten
+  gelen "onay bekleyen sipariş" KPI'sını (`>0` ise `danger` tone) görür. Rol bazlı kısayol kartları
+  (Adım 3'ten beri var olan `NAV_GROUPS` kaynaklı bölüm) değişmeden KPI bölümünün altında kalıyor.
+
+**Kapsam dışı bırakılanlar (bilinçli):** Excel export, gün sonu kapanış (FINAL) akışı ve owner-notification
+yeniden gönderme mevcut haliyle korundu - bunlar zaten Gap-analysis #9/#11'de tamamlanmış, bu adımın
+konusu (kriter 6) yalnızca bilgi hiyerarşisi/görselleştirme. Zincir raporunda ürün/kategori ranking
+eklenmedi çünkü `ChainSalesReport` backend'de yalnızca şube bazlı toplamlar taşıyor, şubeler arası
+birleştirilmiş ürün kırılımı yok - yeni bir agregasyon endpoint'i eklemek gate'in "backend business logic
+yeniden yazılmaz" kuralına aykırı olurdu; bu, ileride gerçek bir ihtiyaç çıkarsa ayrı bir gap olarak ele
+alınabilir.
+
+**Doğrulama:** backend değişikliği yok (bu adım tamamen staff-web frontend, yalnızca mevcut API'ları farklı
+şekilde birleştirdi). Her commit'ten sonra `npx tsc --noEmit` + `npx eslint <path>` + `npm run build`
+temiz. Canlı Chrome testi yapılmadı (proje hafızası).
