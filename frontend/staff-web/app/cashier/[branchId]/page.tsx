@@ -4,6 +4,20 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
+  BellRing,
+  Check,
+  ChefHat,
+  Loader2,
+  Receipt,
+  Send,
+  TrendingUp,
+  Undo2,
+  UtensilsCrossed,
+  Wallet,
+  Timer,
+  X,
+} from "lucide-react";
+import {
   ApiError,
   acceptOrder,
   buildOrderStreamUrl,
@@ -247,6 +261,7 @@ export default function CashierDashboardPage() {
           <h1 className={styles.title}>Kasa</h1>
           <div className={styles.headerActions}>
             <Link href={`/refunds/${branchId}`} className={styles.navLink}>
+              <Undo2 size={14} aria-hidden="true" />
               İadeler
             </Link>
             <span className={styles.connectionStatus}>
@@ -259,32 +274,60 @@ export default function CashierDashboardPage() {
         {error ? <ErrorState message={error} onRetry={reloadAll} /> : null}
 
         {financialSummary ? (
-          <div className={styles.financialSummary}>
-            <div className={styles.financialSummaryItem}>
-              <span className={styles.financialSummaryLabel}>Bugün brüt satış</span>
-              <span className={styles.financialSummaryValue}>{formatPriceMinorUnits(financialSummary.grossSalesMinorUnits)}</span>
+          <div className={styles.kpiStrip}>
+            <div className={styles.kpiCard}>
+              <span className={styles.kpiIcon} aria-hidden="true">
+                <Wallet size={20} />
+              </span>
+              <span className={styles.kpiBody}>
+                <span className={styles.kpiLabel}>Bugün brüt satış</span>
+                <span className={styles.kpiValue}>{formatPriceMinorUnits(financialSummary.grossSalesMinorUnits)}</span>
+              </span>
             </div>
-            <div className={styles.financialSummaryItem}>
-              <span className={styles.financialSummaryLabel}>Net satış</span>
-              <span className={styles.financialSummaryValue}>{formatPriceMinorUnits(financialSummary.netSalesMinorUnits)}</span>
+            <div className={styles.kpiCard}>
+              <span className={styles.kpiIcon} aria-hidden="true">
+                <TrendingUp size={20} />
+              </span>
+              <span className={styles.kpiBody}>
+                <span className={styles.kpiLabel}>Net satış</span>
+                <span className={styles.kpiValue}>{formatPriceMinorUnits(financialSummary.netSalesMinorUnits)}</span>
+              </span>
             </div>
-            <div className={styles.financialSummaryItem}>
-              <span className={styles.financialSummaryLabel}>Sipariş sayısı</span>
-              <span className={styles.financialSummaryValue}>{financialSummary.orderCount}</span>
+            <div className={styles.kpiCard}>
+              <span className={styles.kpiIcon} aria-hidden="true">
+                <Receipt size={20} />
+              </span>
+              <span className={styles.kpiBody}>
+                <span className={styles.kpiLabel}>Sipariş sayısı</span>
+                <span className={styles.kpiValue}>{financialSummary.orderCount}</span>
+              </span>
             </div>
           </div>
         ) : null}
 
         {loading ? (
-          <p className={styles.loading}>Yükleniyor…</p>
+          <p className={styles.loading}>
+            <Loader2 size={16} className={styles.loadingSpinner} aria-hidden="true" />
+            Yükleniyor…
+          </p>
         ) : (
-          <>
-            <section className={styles.section}>
-              <h2 className={styles.sectionTitle}>Onay Bekleyen Siparişler</h2>
+          <div className={styles.board}>
+            <section className={`${styles.column} ${styles["column--pending"]}`}>
+              <header className={styles.columnHeader}>
+                <span className={styles.columnIcon} aria-hidden="true">
+                  <Timer size={16} />
+                </span>
+                <h2 className={styles.columnTitle}>Onay Bekleyen</h2>
+                <span className={styles.columnCount}>{pendingOrders.length}</span>
+              </header>
               {pendingOrders.length === 0 ? (
-                <EmptyState title="Onay bekleyen sipariş yok" description="Ödemesi tamamlanan yeni siparişler burada görünecek." />
+                <EmptyState
+                  icon={<Timer size={28} aria-hidden="true" />}
+                  title="Onay bekleyen sipariş yok"
+                  description="Ödemesi tamamlanan yeni siparişler burada görünecek."
+                />
               ) : (
-                <div className={styles.grid}>
+                <div className={styles.columnBody}>
                   {pendingOrders.map((order) => {
                     const urgency = waitingUrgency(order.statusSince, now, order.storeAcceptanceTimeoutSeconds);
                     return (
@@ -296,7 +339,10 @@ export default function CashierDashboardPage() {
                       >
                         <div className={styles.cardHeader}>
                           <div className={styles.cardHeaderMain}>
-                            <span className={styles.tableLabel}>{order.tableLabel ?? "Masa —"}</span>
+                            <span className={styles.tableLabel}>
+                              <UtensilsCrossed size={14} className={styles.tableLabelIcon} aria-hidden="true" />
+                              {order.tableLabel ?? "Masa —"}
+                            </span>
                             <span className={styles.orderNumber}>#{order.orderNumber ?? "—"}</span>
                           </div>
                           <span className={styles.orderTotal}>{formatPriceMinorUnits(order.totalMinorUnits)}</span>
@@ -358,6 +404,7 @@ export default function CashierDashboardPage() {
                         ) : (
                           <div className={styles.cardActions}>
                             <Button disabled={pendingOrderId === order.orderId} onClick={() => handleAccept(order.orderId)}>
+                              <Check size={16} aria-hidden="true" />
                               Kabul Et
                             </Button>
                             <Button
@@ -365,6 +412,7 @@ export default function CashierDashboardPage() {
                               disabled={pendingOrderId === order.orderId}
                               onClick={() => setRejectingOrderId(order.orderId)}
                             >
+                              <X size={16} aria-hidden="true" />
                               Reddet
                             </Button>
                           </div>
@@ -376,24 +424,40 @@ export default function CashierDashboardPage() {
               )}
             </section>
 
-            <section className={styles.section}>
-              <h2 className={styles.sectionTitle}>Hazırlanıyor</h2>
+            <section className={`${styles.column} ${styles["column--preparing"]}`}>
+              <header className={styles.columnHeader}>
+                <span className={styles.columnIcon} aria-hidden="true">
+                  <ChefHat size={16} />
+                </span>
+                <h2 className={styles.columnTitle}>Hazırlanıyor</h2>
+                <span className={styles.columnCount}>{inProgressOrders.length}</span>
+              </header>
               {inProgressOrders.length === 0 ? (
-                <EmptyState title="Hazırlanan sipariş yok" description="Kabul edilen siparişler burada görünecek." />
+                <EmptyState
+                  icon={<ChefHat size={28} aria-hidden="true" />}
+                  title="Hazırlanan sipariş yok"
+                  description="Kabul edilen siparişler burada görünecek."
+                />
               ) : (
-                <div className={styles.grid}>
+                <div className={styles.columnBody}>
                   {inProgressOrders.map((order) => {
                     const urgency = waitingUrgency(order.statusSince, now);
                     return (
                       <article key={order.orderId} className={[styles.card, styles[`card--${urgency}`]].join(" ")}>
                         <div className={styles.cardHeader}>
                           <div className={styles.cardHeaderMain}>
-                            <span className={styles.tableLabel}>{order.tableLabel ?? "Masa —"}</span>
+                            <span className={styles.tableLabel}>
+                              <UtensilsCrossed size={14} className={styles.tableLabelIcon} aria-hidden="true" />
+                              {order.tableLabel ?? "Masa —"}
+                            </span>
                             <span className={styles.orderNumber}>#{order.orderNumber ?? "—"}</span>
                           </div>
-                          <Badge tone={WAITING_BADGE_TONE[urgency]}>{formatElapsedMinutes(order.statusSince, now)}</Badge>
+                          <span className={styles.orderTotal}>{formatPriceMinorUnits(order.totalMinorUnits)}</span>
                         </div>
-                        <span className={styles.orderTotal}>{formatPriceMinorUnits(order.totalMinorUnits)}</span>
+
+                        <div className={styles.cardMeta}>
+                          <Badge tone={WAITING_BADGE_TONE[urgency]}>{formatElapsedMinutes(order.statusSince, now)} bekliyor</Badge>
+                        </div>
 
                         {order.items.map((item) => (
                           <div key={item.id} className={styles.item}>
@@ -406,6 +470,7 @@ export default function CashierDashboardPage() {
 
                         <div className={styles.cardActions}>
                           <Button disabled={readyingOrderId === order.orderId} onClick={() => handleMarkReady(order.orderId)}>
+                            <BellRing size={16} aria-hidden="true" />
                             Hazır
                           </Button>
                         </div>
@@ -416,22 +481,38 @@ export default function CashierDashboardPage() {
               )}
             </section>
 
-            <section className={styles.section}>
-              <h2 className={styles.sectionTitle}>Hazır · Teslim Bekliyor</h2>
+            <section className={`${styles.column} ${styles["column--ready"]}`}>
+              <header className={styles.columnHeader}>
+                <span className={styles.columnIcon} aria-hidden="true">
+                  <BellRing size={16} />
+                </span>
+                <h2 className={styles.columnTitle}>Hazır · Teslim Bekliyor</h2>
+                <span className={styles.columnCount}>{readyOrders.length}</span>
+              </header>
               {readyOrders.length === 0 ? (
-                <EmptyState title="Teslim bekleyen sipariş yok" description="Hazırlanan siparişler burada görünecek." />
+                <EmptyState
+                  icon={<BellRing size={28} aria-hidden="true" />}
+                  title="Teslim bekleyen sipariş yok"
+                  description="Hazırlanan siparişler burada görünecek."
+                />
               ) : (
-                <div className={styles.grid}>
+                <div className={styles.columnBody}>
                   {readyOrders.map((order) => (
-                    <article key={order.orderId} className={styles.card}>
+                    <article key={order.orderId} className={`${styles.card} ${styles["card--ready"]}`}>
                       <div className={styles.cardHeader}>
                         <div className={styles.cardHeaderMain}>
-                          <span className={styles.tableLabel}>{order.tableLabel ?? "Masa —"}</span>
+                          <span className={styles.tableLabel}>
+                            <UtensilsCrossed size={14} className={styles.tableLabelIcon} aria-hidden="true" />
+                            {order.tableLabel ?? "Masa —"}
+                          </span>
                           <span className={styles.orderNumber}>#{order.orderNumber ?? "—"}</span>
                         </div>
+                        <span className={styles.orderTotal}>{formatPriceMinorUnits(order.totalMinorUnits)}</span>
+                      </div>
+
+                      <div className={styles.cardMeta}>
                         <Badge tone="success">Hazır</Badge>
                       </div>
-                      <span className={styles.orderTotal}>{formatPriceMinorUnits(order.totalMinorUnits)}</span>
 
                       {order.items.map((item) => (
                         <div key={item.id} className={styles.item}>
@@ -444,6 +525,7 @@ export default function CashierDashboardPage() {
 
                       <div className={styles.cardActions}>
                         <Button disabled={completingOrderId === order.orderId} onClick={() => handleComplete(order.orderId)}>
+                          <Send size={16} aria-hidden="true" />
                           Teslim Edildi / Tamamlandı
                         </Button>
                       </div>
@@ -452,7 +534,7 @@ export default function CashierDashboardPage() {
                 </div>
               )}
             </section>
-          </>
+          </div>
         )}
       </main>
     </AppShell>

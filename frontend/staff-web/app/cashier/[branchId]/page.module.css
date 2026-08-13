@@ -1,20 +1,30 @@
 .page {
   min-height: 100%;
   padding: var(--space-5);
-  max-width: var(--container-width-desktop);
+  max-width: var(--container-width-kiosk);
   margin: 0 auto;
 }
 
 .header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
   margin-bottom: var(--space-6);
 }
 
 .title {
-  font-size: var(--font-size-xl);
-  font-weight: var(--font-weight-bold);
+  font-family: var(--font-family-display);
+  font-size: var(--font-size-2xl);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
 }
 
 .connectionStatus {
@@ -22,7 +32,11 @@
   align-items: center;
   gap: var(--space-2);
   font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
   color: var(--color-fg-muted);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-full);
+  background: var(--color-surface);
 }
 
 .connectionDot {
@@ -37,8 +51,8 @@
   background: var(--color-success);
 }
 
-/* A quiet pulse on the live dot - same "happening now" signal as the customer-web order
- * tracking timeline (Adım 2 Tasarım Yenilemesi), reused here rather than invented anew. */
+/* "Şu an oluyor" sinyali - customer-web sipariş takip zaman çizelgesinden ödünç alınan
+ * aynı yumuşak halka pulse'ı (Adım 4 Tasarım Yenilemesi'nden beri kullanılan dil). */
 .connectionDot--live::after {
   content: "";
   position: absolute;
@@ -63,81 +77,195 @@
   background: var(--color-warning);
 }
 
-.headerActions {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-4);
+.navLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-fg-muted);
+  text-decoration: none;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-border);
+  transition:
+    color var(--transition-fast),
+    border-color var(--transition-fast);
 }
 
-.navLink {
-  font-size: var(--font-size-sm);
-  color: var(--color-fg);
-  text-decoration: underline;
+.navLink:hover {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
 }
 
 .loading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   font-size: var(--font-size-sm);
   color: var(--color-fg-muted);
+  padding: var(--space-8) 0;
 }
 
-.financialSummary {
+.loadingSpinner {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.kpiStrip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+
+.kpiCard {
   display: flex;
-  gap: var(--space-5);
-  margin-bottom: var(--space-5);
-  padding: var(--space-3) var(--space-4);
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
   background: var(--color-surface-raised);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
 }
 
-.financialSummaryItem {
+.kpiIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+  color: var(--color-primary);
+}
+
+.kpiBody {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: 2px;
+  min-width: 0;
 }
 
-.financialSummaryLabel {
+.kpiLabel {
   font-size: var(--font-size-xs);
   color: var(--color-fg-muted);
 }
 
-.financialSummaryValue {
+.kpiValue {
   font-family: var(--font-family-display);
-  font-size: var(--font-size-lg);
+  font-size: var(--font-size-xl);
   font-weight: var(--font-weight-bold);
-  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
 }
 
-.section {
-  margin-bottom: var(--space-6);
+/* Üç durumu (Onay Bekleyen / Hazırlanıyor / Hazır) tek bakışta ayırt ettiren kanban board -
+ * her sütun kendi --column-accent'ini taşır, geniş ekranda yan yana durur. */
+.board {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-5);
+  align-items: start;
 }
 
-.sectionTitle {
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-semibold);
+.column {
+  --column-accent: var(--color-fg-muted);
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  border-top: 3px solid var(--column-accent);
+  padding: var(--space-4);
+}
+
+.column--pending {
+  --column-accent: var(--color-primary);
+}
+
+.column--preparing {
+  --column-accent: var(--color-warning);
+}
+
+.column--ready {
+  --column-accent: var(--color-success);
+}
+
+.columnHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   margin-bottom: var(--space-4);
 }
 
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+.columnIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--column-accent) 16%, transparent);
+  color: var(--column-accent);
+}
+
+.columnTitle {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-family-display);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-bold);
+}
+
+.columnCount {
+  font-family: var(--font-family-display);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+  color: var(--column-accent);
+  background: color-mix(in srgb, var(--column-accent) 14%, transparent);
+  padding: 2px var(--space-3);
+  border-radius: var(--radius-full);
+}
+
+.columnBody {
+  display: flex;
+  flex-direction: column;
   gap: var(--space-4);
 }
 
+/* Adisyon/fiş kartı - zarif tutulan tek dekoratif detay üstteki ince tırtık çizgisi;
+ * geri kalan her şey (spacing, kontrast, hiyerarşi) operasyonel okunabilirliği önceliklendirir. */
 .card {
+  --card-edge-color: var(--color-primary);
   position: relative;
   background: var(--color-surface-raised);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   padding: var(--space-4);
   padding-left: calc(var(--space-4) + var(--space-2));
+  padding-top: calc(var(--space-4) + 5px);
   box-shadow: var(--shadow-sm);
 }
 
-/* Tide edge: a rising accent bar on the card's left edge, echoing the AppShell sidebar's
- * "tide marker" (Adım 3 Tasarım Yenilemesi) but here its height carries meaning - it
- * grows and shifts from calm teal to amber to red as an order's wait time crosses the
- * same thresholds as the badge above it, so urgency reads at a glance before any text. */
+.card::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: var(--space-5);
+  right: var(--space-4);
+  height: 1px;
+  background-image: repeating-linear-gradient(90deg, var(--color-border-strong) 0 6px, transparent 6px 12px);
+}
+
+/* Bekleme süresi arttıkça uzayan/koyulaşan sol kenar - "tide edge" imzasının (Adım 4
+ * Tasarım Yenilemesi) sıcak kimlikte devamı, urgency mantığı hiç değişmedi. */
 .card::before {
   content: "";
   position: absolute;
@@ -146,25 +274,33 @@
   width: 4px;
   height: 28px;
   border-radius: var(--radius-full);
-  background: linear-gradient(180deg, var(--color-primary) 0%, var(--color-primary-strong) 100%);
+  background: linear-gradient(180deg, var(--card-edge-color) 0%, color-mix(in srgb, var(--card-edge-color) 65%, black) 100%);
   transition:
     height var(--transition-base),
     background var(--transition-base);
 }
 
+.card--warning {
+  --card-edge-color: var(--color-warning);
+}
+
 .card--warning::before {
   height: 56px;
-  background: linear-gradient(180deg, var(--color-warning) 0%, color-mix(in srgb, var(--color-warning) 65%, black) 100%);
+}
+
+.card--danger {
+  --card-edge-color: var(--color-danger);
 }
 
 .card--danger::before {
   height: 84px;
-  background: linear-gradient(180deg, var(--color-danger) 0%, color-mix(in srgb, var(--color-danger) 65%, black) 100%);
 }
 
-/* Section 6: "gecikmiş/kritik olarak belirgin şekilde işaretlensin" - danger tier'ın tide
- * edge'i zaten kırmızı, ama kritik siparişler ayrıca kartın tamamında yumuşak bir kırmızı
- * glow ile nabız atar, böylece kasa gözünü kartlar arasında gezdirirken bile fark eder. */
+.card--ready {
+  --card-edge-color: var(--color-success);
+}
+
+/* Section 6: kritik siparişler kartın tamamında yumuşak bir kırmızı glow ile nabız atar. */
 .card--critical {
   border-color: var(--color-danger);
   animation: critical-order-pulse 2s ease-in-out infinite;
@@ -184,34 +320,51 @@
   display: flex;
   align-items: baseline;
   justify-content: space-between;
+  gap: var(--space-2);
   margin-bottom: var(--space-3);
   padding-bottom: var(--space-3);
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px dashed var(--color-border-strong);
 }
 
 .cardHeaderMain {
   display: flex;
   align-items: baseline;
   gap: var(--space-2);
+  min-width: 0;
 }
 
 .tableLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-family-display);
   font-size: var(--font-size-lg);
   font-weight: var(--font-weight-bold);
 }
 
-.orderNumber {
-  font-size: var(--font-size-sm);
+.tableLabelIcon {
   color: var(--color-fg-muted);
+  flex-shrink: 0;
+}
+
+.orderNumber {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--font-size-xs);
+  color: var(--color-fg-muted);
+  letter-spacing: 0.02em;
 }
 
 .orderTotal {
-  font-size: var(--font-size-sm);
-  color: var(--color-fg-muted);
+  flex-shrink: 0;
+  font-family: var(--font-family-display);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-bold);
+  font-variant-numeric: tabular-nums;
 }
 
 .cardMeta {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2);
   margin-bottom: var(--space-3);
 }
@@ -233,6 +386,7 @@
 
 .cardActions {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2);
   margin-top: var(--space-4);
 }
@@ -240,9 +394,14 @@
 .rejectForm {
   margin-top: var(--space-3);
   padding-top: var(--space-3);
-  border-top: 1px solid var(--color-border);
+  border-top: 1px dashed var(--color-border-strong);
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
 }
 
+@media (max-width: 1099px) {
+  .board {
+    grid-template-columns: 1fr;
+  }
+}
