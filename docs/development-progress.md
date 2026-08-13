@@ -1496,7 +1496,7 @@ hata yok. Test sonunda seed edilen sipariş/masa ziyareti/anonim oturum satırla
 `infra-staff-web-1` container'ı yeniden başlatıldı. Işık temasında ayrı doğrulama yapılmadı (Adım 1/2/3
 ile aynı düşük-risk gerekçesi). Backend değişikliği yok.
 
-## UI/UX Productization Gate — Adım 5 Tasarım Yenilemesi: admin CRUD component library — 🔄 Tasarım tamamlandı, uygulama sürüyor
+## UI/UX Productization Gate — Adım 5 Tasarım Yenilemesi: admin CRUD component library — ✅ COMPLETED
 
 Gate'in "Cross-cutting" sırasının 5. adımı (admin CRUD component refactor). Adım 5'in işlevsel kapsamı
 (PageHeader/Table/TableSkeleton/Dialog/ConfirmDialog/EmptyState/ErrorState + Toast'un ~9 admin sayfası +
@@ -1528,7 +1528,22 @@ diliyle tutarlı hale geliyor. `PageHeader`/`EmptyState`/`ErrorState`/`Toast` bi
 zaten Adım 1'in token cascade'iyle display font + renk kimliğini taşıyorlar, ek bir öğe Chanel prensibini
 ihlal eder.
 
-**Uygulama planı:** (1) `Dialog.module.css`'e `.dialog::before` ile gradient şerit + `.danger::before`
-override, `Dialog.tsx`'e `tone` prop; (2) `ConfirmDialog.tsx`'te bu prop'u `Dialog`'a ilet; (3)
-`Table.module.css`'e hover kuralı; (4) `npx tsc --noEmit` + `npx eslint .` + `npm run build`; (5) canlı
-Chrome testi (bir admin sayfasında dialog + confirm dialog + table hover).
+**Uygulanan değişiklikler:** `Dialog.module.css`'e `.dialog::before` ile 3px gradient şerit (`--color-primary`
+→ `--color-primary-strong`) + `.danger::before` override (`--color-danger` → `color-mix(... 65% black)`);
+`Dialog.tsx`'e opsiyonel `tone?: "default" | "danger"` prop'u (yalnızca `danger` iken `.danger` class'ı
+eklenir, `default` hiçbir ek class geçmez - boş bir CSS kuralı icat edilmedi); `ConfirmDialog.tsx` kendi
+`tone` prop'unu `Dialog`'a `tone={tone}` ile iletiyor. `Table.module.css`'e `tbody tr:hover` kuralı: inset
+`box-shadow` ile 2px `--color-primary` sol kenar + `color-mix()` ile %5 tint zemin (layout shift'e yol
+açan `border` yerine `box-shadow` seçildi).
+
+**Doğrulama:** `npx tsc --noEmit` + `npx eslint .` + `npm run build` (staff-web) temiz - 13 route, hepsi
+sorunsuz derlendi. Canlı Chrome testi yapıldı: `infra-staff-web-1` container'ı geçici durdurulup yerine
+`npx next dev -p 3002` başlatıldı, `/internal/businesses/{id}/staff-users` bootstrap endpoint'iyle geçici
+bir `BUSINESS_ADMIN` test hesabı (`design-verify@qrmenu.local`, "Test Restoran") oluşturuldu. `/staff`
+sayfasında: (1) tablo satırı hover'da sol kenar tide-marker accent + zemin tint'i doğru render edildi, (2)
+"+ Personel Ekle" ile açılan rutin `Dialog`'da üst kenarda sakin cyan gate stripe, (3) "Devre Dışı Bırak"
+ile açılan `ConfirmDialog tone="danger"`'da aynı üst kenarın kırmızıya döndüğü görsel olarak doğrulandı -
+iki ton net bir şekilde ayrışıyor, konsolda hata yok. Test sonunda test hesabı + session'ı DB'den silindi,
+yerel `next dev` kapatıldı, `infra-staff-web-1` container'ı yeniden başlatıldı. Işık temasında ayrı
+doğrulama yapılmadı (Adım 1-4 ile aynı düşük-risk gerekçesi - yalnızca mevcut `--color-*` token'ları
+kullanıldı). Backend değişikliği yok.
