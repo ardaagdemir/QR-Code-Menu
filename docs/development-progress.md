@@ -1326,7 +1326,7 @@ doğrulandı. Backend değişikliği yok.
 
 ---
 
-## UI/UX Productization Gate — Adım 7 Tasarım Yenilemesi: responsive/erişilebilirlik doğrulama geçişi — 🔄 Tasarım tamamlandı, uygulama sürüyor
+## UI/UX Productization Gate — Adım 7 Tasarım Yenilemesi: responsive/erişilebilirlik doğrulama geçişi — ✅ COMPLETED
 
 Gate'in "Cross-cutting" sırasının son adımı. Adım 7'nin işlevsel kapsamı (responsive/erişilebilirlik/
 Chrome E2E - bkz. yukarıdaki "Adım 7: Responsive/Accessibility/Browser E2E Pass") kendi başına yeni bir
@@ -1363,6 +1363,50 @@ staff-web 768-1023px ve <768px'te tide marker/table hover/BarList overflow; (4) 
 Dialog gate stripe klavye focus + KDS 1920px tide-edge hizası; (5) bulgu çıkarsa düzelt, çıkmazsa yalnızca
 doğrulama sonucu logla; (6) `npx tsc --noEmit` + `npx eslint .` + `npm run build` (her iki app, yalnızca
 kod değişikliği olduysa).
+
+**Test ortamı:** `docker compose up -d --build customer-web staff-web` ile iki container da Adım 6 Tasarım
+Yenilemesi commit'lerini yansıtacak şekilde yeniden build edilip ayağa kaldırıldı (container'lar Adım 6'nın
+commit'lerinden daha eskiydi). `/internal/businesses/{id}/staff-users` bootstrap endpoint'iyle geçici bir
+`BUSINESS_ADMIN` test hesabı (`design-verify-a7@qrmenu.local`, "Test Restoran") oluşturuldu; customer-web
+için DB'den gerçek bir QR token bulundu. Dar viewport'lar için (Adım 7'nin orijinal metodolojisiyle aynı)
+sayfa içine enjekte edilen bağımsız `<iframe>`'ler kullanıldı; kiosk genişliği (1920px) için de aynı
+yöntem - gerçek pencere bu ortamda ~1512px ile sınırlı kaldığından.
+
+**Bulgular - hepsi doğrulandı, hiçbir imza öğesinde kırılma yok:**
+1. **Tide line + ProductCard/CategoryNav accents** (Adım 2) - customer-web 390px'te menüden tam bir
+   sipariş akışı (menü → ürün detay → sepet → mock ödeme → sipariş takip) uçtan uca koşturuldu, her
+   adımda `scrollWidth <= clientWidth` doğrulandı (overflow yok), tüm CTA'lar erişilebilir kaldı.
+2. **Timeline pulse** (Adım 2) - sipariş takip sayfasında "İşletme onayı" (mevcut adım) marker'ının pulse
+   halkası 390px'te doğru render edildi. `globals.css`'teki blanket `prefers-reduced-motion: reduce` kuralı
+   (`* { animation-duration: 0.001ms !important; }`) Adım 2-6'daki hiçbir değişiklikle dokunulmamış halde
+   duruyor - OS seviyesinde gerçek toggle bu ortamda emüle edilemedi (araç seti bunu desteklemiyor), statik
+   doğrulamayla yetinildi.
+3. **Tide marker** (Adım 3) - 900px genişlikte (768-1023 aralığı) sidebar hamburger ikonuna daralıyor,
+   tıklanınca backdrop'lu bir drawer açılıyor ve aktif "Dashboard" linkinde tide marker + tint doğru
+   render ediliyor; 414px'te dashboard/personel/reports sayfaları tek kolona düşüyor, sayfa genelinde
+   overflow yok (`scrollWidth === clientWidth === 412px` ölçüldü).
+4. **Table row hover tide-marker + tide bar** (Adım 5/6) - 414px'te `/staff` tablosu kendi
+   `overflow-x: auto` wrapper'ı sayesinde sayfa overflow'una yol açmadan yatay kaydırılabiliyor (bilinen/
+   mevcut pattern); `/reports`'ta tide bar ve `DateRangePresets` aktif pili 414px'te de doğru render edildi.
+5. **Gate stripe** (Adım 5) - `/staff` sayfasında "+ Personel Ekle" (`Dialog`, rutin ton) ve "Devre Dışı
+   Bırak" (`ConfirmDialog tone="danger"`) açılıp klavyeyle (`Tab`) alan alan gezinildi - odak halkası her
+   alanda (input/select/checkbox/buton) görünür kaldı, gate stripe (cyan/kırmızı) dialog'un yuvarlatılmış
+   üst köşelerinde kırpılmadan render edildi.
+6. **Tide-edge + KDS kiosk genişliği** (Adım 4 + Adım 7'nin orijinal `--container-width-kiosk` düzeltmesi)
+   - `/kitchen/{branchId}` sayfası 1920px'lik bir iframe'e yüklendi, `getComputedStyle` ile grid'in
+   `grid-template-columns`'ının 4 sütuna (`390px 390px 390px 390px`) genişlediği doğrulandı (DOM'a geçici
+   kart klonları eklenerek), her klonda tide-edge sol çubuğunun tam yükseklikte ve hizalı kaldığı görsel
+   olarak teyit edildi - Adım 4/7'nin `--container-width-kiosk` düzeltmesi Adım 6 gradient değişikliğiyle
+   çakışmıyor.
+
+**Bulunan ama bu adımın kapsamı dışında olan durum:** `/staff` personel tablosunda önceki bir oturumdan
+kalma `e2e-test@qrmenu.local` test hesabı (orijinal Adım 7'nin bootstrap hesabı) hâlâ DB'de duruyor - o
+oturum temizliği tamamlamamış. Bu adımın kendi test hesabı (`design-verify-a7@qrmenu.local`) ve test
+siparişi (checkout akışıyla oluşan #3 numaralı sipariş, payment/payment_webhook_event/order_item dahil)
+DB'den silindi, ama eski `e2e-test@qrmenu.local` hesabına dokunulmadı - kullanıcıya ayrıca bildirildi.
+
+**Doğrulama:** Kod değişikliği yapılmadı (yalnızca doğrulama), bu yüzden `tsc`/`eslint`/`build` tekrar
+çalıştırılmadı - Adım 6'nın derleme çıktısı hâlâ geçerli. Backend değişikliği yok.
 
 ## UI/UX Productization Gate — Adım 1 Tasarım Yenilemesi: "Tide" kimliği — ✅ COMPLETED
 
