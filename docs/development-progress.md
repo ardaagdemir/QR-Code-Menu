@@ -1365,3 +1365,53 @@ portunda ayrı bir `next dev` başlatıldı, `/` (Personel Girişi) sayfasında 
 focus-ring ve başlık display fontu doğru render edildiği görüldü. Dark-mode (`prefers-color-scheme`)
 paleti de aynı prensiple güncellendi ama PRD 19.1 öncelik sırasına göre (light theme birincil) ek
 doğrulama yapılmadı.
+
+---
+
+## UI/UX Productization Gate — Adım 2 Tasarım Yenilemesi: müşteri sipariş akışı — ✅ COMPLETED
+
+Gate'in "Cross-cutting" sırasının 2. adımı (customer-web productization). Adım 2'nin işlevsel kapsamı
+(emoji placeholder kaldırma, ürün kartı görsel boyutu, sipariş takip timeline'ı, oturum süresi dolma
+ekranı - bkz. yukarıdaki "Adım 2: Customer Web Productization") daha önce tamamlanmıştı, ama Adım 1'in
+"Tide" kimliği yalnızca token katmanına kadar indi - `app/t/[token]` ve `app/order/track/[token]`
+altındaki sayfa-seviyesi component'ler otomatik cascade dışında hiç dokunulmamıştı. Bu adımda
+`frontend-design` skill süreciyle (Adım 1 Tasarım Yenilemesi ile aynı yöntem) bu iki akışın kendi sayfa
+component'lerine (VisitHeader, ProductCard, CategoryNav, OrderStatusTimeline, tracking page) restrained
+bir tasarım geçişi uygulandı. Kapsam yalnızca bu component'lerle sınırlı tutuldu; shared `components/ui/`
+kütüphanesine (Adım 1'in kapsamı) veya `page.tsx` orkestrasyon mantığına dokunulmadı.
+
+**Tasarım kararı - imza öğesi:** QR okutulduktan sonra görülen ilk ekran olan `VisitHeader`'a, işletme
+adının altında kısa bir gradient çizgi (`--color-primary` → `--color-primary-strong` → transparent, 56px)
+eklendi - "Tide" (gelgit) kimliğini isim düzeyinden görsel bir imzaya taşıyan tek bilinçli risk. Geri kalan
+her yer kasıtlı olarak sakin bırakıldı (Chanel prensibi - "spend boldness in one place"):
+
+1. **ProductCard** - hover'da `--shadow-sm` derinliği eklendi; görselsiz ürünlerde nötr placeholder artık
+   düz gri değil, `color-mix()` ile hafif camgöbeği tintli bir zemin üzerinde `--color-primary` renginde
+   ikon (placeholder artık "bozuk görsel" değil bilinçli bir öğe gibi okunuyor).
+2. **CategoryNav** - aktif kategori chip'ine `--shadow-sm` eklendi (dokunsal kaldırma hissi).
+3. **OrderStatusTimeline** (sipariş takip - akışın duygusal karşılığı olan an) - mevcut adımın marker'ına
+   yavaş genişleyip solan bir "canlı" pulse halkası eklendi (Bölüm 19.2: "anlamlı durum kartı/timeline/
+   progress pattern'i" - salt statik bir log girdisi değil, şu an gerçekten oluyor hissi). `PAYMENT_FAILED`
+   durumunda pulse devre dışı bırakıldı (kırmızı marker + camgöbeği halka karışmasın diye).
+   `prefers-reduced-motion` zaten globals.css'teki blanket kural ile karşılanıyor, ek kod gerekmedi.
+4. **Sipariş takip başlığı** - `<p>Sipariş No: #N</p>` semantik olarak `<h1>`'e çevrildi; hem doğru
+   doküman hiyerarşisi hem de globals.css'teki `h1,h2,h3{font-family:var(--font-family-display)}`
+   kuralından otomatik olarak display font'u kazandı.
+
+**Bulunan/düzeltilen hata:** `.tideLine` başta `<span>` üzerinde `display: inline` ile bırakılmıştı - inline
+element'ler `width`/`height`'ı yok sayar, bu yüzden ilk canlı testte çizgi hiç görünmedi. `display: block`
+eklenerek düzeltildi; bu, sonraki bir sayfa-seviyesi tasarım geçişinde aynı hatayı tekrarlamamak için not
+edilmeye değer bir CSS tuzağı.
+
+**Doğrulama:** `npm run lint` + `npm run build` (tsc dahil) customer-web'de temiz. Canlı Chrome testi
+yapıldı - bu adımda Docker'ın `infra-customer-web-1` container'ı 3000 portunu (backend CORS'un izin
+verdiği tek origin'lerden biri, `CorsConfig.java`) tuttuğundan, container geçici olarak durdurulup yerine
+`npm run dev -- -p 3000` ile yerel bir sunucu başlatıldı (backend `localhost:8080` Docker'da zaten
+ayaktaydı, DB'den gerçek bir QR token - "Test Restoran" işletmesi, 3 ürün - `psql` ile bulundu). 390x900
+viewport'ta uçtan uca akış doğrulandı: menü (tide-line + kart hover/placeholder tint) → ürün detay bottom
+sheet → sepete ekle → sepet drawer → ödeme (mock) → "Ödeme başarılı" → sipariş takip (h1 başlık + pulse
+halkası görsel olarak zoom ile doğrulandı, adım 2/5 "İşletme onayı" current state'te). Test sonunda
+`infra-customer-web-1` container'ı yeniden başlatıldı, yerel `next dev` kapatıldı. Işık temasında ayrı bir
+doğrulama yapılmadı (Chrome sistem teması dark idi, JS ile `prefers-color-scheme` override edilemiyor) -
+düşük risk kabul edildi çünkü tüm yeni stiller mevcut `--color-*` token'larını kullanıyor (Adım 1'de her
+iki tema için de zaten doğrulanmıştı), hiçbir yeni hardcoded renk eklenmedi. Backend değişikliği yok.
