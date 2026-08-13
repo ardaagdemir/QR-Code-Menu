@@ -14,6 +14,7 @@ import {
   setAddress,
   setBranchTimezone,
   setBusinessHours,
+  setStoreAcceptanceTimeout,
   type Branch,
   type BranchBusinessHoursEntry,
   type DayOfWeek,
@@ -71,10 +72,12 @@ export default function BranchDetailPage() {
   const [branch, setBranch] = useState<Branch | null>(null);
   const [addressInput, setAddressInput] = useState("");
   const [timezoneInput, setTimezoneInput] = useState("");
+  const [timeoutMinutesInput, setTimeoutMinutesInput] = useState("5");
   const [hours, setHours] = useState<BranchBusinessHoursEntry[]>(DAYS_OF_WEEK.map(defaultHoursForDay));
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [savingAddress, setSavingAddress] = useState(false);
   const [savingTimezone, setSavingTimezone] = useState(false);
+  const [savingTimeout, setSavingTimeout] = useState(false);
   const [savingHours, setSavingHours] = useState(false);
 
   function loadTables() {
@@ -103,6 +106,7 @@ export default function BranchDetailPage() {
         setBranch(current);
         setAddressInput(current?.address ?? "");
         setTimezoneInput(current?.timezone ?? "");
+        setTimeoutMinutesInput(current ? String(Math.round(current.storeAcceptanceTimeoutSeconds / 60)) : "5");
         const byDay = Object.fromEntries(hoursList.map((entry) => [entry.dayOfWeek, entry]));
         setHours(DAYS_OF_WEEK.map((day) => byDay[day] ?? defaultHoursForDay(day)));
       } catch {
@@ -142,6 +146,26 @@ export default function BranchDetailPage() {
       showToast("Saat dilimi kaydedilemedi. Geçerli bir IANA saat dilimi kimliği girin (ör. Europe/Istanbul).", "error");
     } finally {
       setSavingTimezone(false);
+    }
+  }
+
+  /** Section 6/27: kasa kabul bekleme timeout'u dakika olarak girilir, backend'e saniye olarak gönderilir. */
+  async function handleSaveTimeout(event: React.FormEvent) {
+    event.preventDefault();
+    const minutes = Number(timeoutMinutesInput);
+    if (!Number.isFinite(minutes) || minutes <= 0) {
+      showToast("Geçerli bir dakika değeri girin (0'dan büyük).", "error");
+      return;
+    }
+    setSavingTimeout(true);
+    try {
+      const updated = await setStoreAcceptanceTimeout(branchId, Math.round(minutes * 60));
+      setBranch(updated);
+      showToast("Kasa kabul bekleme süresi kaydedildi.", "success");
+    } catch {
+      showToast("Kasa kabul bekleme süresi kaydedilemedi.", "error");
+    } finally {
+      setSavingTimeout(false);
     }
   }
 
@@ -249,6 +273,24 @@ export default function BranchDetailPage() {
             </FormField>
             <Button type="submit" disabled={savingTimezone}>
               {savingTimezone ? "Kaydediliyor…" : "Saat Dilimini Kaydet"}
+            </Button>
+          </form>
+
+          <form className={styles.form} onSubmit={handleSaveTimeout}>
+            <FormField label="Kasa Kabul Bekleme Süresi (dakika) - bu süre dolunca sipariş kasa ekranında kritik olarak işaretlenir">
+              {(controlProps) => (
+                <Input
+                  {...controlProps}
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={timeoutMinutesInput}
+                  onChange={(event) => setTimeoutMinutesInput(event.target.value)}
+                />
+              )}
+            </FormField>
+            <Button type="submit" disabled={savingTimeout}>
+              {savingTimeout ? "Kaydediliyor…" : "Bekleme Süresini Kaydet"}
             </Button>
           </form>
 

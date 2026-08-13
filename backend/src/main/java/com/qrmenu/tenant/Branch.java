@@ -55,11 +55,22 @@ public class Branch {
     @Enumerated(EnumType.STRING)
     private DeliveryModel deliveryModel;
 
+    /**
+     * Section 6/27: kasa kabul bekleme süresi - AWAITING_STORE_ACCEPTANCE'ta ne kadar
+     * bekledikten sonra bir sipariş kasa ekranında gecikmiş/kritik işaretlenir.
+     * Yalnızca görsel/işitsel uyarı eşiği; süre dolduğunda otomatik red/refund tetiklenmez.
+     */
+    @Column(name = "store_acceptance_timeout_seconds", nullable = false)
+    private int storeAcceptanceTimeoutSeconds;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    /** Section 6/27: varsayılan kasa kabul bekleme timeout'u - "Varsayılan timeout: 5 dakika". */
+    public static final int DEFAULT_STORE_ACCEPTANCE_TIMEOUT_SECONDS = 300;
 
     protected Branch() {
         // JPA
@@ -71,6 +82,7 @@ public class Branch {
         this.orderingEnabled = orderingEnabled;
         this.address = address;
         this.deliveryModel = deliveryModel;
+        this.storeAcceptanceTimeoutSeconds = DEFAULT_STORE_ACCEPTANCE_TIMEOUT_SECONDS;
         Instant now = Instant.now();
         this.createdAt = now;
         this.updatedAt = now;
@@ -105,6 +117,15 @@ public class Branch {
         this.updatedAt = Instant.now();
     }
 
+    /** Section 6/27: branch bazında configurable - sıfır/negatif değer kabul edilmez. */
+    public void setStoreAcceptanceTimeoutSeconds(int storeAcceptanceTimeoutSeconds) {
+        if (storeAcceptanceTimeoutSeconds <= 0) {
+            throw new IllegalArgumentException("Store acceptance timeout must be positive seconds");
+        }
+        this.storeAcceptanceTimeoutSeconds = storeAcceptanceTimeoutSeconds;
+        this.updatedAt = Instant.now();
+    }
+
     public UUID getId() {
         return id;
     }
@@ -131,6 +152,10 @@ public class Branch {
 
     public DeliveryModel getDeliveryModel() {
         return deliveryModel;
+    }
+
+    public int getStoreAcceptanceTimeoutSeconds() {
+        return storeAcceptanceTimeoutSeconds;
     }
 
     public Instant getCreatedAt() {

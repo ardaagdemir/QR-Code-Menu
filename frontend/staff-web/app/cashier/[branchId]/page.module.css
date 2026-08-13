@@ -124,6 +124,24 @@
   background: linear-gradient(180deg, var(--color-danger) 0%, color-mix(in srgb, var(--color-danger) 65%, black) 100%);
 }
 
+/* Section 6: "gecikmiş/kritik olarak belirgin şekilde işaretlensin" - danger tier'ın tide
+ * edge'i zaten kırmızı, ama kritik siparişler ayrıca kartın tamamında yumuşak bir kırmızı
+ * glow ile nabız atar, böylece kasa gözünü kartlar arasında gezdirirken bile fark eder. */
+.card--critical {
+  border-color: var(--color-danger);
+  animation: critical-order-pulse 2s ease-in-out infinite;
+}
+
+@keyframes critical-order-pulse {
+  0%,
+  100% {
+    box-shadow: var(--shadow-sm);
+  }
+  50% {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-danger) 35%, transparent);
+  }
+}
+
 .cardHeader {
   display: flex;
   align-items: baseline;

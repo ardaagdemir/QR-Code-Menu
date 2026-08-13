@@ -13,5 +13,6 @@ public record OrderControlOrderResponse(
         String rejectionNote,
         String tableLabel,
         Instant statusSince,
+        int storeAcceptanceTimeoutSeconds,
         List<OrderControlOrderItemResponse> items) {
 }

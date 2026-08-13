@@ -13,6 +13,7 @@ import {
   type OrderControlOrder,
 } from "@/lib/api";
 import { formatElapsedMinutes, waitingUrgency } from "@/lib/time";
+import { playCriticalOrderAlert } from "@/lib/alertSound";
 import AppShell from "@/components/layout/AppShell";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
@@ -58,12 +59,33 @@ export default function CashierDashboardPage() {
   const reasonCodeRef = useRef<Record<string, string>>({});
   const noteRef = useRef<Record<string, string>>({});
   const latestRequestIdRef = useRef(0);
+  // Section 6: kritik alarmı sipariş başına yalnızca bir kez çalar - her 15sn'lik "now"
+  // tazelemesinde tekrar tekrar öttürmemek için hangi siparişler için zaten uyarıldığını tutar.
+  const alertedOrderIdsRef = useRef<Set<string>>(new Set());
 
   // Bekleme süresi rozetlerini yalnızca görsel olarak tazeler - yeniden fetch tetiklemez.
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 15000);
     return () => clearInterval(interval);
   }, []);
+
+  // Section 6: "Mümkünse sesli/görsel uyarı verilsin" - bir sipariş kritik eşiği
+  // geçtiğinde (branch'in configurable storeAcceptanceTimeoutSeconds'ı) bir kez sesli uyarı çalar.
+  useEffect(() => {
+    const stillOpenOrderIds = new Set(orders.map((order) => order.orderId));
+    for (const orderId of alertedOrderIdsRef.current) {
+      if (!stillOpenOrderIds.has(orderId)) {
+        alertedOrderIdsRef.current.delete(orderId);
+      }
+    }
+    for (const order of orders) {
+      const urgency = waitingUrgency(order.statusSince, now, order.storeAcceptanceTimeoutSeconds);
+      if (urgency === "danger" && !alertedOrderIdsRef.current.has(order.orderId)) {
+        alertedOrderIdsRef.current.add(order.orderId);
+        playCriticalOrderAlert();
+      }
+    }
+  }, [orders, now]);
 
   async function reloadOrders() {
     const requestId = ++latestRequestIdRef.current;
@@ -181,9 +203,12 @@ export default function CashierDashboardPage() {
         ) : (
           <div className={styles.grid}>
             {orders.map((order) => {
-              const urgency = waitingUrgency(order.statusSince, now);
+              const urgency = waitingUrgency(order.statusSince, now, order.storeAcceptanceTimeoutSeconds);
               return (
-                <article key={order.orderId} className={[styles.card, styles[`card--${urgency}`]].join(" ")}>
+                <article
+                  key={order.orderId}
+                  className={[styles.card, styles[`card--${urgency}`], urgency === "danger" ? styles["card--critical"] : ""].join(" ")}
+                >
                   <div className={styles.cardHeader}>
                     <div className={styles.cardHeaderMain}>
                       <span className={styles.tableLabel}>{order.tableLabel ?? "Masa —"}</span>
@@ -194,7 +219,10 @@ export default function CashierDashboardPage() {
 
                   <div className={styles.cardMeta}>
                     <Badge tone="success">Ödeme Alındı</Badge>
-                    <Badge tone={WAITING_BADGE_TONE[urgency]}>{formatElapsedMinutes(order.statusSince, now)} bekliyor</Badge>
+                    <Badge tone={WAITING_BADGE_TONE[urgency]}>
+                      {urgency === "danger" ? "Kritik · " : ""}
+                      {formatElapsedMinutes(order.statusSince, now)} bekliyor
+                    </Badge>
                   </div>
 
                   {order.items.map((item) => (

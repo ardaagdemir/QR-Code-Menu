@@ -25,6 +25,7 @@ import com.qrmenu.tenant.web.dto.SetBranchBusinessHoursRequest;
 import com.qrmenu.tenant.web.dto.SetBranchTimezoneRequest;
 import com.qrmenu.tenant.web.dto.SetDeliveryModelRequest;
 import com.qrmenu.tenant.web.dto.SetOrderingEnabledRequest;
+import com.qrmenu.tenant.web.dto.SetStoreAcceptanceTimeoutRequest;
 import com.qrmenu.tenant.web.dto.TableResponse;
 import com.qrmenu.tenant.web.dto.UpdateBusinessContactRequest;
 import com.qrmenu.tenant.web.dto.UpdateBusinessSettingsRequest;
@@ -147,6 +148,17 @@ public class StaffTenantController {
         return ResponseEntity.ok(toResponse(branch));
     }
 
+    @PostMapping("/branches/{branchId}/store-acceptance-timeout")
+    public ResponseEntity<BranchResponse> setStoreAcceptanceTimeout(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
+            @PathVariable UUID branchId,
+            @Valid @RequestBody SetStoreAcceptanceTimeoutRequest request) {
+        StaffContext context = resolveContext(sessionCookie, Permission.BRANCH_MANAGE);
+        Branch branch = tenantService.setStoreAcceptanceTimeoutSeconds(
+                context.businessId(), branchId, request.timeoutSeconds(), context.staffUserId());
+        return ResponseEntity.ok(toResponse(branch));
+    }
+
     @PostMapping("/branches/{branchId}/ordering-enabled")
     public ResponseEntity<BranchResponse> setOrderingEnabled(
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
@@ -244,7 +256,7 @@ public class StaffTenantController {
     private BranchResponse toResponse(Branch branch) {
         return new BranchResponse(
                 branch.getId(), branch.getBusinessId(), branch.getName(), branch.isOrderingEnabled(), branch.getAddress(),
-                branch.getTimezone(), branch.getDeliveryModel().name());
+                branch.getTimezone(), branch.getDeliveryModel().name(), branch.getStoreAcceptanceTimeoutSeconds());
     }
 
     private BusinessResponse toResponse(Business business) {

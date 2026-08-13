@@ -86,7 +86,7 @@ class InternalTenantController {
     private BranchResponse toResponse(Branch branch) {
         return new BranchResponse(
                 branch.getId(), branch.getBusinessId(), branch.getName(), branch.isOrderingEnabled(), branch.getAddress(),
-                branch.getTimezone(), branch.getDeliveryModel().name());
+                branch.getTimezone(), branch.getDeliveryModel().name(), branch.getStoreAcceptanceTimeoutSeconds());
     }
 
     private TableResponse toResponse(RestaurantTable table) {

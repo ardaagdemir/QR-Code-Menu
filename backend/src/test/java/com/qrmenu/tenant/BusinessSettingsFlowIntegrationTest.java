@@ -128,6 +128,53 @@ class BusinessSettingsFlowIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void newBranchDefaultsToFiveMinuteStoreAcceptanceTimeout() throws Exception {
+        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Timeout Default Business");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
+        String staffCookie =
+                StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, "settings-admin-7@example.com");
+
+        JsonNode branch = objectMapper.readTree(mockMvc.perform(get("/api/staff/branches")
+                        .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, staffCookie)))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString())
+                .get(0);
+        assertThat(branch.get("id").asText()).isEqualTo(branchId);
+        assertThat(branch.get("storeAcceptanceTimeoutSeconds").asInt()).isEqualTo(300);
+    }
+
+    @Test
+    void businessAdminCanUpdateStoreAcceptanceTimeout() throws Exception {
+        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Timeout Business");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
+        String staffCookie =
+                StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, "settings-admin-8@example.com");
+
+        mockMvc.perform(post("/api/staff/branches/{branchId}/store-acceptance-timeout", branchId)
+                        .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, staffCookie))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"timeoutSeconds\":600}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.storeAcceptanceTimeoutSeconds", 600));
+    }
+
+    @Test
+    void zeroOrNegativeStoreAcceptanceTimeoutIsRejected() throws Exception {
+        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Bad Timeout Business");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
+        String staffCookie =
+                StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, "settings-admin-9@example.com");
+
+        mockMvc.perform(post("/api/staff/branches/{branchId}/store-acceptance-timeout", branchId)
+                        .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, staffCookie))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"timeoutSeconds\":0}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void businessAdminCanCreateListAndUpdateBusinessContacts() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Contacts Business");
         String staffCookie =

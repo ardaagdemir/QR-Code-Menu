@@ -47,6 +47,8 @@ class OrderControlFlowIntegrationTest extends AbstractIntegrationTest {
         // Bölüm 19.3 kasa kartı: masa etiketi ve "ne kadar süredir bekliyor" zaman damgası.
         assertThat(pending.get(0).get("tableLabel").asText()).isEqualTo("Masa 1");
         assertThat(pending.get(0).get("statusSince").asText()).isNotBlank();
+        // Section 6/27: branch'in configurable kasa kabul timeout'u - varsayılan 5 dakika.
+        assertThat(pending.get(0).get("storeAcceptanceTimeoutSeconds").asInt()).isEqualTo(300);
 
         mockMvc.perform(post("/api/staff/branches/{branchId}/orders/{orderId}/accept", branchId, orderId).cookie(cashierCookie(cashierCookie)))
                 .andExpect(status().isOk())
@@ -61,6 +63,30 @@ class OrderControlFlowIntegrationTest extends AbstractIntegrationTest {
                 .isEmpty();
         mockMvc.perform(get("/api/kitchen/branches/{branchId}/orders", branchId).cookie(cashierCookie(cashierCookie)))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void pendingAcceptanceReflectsTheBranchsConfiguredTimeout() throws Exception {
+        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Timeout Order Business");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
+        String adminCookie =
+                StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, "timeout-admin@example.com");
+        mockMvc.perform(post("/api/staff/branches/{branchId}/store-acceptance-timeout", branchId)
+                        .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, adminCookie))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"timeoutSeconds\":600}"))
+                .andExpect(status().isOk());
+
+        String tableId = TenantFixtures.createTable(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, "Masa 1");
+        String qrToken = TenantFixtures.createQrToken(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, tableId);
+        payAndAwaitStoreAcceptance(businessId, branchId, qrToken, "Kahve", 3000, 1);
+
+        JsonNode pending = objectMapper.readTree(mockMvc.perform(pendingGet(branchId, adminCookie))
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString());
+        assertThat(pending.get(0).get("storeAcceptanceTimeoutSeconds").asInt()).isEqualTo(600);
     }
 
     @Test

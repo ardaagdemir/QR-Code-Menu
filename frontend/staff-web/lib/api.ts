@@ -200,6 +200,7 @@ export type OrderControlOrder = {
   rejectionNote: string | null;
   tableLabel: string | null;
   statusSince: string;
+  storeAcceptanceTimeoutSeconds: number;
   items: OrderControlItem[];
 };
 
@@ -242,6 +243,7 @@ export type Branch = {
   address: string | null;
   timezone: string | null;
   deliveryModel: DeliveryModel;
+  storeAcceptanceTimeoutSeconds: number;
 };
 
 export async function listBranches(): Promise<Branch[]> {
@@ -277,6 +279,14 @@ export async function setBranchTimezone(branchId: string, timezone: string | nul
   return apiFetch(`/api/staff/branches/${encodeURIComponent(branchId)}/timezone`, {
     method: "POST",
     body: JSON.stringify({ timezone }),
+  });
+}
+
+/** Section 6/27: kasa kabul bekleme timeout'u (saniye) - branch bazında configurable. */
+export async function setStoreAcceptanceTimeout(branchId: string, timeoutSeconds: number): Promise<Branch> {
+  return apiFetch(`/api/staff/branches/${encodeURIComponent(branchId)}/store-acceptance-timeout`, {
+    method: "POST",
+    body: JSON.stringify({ timeoutSeconds }),
   });
 }
 
@@ -701,6 +711,8 @@ export type BranchSalesReport = {
   rejectedOrderCount: number;
   averageOrderValueMinorUnits: number;
   tableVisitCount: number;
+  guestCountTotal: number;
+  guestCountRecordedVisitCount: number;
   productBreakdown: ProductSalesRow[];
   categoryBreakdown: CategorySalesRow[];
   hourlyDistribution: HourlySalesRow[];

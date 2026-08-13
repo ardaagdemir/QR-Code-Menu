@@ -209,6 +209,29 @@ public class TenantService {
         return branch;
     }
 
+    /** Section 6/27: kasa kabul bekleme timeout'u - BUSINESS_ADMIN/BRANCH_MANAGER değiştirebilir. */
+    @Transactional
+    public Branch setStoreAcceptanceTimeoutSeconds(UUID businessId, UUID branchId, int timeoutSeconds, UUID actorStaffUserId) {
+        Branch branch = branchRepository
+                .findByIdAndBusinessId(branchId, businessId)
+                .orElseThrow(() -> new ResourceNotFoundException("Branch not found for business: " + branchId));
+        branch.setStoreAcceptanceTimeoutSeconds(timeoutSeconds);
+        branchRepository.save(branch);
+        auditService.record(
+                businessId, actorStaffUserId, "Branch", branch.getId(), "STORE_ACCEPTANCE_TIMEOUT_CHANGED",
+                Map.of("timeoutSeconds", timeoutSeconds));
+        return branch;
+    }
+
+    /** Section 10.1 kasa dashboard: siparişin ne zaman gecikmiş/kritik sayılacağını belirleyen branch ayarı. */
+    @Transactional(readOnly = true)
+    public int getStoreAcceptanceTimeoutSeconds(UUID branchId) {
+        return branchRepository
+                .findById(branchId)
+                .orElseThrow(() -> new ResourceNotFoundException("Branch not found: " + branchId))
+                .getStoreAcceptanceTimeoutSeconds();
+    }
+
     /** Section 12.3: bir işletmenin birden fazla sahibi/rapor alıcısı olabilir. */
     @Transactional
     public BusinessContact createBusinessContact(

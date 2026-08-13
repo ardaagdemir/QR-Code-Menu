@@ -14,6 +14,7 @@ import com.qrmenu.staffaccess.Permission;
 import com.qrmenu.staffaccess.StaffAuthService;
 import com.qrmenu.staffaccess.StaffContext;
 import com.qrmenu.staffaccess.StaffCookieSupport;
+import com.qrmenu.tenant.TenantService;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
@@ -42,11 +43,14 @@ public class OrderControlController {
     private final OrderingService orderingService;
     private final RefundService refundService;
     private final StaffAuthService staffAuthService;
+    private final TenantService tenantService;
 
-    public OrderControlController(OrderingService orderingService, RefundService refundService, StaffAuthService staffAuthService) {
+    public OrderControlController(
+            OrderingService orderingService, RefundService refundService, StaffAuthService staffAuthService, TenantService tenantService) {
         this.orderingService = orderingService;
         this.refundService = refundService;
         this.staffAuthService = staffAuthService;
+        this.tenantService = tenantService;
     }
 
     /** Section 10.1: kasa dashboard'un "yeni ödenmiş/onay bekleyen siparişler" listesi. */
@@ -55,7 +59,10 @@ public class OrderControlController {
             @PathVariable UUID branchId,
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie) {
         requireOrderAccess(sessionCookie, branchId, Permission.ORDER_VIEW);
-        return orderingService.getPendingStoreAcceptanceOrders(branchId).stream().map(OrderControlController::toResponse).toList();
+        int timeoutSeconds = tenantService.getStoreAcceptanceTimeoutSeconds(branchId);
+        return orderingService.getPendingStoreAcceptanceOrders(branchId).stream()
+                .map(view -> toResponse(view, timeoutSeconds))
+                .toList();
     }
 
     @PostMapping("/{orderId}/accept")
@@ -65,7 +72,7 @@ public class OrderControlController {
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie) {
         StaffContext context = requireOrderAccess(sessionCookie, branchId, Permission.ORDER_ACCEPT);
         CustomerOrder order = orderingService.acceptOrder(branchId, orderId, context.staffUserId());
-        return toResponse(order);
+        return toResponse(order, tenantService.getStoreAcceptanceTimeoutSeconds(branchId));
     }
 
     @PostMapping("/{orderId}/reject")
@@ -78,7 +85,7 @@ public class OrderControlController {
         orderingService.rejectOrder(branchId, orderId, request.reasonCode(), request.note(), context.staffUserId());
         refundService.requestFullRefund(branchId, orderId, context.staffUserId());
         CustomerOrder order = orderingService.getOrderInBranch(branchId, orderId);
-        return toResponse(order);
+        return toResponse(order, tenantService.getStoreAcceptanceTimeoutSeconds(branchId));
     }
 
     private StaffContext requireOrderAccess(String sessionCookie, UUID branchId, Permission permission) {
@@ -86,13 +93,13 @@ public class OrderControlController {
     }
 
     /** Accept/reject responses aren't rendered as cards (the frontend just refetches the list afterward), so tableLabel is skipped here. */
-    private static OrderControlOrderResponse toResponse(CustomerOrder order) {
+    private static OrderControlOrderResponse toResponse(CustomerOrder order, int timeoutSeconds) {
         return new OrderControlOrderResponse(
                 order.getId(), order.getOrderNumber(), order.getStatus().name(), order.getTotalMinorUnits(),
-                order.getRejectionReasonCode(), order.getRejectionNote(), null, order.getLastActivityAt(), List.of());
+                order.getRejectionReasonCode(), order.getRejectionNote(), null, order.getLastActivityAt(), timeoutSeconds, List.of());
     }
 
-    private static OrderControlOrderResponse toResponse(KitchenQueueOrderView view) {
+    private static OrderControlOrderResponse toResponse(KitchenQueueOrderView view, int timeoutSeconds) {
         List<OrderControlOrderItemResponse> items = view.items().stream()
                 .map(item -> toItemResponse(item, view.optionsByItemId().getOrDefault(item.getId(), List.of())))
                 .toList();
@@ -105,6 +112,7 @@ public class OrderControlController {
                 view.order().getRejectionNote(),
                 view.tableLabel(),
                 view.order().getLastActivityAt(),
+                timeoutSeconds,
                 items);
     }
 
