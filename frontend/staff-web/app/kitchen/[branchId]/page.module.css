@@ -26,6 +26,7 @@
 }
 
 .connectionDot {
+  position: relative;
   width: 8px;
   height: 8px;
   border-radius: var(--radius-full);
@@ -34,6 +35,28 @@
 
 .connectionDot--live {
   background: var(--color-success);
+}
+
+/* A quiet pulse on the live dot - same "happening now" signal as the customer-web order
+ * tracking timeline (Adım 2 Tasarım Yenilemesi), reused here rather than invented anew. */
+.connectionDot--live::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 1.5px solid var(--color-success);
+  animation: connection-pulse 1.8s ease-out infinite;
+}
+
+@keyframes connection-pulse {
+  0% {
+    opacity: 0.6;
+    transform: scale(0.8);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.6);
+  }
 }
 
 .connectionDot--reconnecting {
@@ -79,8 +102,10 @@
 }
 
 .financialSummaryValue {
+  font-family: var(--font-family-display);
   font-size: var(--font-size-lg);
   font-weight: var(--font-weight-bold);
+  letter-spacing: -0.01em;
 }
 
 .grid {
@@ -90,20 +115,42 @@
 }
 
 .card {
+  position: relative;
   background: var(--color-surface-raised);
   border: 2px solid var(--color-border);
   border-radius: var(--radius-lg);
   padding: var(--space-5);
+  padding-left: calc(var(--space-5) + var(--space-2));
   box-shadow: var(--shadow-sm);
-  transition: border-color var(--transition-base);
 }
 
-.card--warning {
-  border-color: var(--color-warning);
+/* Tide edge: a rising accent bar on the card's left edge, echoing the AppShell sidebar's
+ * "tide marker" (Adım 3 Tasarım Yenilemesi) but here its height carries meaning - it
+ * grows and shifts from calm teal to amber to red as an order's wait time crosses the
+ * same thresholds as the badge above it, so urgency reads at a glance from across the
+ * kitchen before any text does (Bölüm 19.3 KDS "uzaktan okunabilir" gereksinimi). */
+.card::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  width: 5px;
+  height: 32px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(180deg, var(--color-primary) 0%, var(--color-primary-strong) 100%);
+  transition:
+    height var(--transition-base),
+    background var(--transition-base);
 }
 
-.card--danger {
-  border-color: var(--color-danger);
+.card--warning::before {
+  height: 64px;
+  background: linear-gradient(180deg, var(--color-warning) 0%, color-mix(in srgb, var(--color-warning) 65%, black) 100%);
+}
+
+.card--danger::before {
+  height: 96px;
+  background: linear-gradient(180deg, var(--color-danger) 0%, color-mix(in srgb, var(--color-danger) 65%, black) 100%);
 }
 
 .cardHeader {
