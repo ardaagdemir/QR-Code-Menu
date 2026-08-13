@@ -17,14 +17,22 @@
   --color-fg-muted: #8a6f58;
   --color-border: rgba(43, 27, 18, 0.1);
   --color-border-strong: rgba(43, 27, 18, 0.2);
-  --color-primary: #cc5023;
-  --color-primary-strong: #a83d16;
+  /* primary/warning/success buradaki değerler görsel taslaktan (Adım 4/Kasa Redesign)
+   * bilinçli olarak koyulaştırıldı - orijinal daha canlı tonlar kendi %10-16 tint
+   * arka planları üzerinde (Badge/kolon başlığı metni) WCAG AA 4.5:1'in altına
+   * düşüyordu (örn. #C98A1D kendi tint'i üzerinde yalnızca ~2:1). Değerler, hem
+   * beyaz/kart hem de kanban tepsi zemini üzerindeki en kötü durum için 4.5:1'i
+   * geçecek şekilde ikisi karşı da hesaplanarak seçildi - üç durum rengi hâlâ
+   * birbirinden hue olarak net ayrışıyor (kiremit/zeytin-hardal/orman yeşili).
+   */
+  --color-primary: #963b1a;
+  --color-primary-strong: #7c3115;
   --color-primary-fg: #ffffff;
   --color-danger: #b23a2e;
   --color-danger-bg: rgba(178, 58, 46, 0.1);
-  --color-success: #3f7d4e;
+  --color-success: #31623d;
   --color-success-bg: rgba(63, 125, 78, 0.12);
-  --color-warning: #c98a1d;
+  --color-warning: #775111;
   --color-warning-bg: rgba(201, 138, 29, 0.12);
   --color-badge-bg: rgba(43, 27, 18, 0.06);
   --color-overlay: rgba(20, 12, 6, 0.55);
