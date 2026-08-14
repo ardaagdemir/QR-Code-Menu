@@ -1,37 +1,43 @@
 package com.qrmenu.shared.outbox;
 
 import java.util.List;
-import org.springframework.context.ApplicationEventPublisher;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Single-instance @Scheduled poller (Section 2/12: no Kafka/message queue for v1) that
  * republishes unpublished outbox rows as in-process Spring application events. Mirrors
  * OrderCleanupScheduler's shape: package-private @Component, ISO-8601 fixedDelay via
- * @Scheduled, @Transactional method.
+ * @Scheduled. Each row is published via {@link OutboxEventItemPublisher} and isolated
+ * with a try/catch here - a listener throwing for one event is logged and skipped
+ * instead of rolling back markPublished() already committed for events processed
+ * earlier in the same poll cycle, or blocking the rest of the batch from being
+ * published.
  */
 @Component
 class OutboxPollerScheduler {
 
-    private final OutboxEventRepository repository;
-    private final ApplicationEventPublisher applicationEventPublisher;
+    private static final Logger log = LoggerFactory.getLogger(OutboxPollerScheduler.class);
 
-    OutboxPollerScheduler(OutboxEventRepository repository, ApplicationEventPublisher applicationEventPublisher) {
+    private final OutboxEventRepository repository;
+    private final OutboxEventItemPublisher outboxEventItemPublisher;
+
+    OutboxPollerScheduler(OutboxEventRepository repository, OutboxEventItemPublisher outboxEventItemPublisher) {
         this.repository = repository;
-        this.applicationEventPublisher = applicationEventPublisher;
+        this.outboxEventItemPublisher = outboxEventItemPublisher;
     }
 
     @Scheduled(fixedDelayString = "PT10S", initialDelayString = "PT5S")
-    @Transactional
     void publishPendingEvents() {
         List<OutboxEvent> pending = repository.findAllByPublishedAtIsNullOrderByCreatedAtAsc();
         for (OutboxEvent event : pending) {
-            applicationEventPublisher.publishEvent(new OutboxEventPublished(
-                    event.getId(), event.getAggregateType(), event.getAggregateId(), event.getEventType(), event.getPayload()));
-            event.markPublished();
+            try {
+                outboxEventItemPublisher.publishEvent(event.getId());
+            } catch (Exception e) {
+                log.error("Failed to publish outbox event {}; skipping to the next event", event.getId(), e);
+            }
         }
-        repository.saveAll(pending);
     }
 }

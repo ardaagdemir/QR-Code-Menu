@@ -12,6 +12,8 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -24,10 +26,16 @@ import org.springframework.stereotype.Component;
  * {@link BranchBusinessHours} row for today (or marked closed) are skipped - same
  * "unrestricted" default gap-analysis #4 gave a branch with no configured hours; such a
  * branch can still be closed manually via {@link DailyCloseService#generateFinal}.
+ * Each branch is isolated in {@link #generateDueSnapshots} - one branch's failure (bad
+ * timezone string, a transient report-generation error, ...) is logged and skipped so
+ * every other branch still gets its due PREVIEW/FINAL this poll cycle; generatePreview/
+ * generateFinal are independently @Transactional on DailyCloseService, so a failure never
+ * rolls back a branch that already committed earlier in the same loop.
  */
 @Component
 class DailyCloseScheduler {
 
+    private static final Logger log = LoggerFactory.getLogger(DailyCloseScheduler.class);
     private static final Duration PREVIEW_LEAD = Duration.ofMinutes(10);
     private static final Duration FINAL_GRACE = Duration.ofMinutes(5);
 
@@ -48,7 +56,15 @@ class DailyCloseScheduler {
     void generateDueSnapshots() {
         Instant now = Instant.now();
         for (Branch branch : tenantService.listAllBranches()) {
-            processBranch(branch, now);
+            try {
+                processBranch(branch, now);
+            } catch (Exception e) {
+                log.error(
+                        "Daily close snapshot generation failed for branch {} (business {}); skipping to the next branch",
+                        branch.getId(),
+                        branch.getBusinessId(),
+                        e);
+            }
         }
     }
 

@@ -11,7 +11,6 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.event.EventListener;
-import org.springframework.transaction.annotation.Transactional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -25,7 +24,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * context, so RecordingListener filters by this test's own random aggregateId to stay
  * isolated from that noise. RecordingListener is registered via @TestConfiguration/
  * @Import (not @Component) - a plain @Component on a static nested test class is not
- * reliably picked up by the main application's component scan.
+ * reliably picked up by the main application's component scan. Not @Transactional at the
+ * test-method level: OutboxEventItemPublisher uses REQUIRES_NEW per event so each one
+ * commits/rolls back for real (see PaymentTimeoutSchedulerIntegrationTest's class javadoc
+ * for why that's incompatible with a shared test transaction).
  */
 @Import(OutboxPollerSchedulerIntegrationTest.RecordingListenerConfig.class)
 class OutboxPollerSchedulerIntegrationTest extends AbstractIntegrationTest {
@@ -43,7 +45,6 @@ class OutboxPollerSchedulerIntegrationTest extends AbstractIntegrationTest {
     private RecordingListener recordingListener;
 
     @Test
-    @Transactional
     void pendingEventsArePublishedExactlyOnce() {
         UUID aggregateId = UUID.randomUUID();
         writer.write("TestAggregate", aggregateId, "TestEvent", new TestPayload("hello"));
@@ -62,6 +63,37 @@ class OutboxPollerSchedulerIntegrationTest extends AbstractIntegrationTest {
         assertThat(recordingListener.countFor(aggregateId)).isEqualTo(1);
     }
 
+    /**
+     * Production-readiness: one listener throwing for a single event must not roll back
+     * markPublished() already committed for other events processed earlier in the same
+     * poll cycle, and must not stop the remaining pending events from being published.
+     * The failing event itself stays unpublished (its own per-event transaction rolls
+     * back), so it's retried - the same at-least-once semantics the outbox already relies
+     * on, never silently dropped or marked published without actually delivering.
+     */
+    @Test
+    void oneListenerFailureDoesNotBlockOrRollbackOtherPendingEvents() {
+        UUID goodAggregateId = UUID.randomUUID();
+        UUID failingAggregateId = UUID.randomUUID();
+        writer.write("TestAggregate", goodAggregateId, "TestEvent", new TestPayload("good"));
+        writer.write("FailingAggregate", failingAggregateId, "TestEvent", new TestPayload("bad"));
+
+        scheduler.publishPendingEvents();
+
+        assertThat(recordingListener.countFor(goodAggregateId)).isEqualTo(1);
+        List<OutboxEvent> goodStored = repository.findAll().stream()
+                .filter(event -> event.getAggregateId().equals(goodAggregateId))
+                .toList();
+        assertThat(goodStored).hasSize(1);
+        assertThat(goodStored.get(0).getPublishedAt()).isNotNull();
+
+        List<OutboxEvent> failingStored = repository.findAll().stream()
+                .filter(event -> event.getAggregateId().equals(failingAggregateId))
+                .toList();
+        assertThat(failingStored).hasSize(1);
+        assertThat(failingStored.get(0).getPublishedAt()).isNull();
+    }
+
     private record TestPayload(String value) {
     }
 
@@ -78,6 +110,9 @@ class OutboxPollerSchedulerIntegrationTest extends AbstractIntegrationTest {
 
         @EventListener
         void onOutboxEventPublished(OutboxEventPublished event) {
+            if ("FailingAggregate".equals(event.aggregateType())) {
+                throw new RuntimeException("Simulated listener failure for " + event.aggregateId());
+            }
             received.add(event);
         }
 

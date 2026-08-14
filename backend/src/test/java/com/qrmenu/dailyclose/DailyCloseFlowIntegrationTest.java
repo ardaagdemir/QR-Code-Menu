@@ -6,6 +6,7 @@ import com.qrmenu.support.AbstractIntegrationTest;
 import com.qrmenu.support.StaffFixtures;
 import com.qrmenu.support.TenantFixtures;
 import com.qrmenu.support.TenantFixtures.CheckedInVisit;
+import jakarta.persistence.EntityManager;
 import java.io.ByteArrayInputStream;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -17,6 +18,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockCookie;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.transaction.annotation.Transactional;
 
 import static com.qrmenu.support.AbstractIntegrationTest.TEST_ADMIN_TOKEN;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -37,6 +39,9 @@ class DailyCloseFlowIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private DailyCloseService dailyCloseService;
+
+    @Autowired
+    private EntityManager entityManager;
 
     @Test
     void manualFinalComputesFromOrdersAndStaysImmutableAfterward() throws Exception {
@@ -160,6 +165,48 @@ class DailyCloseFlowIntegrationTest extends AbstractIntegrationTest {
         var finalReports = dailyCloseService.listForBranch(java.util.UUID.fromString(finalBranchId), today, today);
         assertThat(finalReports).hasSize(1);
         assertThat(finalReports.get(0).getStatus()).isEqualTo(DailyCloseStatus.FINAL);
+    }
+
+    /**
+     * Production-readiness: a single corrupted branch record must not block the other
+     * branches in the same poll cycle. Simulates a branch whose timezone column drifted
+     * into an invalid IANA id through some other path (Branch.setTimezone validates on
+     * the way in, so no production endpoint can do this - direct SQL only) - ZoneId.of
+     * throws for that one branch, but a second, healthy branch due for FINAL in the same
+     * run must still get its report.
+     */
+    @Test
+    @Transactional
+    void oneBranchWithCorruptedTimezoneDoesNotBlockOtherBranchesSnapshotGeneration() throws Exception {
+        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Close Business 5");
+        String brokenBranchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Broken Şube");
+        String healthyBranchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Healthy Şube");
+        String adminCookie =
+                StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, "close-admin-5@example.com");
+
+        // Both branches close 6 minutes ago (UTC wall-clock, matching schedulerRespectsPreviewLeadAndFinalGraceThresholds).
+        setTodayHours(brokenBranchId, adminCookie, LocalTime.now(ZoneOffset.UTC).minusMinutes(6));
+        setTodayHours(healthyBranchId, adminCookie, LocalTime.now(ZoneOffset.UTC).minusMinutes(6));
+        corruptBranchTimezone(brokenBranchId, "Not/ARealZone");
+
+        scheduler.generateDueSnapshots();
+
+        LocalDate today = LocalDate.now(ZoneOffset.UTC);
+        var healthyReports = dailyCloseService.listForBranch(java.util.UUID.fromString(healthyBranchId), today, today);
+        assertThat(healthyReports).hasSize(1);
+        assertThat(healthyReports.get(0).getStatus()).isEqualTo(DailyCloseStatus.FINAL);
+
+        var brokenReports = dailyCloseService.listForBranch(java.util.UUID.fromString(brokenBranchId), today, today);
+        assertThat(brokenReports).isEmpty();
+    }
+
+    private void corruptBranchTimezone(String branchId, String timezone) {
+        entityManager
+                .createNativeQuery("UPDATE branch SET timezone = ?1 WHERE id = ?2")
+                .setParameter(1, timezone)
+                .setParameter(2, java.util.UUID.fromString(branchId))
+                .executeUpdate();
+        entityManager.clear();
     }
 
     private void setTodayHours(String branchId, String staffCookie, LocalTime closingTime) throws Exception {
