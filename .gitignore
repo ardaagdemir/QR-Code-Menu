@@ -35,3 +35,6 @@ infra/.env.prod
 
 # --- Docker ---
 infra/docker/**/*.local.*
+
+# Production-readiness CRITICAL #4: postgres-backup sidecar / manual backup.sh output.
+infra/backups/

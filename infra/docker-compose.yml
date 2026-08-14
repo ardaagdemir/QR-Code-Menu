@@ -56,6 +56,28 @@ services:
     ports:
       - "8080:8080"
 
+  # Production-readiness CRITICAL #4: periodic pg_dump sidecar, independent of the
+  # "backend" app container - keeps running/backing up even if backend is unhealthy or
+  # redeployed. Dumps land on the host at infra/backups/ (bind-mount, not a named
+  # volume) so they survive `docker compose down -v` and can be copied off-host.
+  postgres-backup:
+    build:
+      context: ./docker/postgres-backup
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-qrmenu}
+      POSTGRES_USER: ${POSTGRES_USER:-qrmenu}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-qrmenu}
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-7}
+    volumes:
+      - ./backups:/backups
+
   # Gap-analysis #11: local SMTP catcher for OwnerNotificationPort's email adapter - no
   # real mailbox needed in dev, sent mail is viewable at http://localhost:8025.
   mailhog:
@@ -106,3 +128,5 @@ services:
 volumes:
   postgres_data:
   media_data:
+  # postgres-backup's dumps intentionally use a host bind-mount (./backups) above,
+  # not a named volume - operators need to rsync/scp them off-host directly.

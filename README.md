@@ -165,6 +165,29 @@ TLS termination Caddy ile yapılır (otomatik Let's Encrypt) - `infra/Caddyfile`
 Gerekli tüm domain/secret/URL değişkenleri için `infra/.env.prod.example` dosyasına bakın; biri eksikse
 `docker compose` build'e girmeden hata verir.
 
+## Backup / restore
+
+`docker compose up` ile birlikte otomatik olarak `postgres-backup` adında ayrı bir servis de ayağa
+kalkar (`infra/docker/postgres-backup/`) - `backend` container'ından bağımsız çalışır, veritabanını
+periyodik olarak (varsayılan: günde bir) yedekleyip `infra/backups/` klasörüne (host'ta, Docker volume
+değil) gzip'li bir `.sql.gz` dosyası olarak yazar ve eski yedekleri otomatik siler (varsayılan: 7 gün).
+Sıklık/saklama süresi `infra/.env`(.prod)`'daki `BACKUP_INTERVAL_SECONDS`/`BACKUP_RETENTION_DAYS` ile
+ayarlanabilir (bkz. `.env.example`).
+
+Manuel/anlık bir yedek almak veya bir yedeği geri yüklemek için (`infra/` klasöründeyken):
+
+```bash
+./scripts/backup.sh                                              # dev  (infra/.env)
+./scripts/backup.sh prod                                         # prod (infra/.env.prod)
+
+./scripts/restore.sh backups/qrmenu_manual_20260814T120000Z.sql.gz        # dev
+./scripts/restore.sh backups/qrmenu_manual_20260814T120000Z.sql.gz prod   # prod
+```
+
+`restore.sh` **yıkıcıdır** - hedef veritabanını silip yeniden oluşturur, bu yüzden veritabanı adının
+elle yazılarak onaylanmasını ister. S3/bulut depolama entegrasyonu yok (bilinçli olarak kapsam dışı) -
+`infra/backups/` klasörünü başka bir yere kopyalamak (`rsync`/`scp`) operatörün sorumluluğunda.
+
 ## Katkı / geliştirme sırası
 
 Geliştirme, [`docs/product-requirements.md`](docs/product-requirements.md) Bölüm 9'daki milestone sırasını (M1—M13)

@@ -25,6 +25,29 @@ services:
       timeout: 5s
       retries: 10
 
+  # Production-readiness CRITICAL #4: periodic pg_dump sidecar, independent of the
+  # "backend" app container - keeps running/backing up even if backend is unhealthy or
+  # redeployed. Dumps land on the host at infra/backups/ (bind-mount, not a named
+  # volume) so they survive `docker compose down -v` and can be copied off-host (e.g.
+  # rsync to another machine - no S3/cloud integration here by design).
+  postgres-backup:
+    build:
+      context: ./docker/postgres-backup
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in infra/.env.prod}
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in infra/.env.prod}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in infra/.env.prod}
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-7}
+    volumes:
+      - ./backups:/backups
+
   backend:
     build:
       context: ../backend
@@ -119,3 +142,5 @@ volumes:
   media_data:
   caddy_data:
   caddy_config:
+  # postgres-backup's dumps intentionally use a host bind-mount (./backups) above,
+  # not a named volume - operators need to rsync/scp them off-host directly.
