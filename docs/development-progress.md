@@ -2,7 +2,7 @@
 
 Bu dosya, `docs/milestone-1-report.md` … `milestone-4-report.md` dosyalarının yerine geçen özet bir durum
 kaydıdır. Amaç geçmişin ayrıntılı raporunu tutmak değil, yeni bir Claude oturumunun projenin mevcut durumunu
-hızlıca kavramasıdır. Tam gereksinimler/kararlar için [`product-requirements.md`](product-requirements.md)
+hızlıca kavramasıdır. Tam gereksinimler/kararlar için [`product-requirements.md`](../../product-requirements.md)
 (özellikle Bölüm 9 — milestone planı) tek otoritedir; buradaki notlar yalnızca "ne yapıldı, neden, nelere
 dikkat" özetidir.
 
@@ -2590,3 +2590,62 @@ YOK; ekran görüntüsü beyaz zemin + charcoal metin + indigo primary + nötr k
 renklerini gösteriyor. Kod tarafında hiçbir değişiklik yapılmadı - yalnızca deploy edilen image güncellendi.
 
 Backend'e dokunulmadı.
+
+---
+
+## Kasa Ekranı — Görsel Referansa Uyarlama (2026-08-14) — ✅ COMPLETED (canlı doğrulama/commit bekliyor)
+
+Kullanıcının sağladığı yeni mockup'a (`docs/design/QR-Code-Kasa Ekranı Tasarımı.png`) göre `/cashier/[branchId]`
+sayfası yeniden düzenlendi - önceki "sıcak tema" kimlik yenilemesinden (yukarıdaki bölüm) farklı, aynı
+indigo/charcoal design token'ları üzerinde salt **layout/bilgi mimarisi** uyarlaması.
+
+**Değişenler:**
+- Yeni bir üst toolbar eklendi: sipariş/masa arama input'u (`Search`), bugünün tarihi chip'i (`CalendarDays`),
+  manuel "Yenile" butonu (`RefreshCw`). Arama, üç kolonun (`Onay Bekleyen`/`Hazırlanıyor`/`Hazır`) her birini
+  masa etiketi + sipariş no üzerinden client-side filtreliyor; sonuç yoksa kolonun `EmptyState`'i arama-özel
+  mesaja dönüyor.
+- KPI şeridi `kpiStrip` yerine `kpiGrid`; kartların sırası ve etiketleri mockup'a göre değişti (Günlük Ciro →
+  Toplam Sipariş → Net Satış; ikonlar buna göre yeniden atandı).
+- Sipariş kartları yeniden tasarlandı: eski `cardHeader`/`Badge` tabanlı meta satırı kaldırıldı, yerine
+  `cardTop` (masa chip ikonu + masa adı/sipariş no + geçen süre/saat), madde işaretli `items` listesi ve
+  `cardFooter` (toplam tutar + tek aksiyon butonu) geldi. "Hazırlanıyor" kartındaki aksiyon metni "Hazır" →
+  "Hazırlığı Tamamla" olarak güncellendi.
+- Mockup'ın backend karşılığı olmayan alanları (kişi sayısı, ortalama hazırlık süresi, dünkü güne göre %,
+  bildirim rozeti sayısı) **eklenmedi** - yalnızca gerçek API verisiyle doldurulabilen alanlar taşındı (kod
+  içi yorum olarak da işaretlendi).
+
+**AppShell/sidebar navigasyon güncellemesi (aynı adımın parçası):** Her `NavItem`'a `lucide-react` ikonu eklendi
+(`staffNav.ts`); topbar'daki kullanıcı e-postası/rolü + "Çıkış Yap" butonu kaldırılıp sidebar'ın altına, avatar
+baş harfleri (`initialsFromEmail`) + e-posta/rol + logout ikon-butonundan oluşan bir kullanıcı kartına taşındı.
+Ayrıca üç nav etiketi `product-requirements.md` Bölüm 20'deki (bkz. aşağıdaki "Ürün Kararı" bölümü) yeni
+branch-scoped bilgi mimarisiyle uyumlu olacak şekilde kısaltıldı: "Dashboard" → "Özet", "Şubeler / Masalar / QR"
+→ "Masalar", "Satış Raporları" → "Raporlar". Bu yalnızca isimlendirme/etiket düzeyinde bir hizalama - aşağıdaki
+Gap-Analysis #16'nın gerektirdiği branch-selector kaldırma/backend context zorunluluğu bu adımda **uygulanmadı**.
+
+**Bilinen durum:** Bu adım kod tarafında tamamlandı ama bu konuşma öncesinde ne canlı Chrome doğrulaması ne de
+commit yapılmıştı (oturum `/clear` ile kesilmiş, adım loglanmadan kalmıştı) - bu not o boşluğu kapatıyor.
+Backend'e dokunulmadı; yalnızca `staff-web` (cashier sayfası + AppShell + staffNav) değişti.
+
+---
+
+## 2026-08-14 Ürün Kararı — Sıkı Şube İzolasyonu + Masalar/QR UX — ⏳ PENDING IMPLEMENTATION
+
+Yeni ürün kararı `product-requirements.md`'ye işlendi; **henüz kodun tamamlandığı anlamına gelmez**.
+
+**Hedef davranış:**
+- `BUSINESS_ADMIN`, `BRANCH_MANAGER`, `CASHIER` kullanıcıya açık mevcut roller olarak **tek şube scope'unda** çalışır.
+- Hiçbir şube kullanıcısı başka şubenin sipariş, ciro, rapor, masa, QR, çalışan, ayar veya diğer verilerini göremez.
+- Staff UI'da branch selector/dropdown veya `Kasa → Şubeler → Kasa` ara akışı yoktur; aktif branch staff session/context'ten gelir.
+- Kasa, raporlar, giderler, personel ve masa yönetimi doğrudan kullanıcının kendi şubesini açar.
+- Sidebar'da ayrı `QR Yönetimi` yoktur; **Masalar** ekranında masa oluşturma/düzenleme ile QR oluşturma, revoke/yenileme ve indirme/yazdırma birlikte bulunur.
+- Cross-branch erişecek özel zincir rolü **şimdilik tanımlanmayacak**; daha sonra ayrıca tasarlanacak.
+
+**Mevcut kodla bilinen conflict noktaları:**
+- `StaffUserBranch` ve `StaffContext` mevcut geçmişte çoklu-şube/business-wide davranışları destekleyecek şekilde kullanıldı.
+- `BUSINESS_ADMIN` için chain/report karşılaştırma ve bazı business-wide navigasyon/endpoint akışları uygulanmış durumda.
+- staff-web'de `/branches`, `[branchId]` route'ları ve `singleBranchHref` benzeri branch seçimine dayanan yönlendirmeler bulunuyor.
+- `chain-comparison`, chain report ve bulk branch işlemleri mevcut branch rollerine açık olmamalı.
+- Table/QR backend özelliği mevcut olsa da yeni hedef UI'da QR işlemleri `Masalar` altında tek branch context'iyle toplanmalı.
+
+Bu değişiklik **Gap-Analysis #16** olarak uygulanmalıdır. Tarihsel tamamlanmış milestone notları geriye dönük olarak silinmez; yeni karar eski business-wide varsayımlarını geçersiz kılar.
+

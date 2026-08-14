@@ -12,6 +12,11 @@
 > daha kaba bir modül-var-mı seviyesindeydi); tek gerçek ek eksik Section 11'in mutfak ekranı ciro özeti 💡
 > notuydu, bkz. Gap-Analysis #14. Bölüm 3'teki 1-14 arası maddelerin tamamı ✅ COMPLETED; ayrıntı için
 > `development-progress.md`'ye bakın.
+>
+> **Yeni not (2026-08-14):** Kullanıcı yeni bir ürün kararı verdi: mevcut branch kullanıcıları arasında tam şube
+> izolasyonu olacak, staff UI/backend branch seçtirmeyecek ve QR yönetimi `Masalar` altında toplanacak.
+> Bu karar mevcut business-wide/chain erişim davranışlarıyla çakıştığı için yeni **Gap-Analysis #16** açıldı.
+> Önceki 1-15 maddelerin tamamlanmış olması bu yeni gap'i kapatmaz.
 
 ## 1. En Kritik CONFLICTING / PARTIAL Noktalar
 
@@ -28,12 +33,14 @@
 
 | Kategori | Durum | Not |
 |---|---|---|
+| **Şube izolasyonu / branch context** | 🔴 **CONFLICTING** | Mevcut kodda `BUSINESS_ADMIN` business-wide/chain akışları, çoklu `StaffUserBranch`, `/branches` ve `[branchId]` tabanlı navigasyon/endpoint'ler var. Yeni karar: mevcut kullanıcıya açık roller tek şube scope'lu olacak; branch request'ten seçilmeyecek. Gap-Analysis #16. |
+| **Masalar + QR UX** | 🟡 **PARTIAL** | Table/QR domain ve CRUD mevcut; hedef UI'da ayrı QR/şube seçimi yok. `Masalar` ekranı yalnız current branch'i gösterecek, QR oluştur/revoke/yenile/indir/yazdır aksiyonları masa altında olacak. Gap-Analysis #16. |
 | **Kasa onayı (`ordercontrol`)** | ✅ | `OrderControlController` (ACCEPT/REJECT), `AWAITING_STORE_ACCEPTANCE`/`REJECTED_BY_STORE` + `rejectionReasonCode`/`rejectionNote`, `staff-web/app/cashier` dashboard — tamamı var (Gap-Analysis #1). |
 | **Roller/Permission** | ✅ | `StaffRole.CASHIER` + `Permission.ORDER_ACCEPT/ORDER_REJECT/ORDER_VIEW` (#1), `REPORT_*` (#8), `EXPENSE_*` (#10), `BUSINESS_SETTINGS_MANAGE` (#6) — hepsi eklendi. `QR_MANAGE` adı `TABLE_QR_MANAGE`'e yeniden adlandırılmadı — bilinçli olarak atlandı, dokümanın kendi notuyla ("kozmetik") uyumlu, fonksiyonel etkisi yok. |
 | **Menü yönetimi** | ✅ | `allergens`/`estimatedPreparationMinutes`/`active` alanları + customer-web `ProductCard`'da gösterimi var; toplu şubeye atama `BulkAssignBranchesFlowIntegrationTest` ile kapsanıyor (Gap-Analysis #7, "Product Alanları"). |
 | **Şube/İşletme ayarları** | ✅ | `Business.defaultCurrency/defaultTimeZone`, `BusinessContact`, `Branch.timezone/address`, `BranchBusinessHours` (haftalık) — `staff-web/app/business-settings` ekranıyla birlikte var (Gap-Analysis #6). |
-| **Zincir yönetimi** | ✅ | Şube karşılaştırma dashboard'u `staff-web/app/chain-comparison`, toplu ürün atama, `StaffAnnouncement` (+ `staff-web/app/announcements`) — hepsi var (Gap-Analysis #7). |
-| **Raporlama/Analytics** | ✅ | `staff-web/app/reports` (+ `[branchId]`) — ciro/refund/sipariş sayısı/ürün-kategori/saatlik/şube karşılaştırma metrikleri var (Gap-Analysis #8). |
+| **Zincir yönetimi** | ⚠️ **IMPLEMENTED BUT DEFERRED** | Chain-comparison/toplu branch davranışları kodda var; 2026-08-14 kararıyla mevcut branch rollerine açık olmamalı. Gelecekteki özel zincir rolüne kadar kullanıcıya kapatılmalı (Gap-Analysis #16). |
+| **Raporlama/Analytics** | 🟡 **PARTIAL/CONFLICTING** | Branch raporları korunur; mevcut chain report/şube karşılaştırma erişimi branch-scoped roller için kaldırılmalıdır. Raporlar current branch context'ten açılmalı (Gap-Analysis #16). |
 | **Gün sonu + Excel** | ✅ | `DailyBranchCloseReport`, PREVIEW/FINAL akışı, `.xlsx` export (yetkilendirme testleriyle) — var (Gap-Analysis #9, #12). |
 | **Sahibine bildirim** | ✅ (email) | `OwnerNotificationPort` + email adapter + `owner_notification_log` — var (Gap-Analysis #11). WhatsApp adapter spec'in kendisinde blocker sayılmadığı için bilinçli olarak ertelendi, eklenmedi. |
 | **Gider yönetimi** | ✅ | `expense` modülü, kategori, recurring template (`RecurringExpenseScheduler`), onay akışı — `staff-web/app/expenses` ile birlikte var (Gap-Analysis #10). |
@@ -104,3 +111,25 @@ log, pickup board, `DeliveryModel`, rate limiting, payment timeout scheduler.
 
 Bu sıralama, dokümanın kendi M6→M13 planıyla ve Bölüm 25'teki "önce CONFLICTING düzelt, sonra sırayla eksikleri
 tamamla" kuralıyla birebir uyumlu.
+
+16. 🔴 **Sıkı şube izolasyonu + branch selector kaldırılması + Masalar/QR UX (2026-08-14)** — yeni ürün kararı nedeniyle mevcut kodla **CONFLICTING**.
+
+    **Backend hedefi:**
+    - `BUSINESS_ADMIN`, `BRANCH_MANAGER`, `CASHIER` mevcut kullanıcıya açık roller için tek branch scope uygulanır.
+    - Günlük staff operasyonlarında branch request/path/query/body'den seçilmez; güvenilir `StaffContext`/session'dan çözülür.
+    - Keyfi başka `branchId` göndererek sipariş, rapor, gider, personel, masa, QR veya ayar verisine erişim mümkün olmamalıdır.
+    - Mevcut `REPORT_CHAIN_VIEW`, chain-comparison ve benzeri business-wide erişimler branch-scoped rollere verilmez.
+    - Cross-branch özel rol **bu işte tasarlanmaz**; daha sonraya bırakılır.
+
+    **Frontend hedefi:**
+    - Branch selector/dropdown kaldırılır.
+    - Kasa/rapor/gider/personel/masalar doğrudan current branch'i açar; `/branches` üzerinden ara seçim akışı yoktur.
+    - Ana navigasyonda `Masalar` vardır; ayrı `QR Yönetimi` yoktur.
+    - `Masalar` yalnız current branch tablolarını gösterir; masa oluştur/düzenle + QR oluştur/revoke/yenile/indir/yazdır aynı feature altında bulunur.
+    - Chain comparison / başka şube listesi mevcut branch rollerinden gizlenir.
+
+    **Zorunlu doğrulama:**
+    - Başka branch ID'si path/query/body üzerinden zorlandığında negatif integration testleri 403/404 ve **sıfır veri sızıntısı** doğrulamalıdır.
+    - `BUSINESS_ADMIN`, `BRANCH_MANAGER`, `CASHIER` için ayrı cross-branch negatif testleri olmalıdır.
+    - staff-web build/lint ve branch seçmeden Kasa + Masalar + Raporlar akışı doğrulanmalıdır.
+

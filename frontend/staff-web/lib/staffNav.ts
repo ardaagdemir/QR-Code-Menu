@@ -1,3 +1,18 @@
+import {
+  BarChart3,
+  BookOpen,
+  History,
+  LayoutDashboard,
+  Megaphone,
+  Scale,
+  Settings,
+  ShoppingBag,
+  Table2,
+  Undo2,
+  User,
+  Wallet,
+  type LucideIcon,
+} from "lucide-react";
 import type { StaffContext } from "./api";
 
 export const ROLE_LABELS: Record<string, string> = {
@@ -48,6 +63,7 @@ export type NavItem = {
   matchPrefix: string;
   roles: StaffRole[];
   href: (context: StaffContext) => string | null;
+  icon: LucideIcon;
 };
 
 export type NavGroup = {
@@ -64,10 +80,11 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       {
         key: "dashboard",
-        label: "Dashboard",
+        label: "Özet",
         matchPrefix: "/dashboard",
         roles: ["PLATFORM_ADMIN", "BUSINESS_ADMIN", "BRANCH_MANAGER", "CASHIER"],
         href: () => "/dashboard",
+        icon: LayoutDashboard,
       },
       {
         key: "cashier",
@@ -75,6 +92,7 @@ export const NAV_GROUPS: NavGroup[] = [
         matchPrefix: "/cashier",
         roles: ["PLATFORM_ADMIN", "BUSINESS_ADMIN", "BRANCH_MANAGER", "CASHIER"],
         href: (context) => singleBranchHref(context, "/cashier"),
+        icon: ShoppingBag,
       },
     ],
   },
@@ -87,13 +105,15 @@ export const NAV_GROUPS: NavGroup[] = [
         matchPrefix: "/menu",
         roles: ["PLATFORM_ADMIN", "BUSINESS_ADMIN"],
         href: () => "/menu",
+        icon: BookOpen,
       },
       {
         key: "branches",
-        label: "Şubeler / Masalar / QR",
+        label: "Masalar",
         matchPrefix: "/branches",
         roles: ["PLATFORM_ADMIN", "BUSINESS_ADMIN"],
         href: () => "/branches",
+        icon: Table2,
       },
       {
         key: "staff",
@@ -101,6 +121,7 @@ export const NAV_GROUPS: NavGroup[] = [
         matchPrefix: "/staff",
         roles: ["PLATFORM_ADMIN", "BUSINESS_ADMIN"],
         href: () => "/staff",
+        icon: User,
       },
     ],
   },
@@ -109,10 +130,11 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       {
         key: "reports",
-        label: "Satış Raporları",
+        label: "Raporlar",
         matchPrefix: "/reports",
         roles: ["PLATFORM_ADMIN", "BUSINESS_ADMIN", "BRANCH_MANAGER", "CASHIER"],
         href: reportsHref,
+        icon: BarChart3,
       },
       {
         key: "chain-comparison",
@@ -120,6 +142,7 @@ export const NAV_GROUPS: NavGroup[] = [
         matchPrefix: "/chain-comparison",
         roles: ["PLATFORM_ADMIN", "BUSINESS_ADMIN"],
         href: () => "/chain-comparison",
+        icon: Scale,
       },
       {
         key: "expenses",
@@ -127,6 +150,7 @@ export const NAV_GROUPS: NavGroup[] = [
         matchPrefix: "/expenses",
         roles: ["PLATFORM_ADMIN", "BUSINESS_ADMIN", "BRANCH_MANAGER"],
         href: () => "/expenses",
+        icon: Wallet,
       },
       {
         key: "refunds",
@@ -134,6 +158,7 @@ export const NAV_GROUPS: NavGroup[] = [
         matchPrefix: "/refunds",
         roles: ["PLATFORM_ADMIN", "BUSINESS_ADMIN", "BRANCH_MANAGER"],
         href: (context) => singleBranchHref(context, "/refunds"),
+        icon: Undo2,
       },
     ],
   },
@@ -146,6 +171,7 @@ export const NAV_GROUPS: NavGroup[] = [
         matchPrefix: "/announcements",
         roles: ["PLATFORM_ADMIN", "BUSINESS_ADMIN"],
         href: () => "/announcements",
+        icon: Megaphone,
       },
       {
         key: "audit",
@@ -153,6 +179,7 @@ export const NAV_GROUPS: NavGroup[] = [
         matchPrefix: "/audit",
         roles: ["PLATFORM_ADMIN", "BUSINESS_ADMIN"],
         href: () => "/audit",
+        icon: History,
       },
       {
         key: "business-settings",
@@ -160,6 +187,7 @@ export const NAV_GROUPS: NavGroup[] = [
         matchPrefix: "/business-settings",
         roles: ["PLATFORM_ADMIN", "BUSINESS_ADMIN"],
         href: () => "/business-settings",
+        icon: Settings,
       },
     ],
   },

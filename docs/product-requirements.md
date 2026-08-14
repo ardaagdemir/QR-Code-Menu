@@ -20,9 +20,15 @@
 
 1. **Müşteri:** QR → menü → sepet → online ödeme → canlı sipariş takibi.
 2. **Kasa / şube operasyonu:** Ödenmiş siparişi görür, kabul eder veya tamamını reddeder/iptal eder; kabul edilen siparişi hazırlama/hazır/tamamlandı akışında ilerletir.
-3. **İşletme sahibi / yönetici:** Menü, şube, masa, QR, çalışan, satış, rapor, gider ve zincir görünümünü yönetir.
+3. **İşletme sahibi / yönetici:** Kendi şubesinin menü, masa, QR, çalışan, satış, rapor ve giderlerini yönetir.
 
 ✅ Tek şubeli işletmeler ve çok şubeli zincir işletmeler aynı ürün modelini kullanır.
+
+✅ **CONFIRMED (2026-08-14): Sıkı şube izolasyonu.** Kullanıcıya açık mevcut roller (`BUSINESS_ADMIN`, `BRANCH_MANAGER`, `CASHIER`) tek bir aktif şube bağlamında çalışır. Hiçbir şube kullanıcısı başka bir şubenin sipariş, ciro, rapor, masa, QR, çalışan, ayar veya diğer operasyon/yönetim bilgilerini göremez.
+
+✅ Staff UI'da **şube seçici yoktur**. Aktif şube login/session'daki güvenilir staff context'ten belirlenir; istenirse yalnızca pasif bilgi olarak şube adı gösterilir.
+
+❓ Birden fazla şubeyi görebilen/karşılaştırabilen özel zincir rolü daha sonra ayrıca tanımlanacaktır. Bu rol tanımlanana kadar mevcut kullanıcıya açık roller cross-branch erişim kazanmaz.
 
 ---
 
@@ -281,6 +287,8 @@ sahibi/müdürü/çalışanı) bu akışın tamamına erişebilir.
 
 ## 10.1 Kasa dashboard
 
+✅ Kasa her zaman oturumdaki kullanıcının **kendi şubesini** açar. Şube seçtirme, şube listesine yönlendirme veya `Kasa → Şubeler → tekrar Kasa` gibi ara adımlar yoktur.
+
 - Yeni ödenmiş/onay bekleyen siparişler
 - Accept / Reject
 - Red nedeni
@@ -291,19 +299,22 @@ sahibi/müdürü/çalışanı) bu akışın tamamına erişebilir.
 
 ## 10.2 Admin / şube yönetimi
 
-- Business bilgileri
-- Branch oluşturma/düzenleme
-- Business hours / kapanış saatleri
-- Masa yönetimi
-- QR oluşturma/revoke/yenileme
-- Menü/category/product/options yönetimi
+✅ Normal şube kullanıcısı yalnızca **kendi şubesini** yönetir; başka şubeleri listeleyen/seçtiren bir kullanıcı akışı yoktur.
+
+- Kendi şube bilgileri / business hours / kapanış ayarları (permission varsa)
+- **Masalar** ekranı: masa oluşturma, düzenleme, aktif/pasif yönetimi
+- QR işlemleri ayrı bir ana menü değildir; **Masalar** altında masa bazında yapılır:
+  - QR oluşturma
+  - QR revoke / yeniden üretme
+  - QR indirme / yazdırma
+- Menü/category/product/options yönetimi (izin verilen mevcut scope içinde)
 - Product image/allergen/prep time yönetimi
-- BranchProduct fiyat/availability yönetimi
-- Menü toplu şubeye atama
-- Çalışan ve rol yönetimi
-- İşletme sahibi/rapor alıcısı iletişim bilgileri
-- Raporlama
-- Gider yönetimi
+- Kendi şubesinin BranchProduct fiyat/availability yönetimi
+- Kendi şubesinin çalışan ve rol yönetimi
+- İşletme sahibi/rapor alıcısı iletişim bilgileri (permission varsa)
+- Kendi şubesinin raporlama ve gider yönetimi
+
+❓ Yeni şube oluşturma, başka şubeleri listeleme/yönetme, şubelere toplu atama ve benzeri cross-branch yönetim yetkileri gelecekte tanımlanacak özel zincir rolüne bırakılır.
 
 ---
 
@@ -315,9 +326,9 @@ sahibi/müdürü/çalışanı) bu akışın tamamına erişebilir.
 Sipariş operasyonuna (görüntüleme, kabul/red, hazırlama/hazır/tamamlandı) erişen roller:
 
 - `PLATFORM_ADMIN`
-- `BUSINESS_ADMIN` — işletme sahibi / merkez yönetim
-- `BRANCH_MANAGER` — işletme müdürü
-- `CASHIER` — işletme çalışanı / kasa
+- `BUSINESS_ADMIN` — şube sahibi / admin; mevcut modelde **tek şube scope'lu**
+- `BRANCH_MANAGER` — şube müdürü; **tek şube scope'lu**
+- `CASHIER` — şube çalışanı / kasa; **tek şube scope'lu**
 
 Örnek permission'lar:
 
@@ -340,6 +351,12 @@ Sipariş operasyonuna (görüntüleme, kabul/red, hazırlama/hazır/tamamlandı)
 - `BUSINESS_SETTINGS_MANAGE`
 
 💡 Kasa ekranında ciro/finansal veri gösterimi role sabitlenmez; `REPORT_FINANCIAL_SUMMARY_VIEW` permission'ı olan kullanıcıya gösterilir. Böylece işletme isterse kasada görünür, istemezse gizler.
+
+✅ **Branch authorization kuralı:** Permission tek başına yeterli değildir; her staff isteği oturumdaki güvenilir branch context ile sınırlandırılır. Frontend'in gönderdiği keyfi bir `branchId` başka şubeye erişim sağlayamaz. Hedef durumda günlük staff operasyon endpoint'leri branch'i request'ten seçmek yerine `StaffContext`'ten çözer.
+
+✅ `BUSINESS_ADMIN` mevcut sürümde business-wide/cross-branch rol değildir ve `REPORT_CHAIN_VIEW` benzeri izinlerle başka şubelere erişmez.
+
+❓ Cross-branch görüntüleme/yönetim için özel rol ve permission seti daha sonra tasarlanacaktır; mevcut rollerden birine sessizce eklenmez.
 
 ---
 
@@ -416,7 +433,9 @@ Kasa/yönetim panelinde:
 
 ## 13.2 Zincir görünümü
 
-✅ BUSINESS_ADMIN tüm şubeler için:
+❓ **DEFERRED (2026-08-14):** Mevcut `BUSINESS_ADMIN`, `BRANCH_MANAGER` ve `CASHIER` başka şubelerin hiçbir satış/operasyon bilgisini göremez. Bu nedenle mevcut branch-comparison / chain-report davranışı kullanıcıya açık mevcut roller için kapalı olmalıdır.
+
+Gelecekte ayrıca tanımlanacak özel bir **cross-branch / chain role** için aşağıdaki görünüm yeniden değerlendirilebilir:
 
 - toplam ciro
 - şube bazında ciro
@@ -426,7 +445,7 @@ Kasa/yönetim panelinde:
 - refund
 - karşılaştırmalı şube performansı
 
-verilerini görebilir.
+Bu role ait isim, permission seti ve UI daha sonra kesinleştirilecektir.
 
 ## 13.3 “Kaç kişi geldi?” metriği
 
@@ -605,17 +624,20 @@ bulunabilir.
 
 # 18. Zincir İşletme Yönetimi
 
-✅ Business birden çok Branch barındırabilir.
+✅ Business birden çok Branch barındırabilir; bu veri modeli korunur.
 
-✅ BUSINESS_ADMIN merkez panelde:
+❓ **DEFERRED (2026-08-14):** Kullanıcıya açık mevcut branch rollerinin hiçbiri diğer şubeleri göremez veya cross-branch yönetim ekranı kullanamaz. Eski `BUSINESS_ADMIN = merkez yönetim` varsayımı kaldırılmıştır.
 
-- tüm şubeleri görür,
-- merkezi menüyü yönetir,
-- ürünü tüm/seçili şubelere dağıtır,
-- şube fiyat/availability override'larını görür,
-- tüm şubelerin satışlarını karşılaştırır,
-- tüm şubelerin TableVisit/guestCount metriklerini karşılaştırır,
-- şubelere duyuru gönderebilir.
+Gelecekte ayrıca tanımlanacak özel zincir rolü için şu yetenekler yeniden değerlendirilebilir:
+
+- tüm şubeleri görme,
+- merkezi menüyü cross-branch yönetme,
+- ürünü tüm/seçili şubelere dağıtma,
+- şube fiyat/availability override'larını görme,
+- şubelerin satışlarını ve TableVisit/guestCount metriklerini karşılaştırma,
+- şubelere duyuru gönderme.
+
+Bu özel rol tanımlanana kadar mevcut branch kullanıcılarına bu yetenekler verilmez.
 
 ## 18.1 Şube duyuruları
 
@@ -746,31 +768,23 @@ Desktop'ta üstte çok sayıda linkin wrap olduğu navigation kullanılmaz.
 ✅ Ana shell:
 - desktop: kalıcı/collapsible sol sidebar + top bar
 - küçük ekran: drawer navigation
-- top bar: aktif şube/işletme bağlamı, kullanıcı/rol ve gerekli global aksiyonlar
+- top bar: aktif şube adı (yalnızca pasif bağlam bilgisi; **selector/dropdown değil**), kullanıcı/rol ve gerekli global aksiyonlar
 - aktif route açıkça görünür
 - navigation permission bazlı filtrelenir
 
-Önerilen bilgi mimarisi:
+Önerilen ana bilgi mimarisi (branch-scoped kullanıcı):
 
-**Operasyon**
-- Dashboard
-- Kasa (kabul/red + hazırlama/hazır/tamamlandı akışının tek operasyon ekranı — ayrı Mutfak/KDS ekranı yok)
-- Pickup / Siparişler
-
-**Yönetim**
+- Özet
+- Siparişler
 - Menü
-- Şubeler / Masalar / QR
-- Personel
-
-**Finans**
-- Satış Raporları
+- Kasa
+- **Masalar**
+- Raporlar
 - Giderler
-- İadeler
+- Personel
+- Ayarlar
 
-**Sistem**
-- Duyurular
-- Denetim Kaydı
-- İşletme Ayarları
+`QR Yönetimi` ayrı bir ana menü değildir; QR aksiyonları `Masalar` ekranında ilgili masanın altında bulunur. `Şubeler` seçimi/listesi günlük branch-scoped navigasyonda bulunmaz.
 
 Rol/permission erişimi olmayan linkler gösterilmez; backend authorization her durumda otorite olmaya devam eder.
 
@@ -783,9 +797,7 @@ Login sonrası rolün kullanım amacına uygun landing page gösterilmelidir. BU
 - refund özeti
 - en çok satan ürünler
 - aktif/bekleyen operasyon bilgileri
-- varsa şube karşılaştırması
-
-gibi özetleri güçlü KPI kartlarıyla sunmalıdır.
+gibi **yalnızca kendi şubesine ait** özetleri güçlü KPI kartlarıyla sunmalıdır. Branch-scoped dashboard'da şube karşılaştırması veya şube seçici gösterilmez.
 
 ### Kasa (kabul/red + hazırlama/hazır/tamamlandı — tek operasyon ekranı)
 
@@ -814,6 +826,12 @@ Kabul edilen sipariş aynı ekranda ayrı bir "Hazırlanıyor / Hazır" bölüm�
 
 Kasada finansal bilgi yalnız gereksinim varsa (`REPORT_FINANCIAL_SUMMARY_VIEW`) ikincil gösterilir; sipariş aksiyonlarını gölgelememelidir.
 
+### Masalar + QR
+
+✅ `Masalar` ayrı bir yönetim ekranıdır ve yalnızca kullanıcının kendi şubesindeki masaları gösterir.
+
+Her masa satırı/kartı üzerinden masa düzenleme ile birlikte QR oluşturma, revoke/yeniden üretme ve QR indirme/yazdırma aksiyonları sunulur. Ayrı bir `QR Yönetimi` sayfası veya branch selector yoktur.
+
 ### Admin / CRUD ekranları
 
 - sayfa başlığında title + açıklama + primary action pattern'i kullanılır.
@@ -830,7 +848,6 @@ Rapor ekranı yalnız tablo değildir. Veri mevcut olduğunda:
 - hızlı tarih presetleri: Bugün / Dün / Bu Hafta / Bu Ay / Özel
 - gelir trendi
 - ürün/kategori ranking
-- branch comparison
 - refund etkisi
 - Excel export
 
@@ -929,6 +946,8 @@ Tamamlanmış sayılmak için:
 - orderTrackingToken yüksek entropili, DB'de hash.
 - internal/public/admin endpointleri ayrıştırılır.
 - staff auth Spring Security + permission checks.
+- branch-scoped staff için branch context server-side session/`StaffContext` kaynağından gelir; request'ten gelen keyfi `branchId` yetki kaynağı değildir.
+- branch cross-access negatif integration testleri zorunlu: başka branch ID'si path/query/body ile gönderildiğinde veri sızmamalıdır.
 - tenant cross-access negatif integration testleri zorunlu.
 - payment webhook signature + raw body doğrulama.
 - webhook idempotency DB unique constraint.
@@ -962,9 +981,10 @@ Tamamlanmış sayılmak için:
 
 ## 23.2 Management v1.1
 
-- multi-branch owner comparison dashboard
-- bulk menu distribution
-- staff announcements
+- branch-scoped yönetim ekranları
+- Masalar + masa bazlı QR üretme/yenileme/indirme
+- staff announcements (yalnız izin verilen scope)
+- cross-branch owner comparison / bulk branch operations: **deferred; özel zincir rolü tanımlandıktan sonra**
 - expense entry/approval
 - recurring expenses
 - monthly income/expense management view
@@ -1075,9 +1095,12 @@ Tamamlanmış sayılmak için:
 - `.xlsx` export
 - finance summary permissions
 
-## M10 — Chain Management
+## M10 — Chain Management — ⚠️ DEFERRED / ROLE TBD
 
-- multi-branch owner dashboard
+> 2026-08-14 kararı: mevcut `BUSINESS_ADMIN`/`BRANCH_MANAGER`/`CASHIER` cross-branch değildir. Daha önce uygulanmış chain-comparison/report/bulk-branch davranışları mevcut branch rollerine açık olmamalıdır. Özel zincir rolü tanımlanana kadar yeni cross-branch özellik geliştirilmez.
+
+Gelecekteki özel rol için yeniden değerlendirilecekler:
+- multi-branch dashboard
 - branch comparisons
 - bulk product assignment to branches
 - central menu propagation verification
@@ -1140,7 +1163,7 @@ Yeni roadmap mevcut çalışan koddan sonra uygulanırken:
 1. Önce `product-requirements.md` + `development-progress.md` + repository kodu okunur.
 2. Zaten çalışan milestone/feature yeniden yazılmaz.
 3. Her yeni roadmap maddesi `IMPLEMENTED / PARTIAL / MISSING / CONFLICTING` olarak zihinsel olarak sınıflandırılır.
-4. Önce `CONFLICTING` davranışlar düzeltilir (özellikle payment-success → auto-kitchen eski davranışı varsa).
+4. Önce `CONFLICTING` davranışlar düzeltilir (özellikle artık geçersiz cross-branch erişim/şube seçimi ve varsa payment-success → auto-kitchen eski davranışı).
 5. Sonra M5'ten itibaren sırayla eksikler tamamlanır.
 6. Yeni rapor markdown dosyaları üretilmez; yalnızca `development-progress.md` kısa tutulur.
 7. Her milestone sonunda backend test/verify, frontend lint/build ve kritik gerçek-browser E2E doğrulaması yapılır.
@@ -1176,6 +1199,8 @@ Yeni roadmap mevcut çalışan koddan sonra uygulanırken:
 
 ❓ İşletme bazında kasa accept timeout politikası.
 
+❓ Cross-branch erişebilecek gelecekteki özel zincir rolünün adı, permission seti ve UI kapsamı.
+
 ---
 
 # 28. Bu Revizyondaki Ana Değişiklikler
@@ -1200,3 +1225,7 @@ Yeni roadmap mevcut çalışan koddan sonra uygulanırken:
 18. Roadmap 13 milestone'a genişletildi ve mevcut uygulamanın gap analysis ile devam etmesi tanımlandı.
 19. **Ayrı Mutfak/KDS ekranı ve `KITCHEN_STAFF` rolü kaldırıldı** — sipariş operasyonunun tamamı (kabul/red + PREPARING/READY/COMPLETED) artık Kasa'dan, `BUSINESS_ADMIN`/`BRANCH_MANAGER`/`CASHIER` tarafından yürütülüyor; `KITCHEN_DECIDE` permission'ı `ORDER_PREPARE` olarak yeniden adlandırılıp bu üç role verildi (Bölüm 8/11).
 20. **Item bazlı kabul/red kararı kaldırıldı** — kasa ACCEPT ettiğinde her kalem otomatik ve tam adette kabul edilmiş sayılır; PREPARING → READY tek bir sipariş bazlı Kasa aksiyonudur, ayrı bir "hazır"/"teslim edildi" item adımı yoktur (Bölüm 6/8). `/api/kitchen/**` altında kalan son uçlar (`RefundController`: search/refunds/complete) `/api/staff/branches/{branchId}/orders/**` altına taşındı - artık hiçbir uç `/api/kitchen/**` altında değil.
+21. **Sıkı şube izolasyonu getirildi** — mevcut kullanıcıya açık roller tek şube scope'unda çalışır; başka şubenin hiçbir operasyon/yönetim/finans bilgisi görülemez.
+22. **Şube seçici kaldırıldı** — staff UI'da branch dropdown/list üzerinden operasyon seçimi yoktur; aktif branch güvenilir staff session/context'ten gelir.
+23. **Masalar + QR bilgi mimarisi netleştirildi** — `Masalar` ayrı menüdür; QR oluşturma/revoke/yenileme/indirme/yazdırma ilgili masa altında yapılır, ayrı `QR Yönetimi` ana menüsü yoktur.
+24. **Cross-branch/chain görünümü ertelendi** — daha önce `BUSINESS_ADMIN`'e verilmiş business-wide/chain erişimi artık geçerli ürün davranışı değildir; özel zincir rolü daha sonra tanımlanacaktır.

@@ -56,6 +56,7 @@
 }
 
 .nav {
+  flex: 1;
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
@@ -79,12 +80,15 @@
 
 .link {
   position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
   color: var(--color-fg-muted);
   text-decoration: none;
   padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   transition:
     background var(--transition-fast),
     color var(--transition-fast);
@@ -93,6 +97,16 @@
 .link:hover {
   color: var(--color-fg);
   background: var(--color-surface-raised);
+}
+
+.linkIcon {
+  flex-shrink: 0;
+  color: var(--color-fg-muted);
+  transition: color var(--transition-fast);
+}
+
+.link:hover .linkIcon {
+  color: var(--color-fg);
 }
 
 /* Aktif sayfanın imzası: dolgun tint zemin + accent metin + sol accent bar - "neredesin"i
@@ -117,6 +131,60 @@
 .active:hover {
   color: var(--color-primary);
   background: color-mix(in srgb, var(--color-primary) 14%, var(--color-surface-raised));
+}
+
+.active .linkIcon {
+  color: var(--color-primary);
+}
+
+/* Sidebar altındaki kimlik kartı - mockup'ın "Ahmet Kaya / Yönetici" kutusuna karşılık
+ * gelir, ama burada dropdown yerine gerçek işlevi olan bir çıkış ikon-butonu taşır. */
+.userCard {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: auto;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+}
+
+.avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--color-primary) 16%, transparent);
+  color: var(--color-primary);
+  font-family: var(--font-family-display);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+}
+
+.userMeta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.userEmail {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.userRole {
+  font-size: 0.6875rem;
+  color: var(--color-fg-muted);
 }
 
 .main {
@@ -170,26 +238,6 @@
   flex-shrink: 0;
 }
 
-.identity {
-  font-size: var(--font-size-xs);
-  color: var(--color-fg-muted);
-  text-align: right;
-}
-
-.logout {
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-  color: var(--color-fg-muted);
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0;
-}
-
-.logout:hover {
-  color: var(--color-danger);
-}
-
 .content {
   flex: 1;
   background: var(--color-bg);
@@ -220,9 +268,5 @@
 
   .hamburger {
     display: inline-flex;
-  }
-
-  .identity {
-    display: none;
   }
 }

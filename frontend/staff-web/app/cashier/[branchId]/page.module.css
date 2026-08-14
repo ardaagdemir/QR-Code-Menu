@@ -1,8 +1,104 @@
+/* Kasa'ya özel yerel accent paleti - docs/design/QR-Code-Kasa Ekranı Tasarımı.png
+ * mockup'ından örneklendi (bkz. development-progress.md "Kasa Ekranı - Görsel
+ * Referansa Uyarlama"). Bilinçli olarak app/globals.css'teki --color-primary
+ * (indigo, tüm uygulamanın kimliği) DEĞİŞTİRİLMEDİ - bu turuncu/kırmızı/yeşil üçlüsü
+ * yalnızca bu sayfaya özel, CSS Module scope'unda yaşıyor. */
 .page {
+  --kasa-accent: #f2540f;
+  --kasa-accent-strong: #d6440a;
+  --kasa-accent-tint: color-mix(in srgb, var(--kasa-accent) 14%, transparent);
+  --kasa-rose: #e0373d;
+  --kasa-rose-strong: #c22a30;
+  --kasa-rose-tint: color-mix(in srgb, var(--kasa-rose) 5%, var(--color-surface-raised));
+  --kasa-rose-badge: color-mix(in srgb, var(--kasa-rose) 14%, transparent);
+  --kasa-green: #3f7d34;
+  --kasa-green-strong: #336629;
+  --kasa-green-tint: color-mix(in srgb, var(--kasa-green) 14%, transparent);
+
   min-height: 100%;
   padding: var(--space-5);
   max-width: var(--container-width-kiosk);
   margin: 0 auto;
+}
+
+/* Mockup'ın üst araç çubuğu (arama/tarih/yenile) - global AppShell topbar'ı değil,
+ * yalnızca Kasa'ya özel olduğu için sayfanın kendi header'ı olarak taşındı. */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.searchBar {
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-4);
+  height: 42px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-raised);
+  color: var(--color-fg-muted);
+}
+
+.searchInput {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: none;
+  font: inherit;
+  font-size: var(--font-size-sm);
+  color: var(--color-fg);
+}
+
+.searchInput::placeholder {
+  color: var(--color-fg-muted);
+}
+
+.dateChip {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 42px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-raised);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-fg-muted);
+  white-space: nowrap;
+}
+
+.refreshButton {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 42px;
+  padding: 0 var(--space-5);
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--kasa-accent);
+  color: #fff;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.refreshButton:not(:disabled):hover {
+  background: var(--kasa-accent-strong);
+}
+
+.refreshButton:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .header {
@@ -51,8 +147,6 @@
   background: var(--color-success);
 }
 
-/* "Şu an oluyor" sinyali - customer-web sipariş takip zaman çizelgesinden ödünç alınan
- * aynı yumuşak halka pulse'ı (Adım 4 Tasarım Yenilemesi'nden beri kullanılan dil). */
 .connectionDot--live::after {
   content: "";
   position: absolute;
@@ -94,8 +188,8 @@
 }
 
 .navLink:hover {
-  color: var(--color-primary);
-  border-color: var(--color-primary);
+  color: var(--kasa-accent);
+  border-color: var(--kasa-accent);
 }
 
 .loading {
@@ -117,29 +211,24 @@
   }
 }
 
-/* Kompakt KPI şeridi - üç ayrı border/shadow'lu kart yerine TEK yüzey içinde bölünmüş
- * segmentler (dividers). Daha az boşluk, tek bakışta üç metrik. */
-.kpiStrip {
+/* KPI kartları - mockup'taki gibi ayrı, ikon daireli kartlar. Mockup'ın "dünkü güne
+ * göre %" trend satırı eklenmedi - backend'de karşılığı olmayan bir veri. */
+.kpiGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.kpiCard {
   display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
   background: var(--color-surface-raised);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
-  margin-bottom: var(--space-5);
-  overflow: hidden;
-}
-
-.kpiCard {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  border-right: 1px solid var(--color-border);
-}
-
-.kpiCard:last-child {
-  border-right: none;
 }
 
 .kpiIcon {
@@ -147,11 +236,11 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  width: 36px;
-  height: 36px;
-  border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
-  color: var(--color-primary);
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-full);
+  background: var(--kasa-accent-tint);
+  color: var(--kasa-accent);
 }
 
 .kpiBody {
@@ -173,24 +262,8 @@
   font-variant-numeric: tabular-nums;
 }
 
-@media (max-width: 640px) {
-  .kpiStrip {
-    flex-direction: column;
-  }
-
-  .kpiCard {
-    border-right: none;
-    border-bottom: 1px solid var(--color-border);
-  }
-
-  .kpiCard:last-child {
-    border-bottom: none;
-  }
-}
-
-/* Üç durumu (Onay Bekleyen / Hazırlanıyor / Hazır) tek bakışta ayırt ettiren kanban board.
- * Kolon zemini nötr gri kalıyor - renk yalnızca başlıktaki ikon chip'inde/sayaçta yaşıyor,
- * böylece kolonlar "büyük renkli kutu" gibi görünmüyor. */
+/* Üç durumu (Onay Bekleyen / Hazırlanıyor / Hazır) tek bakışta ayırt ettiren kanban
+ * board - mockup'a uyarlanan kolon başına sabit renk teması (kırmızı/turuncu/yeşil). */
 .board {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -209,15 +282,15 @@
 }
 
 .column--pending {
-  --column-accent: var(--color-warning);
+  --column-accent: var(--kasa-rose);
 }
 
 .column--preparing {
-  --column-accent: var(--color-info);
+  --column-accent: var(--kasa-accent);
 }
 
 .column--ready {
-  --column-accent: var(--color-success);
+  --column-accent: var(--kasa-green);
 }
 
 .columnHeader {
@@ -265,54 +338,28 @@
   gap: var(--space-3);
 }
 
-/* Sipariş kartı - net tek satırlık başlık (masa + no + tutar aynı satırda) her şeyi
- * saniyeler içinde okunabilir kılıyor. Sol kenar bekleme süresi arttıkça uzuyor/koyulaşuyor -
- * urgency'yi gerçek bir bilgi kanalı olarak taşıyan tek dekoratif detay. */
+/* Sipariş kartı - mockup'taki gibi üstte masa+süre satırı, altında kalem listesi,
+ * en altta Toplam + aksiyon butonu. Yalnızca "Onay Bekleyen" kartları belirgin bir
+ * ton (rose) taşıyor - "Hazırlanıyor"/"Hazır" kartları nötr zeminde kalıp yalnızca
+ * süre metni/nokta/buton rengiyle ayrışıyor (mockup'taki gibi). */
 .card {
-  --card-edge-color: var(--color-primary);
   position: relative;
   background: var(--color-surface-raised);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  padding: var(--space-3) var(--space-4) var(--space-4) calc(var(--space-4) + 6px);
+  padding: var(--space-3) var(--space-4) var(--space-4);
   box-shadow: var(--shadow-sm);
 }
 
-.card::before {
-  content: "";
-  position: absolute;
-  left: 3px;
-  bottom: 3px;
-  width: 4px;
-  height: 24px;
-  border-radius: var(--radius-full);
-  background: var(--card-edge-color);
-  transition:
-    height var(--transition-base),
-    background var(--transition-base);
+.card--pending {
+  background: var(--kasa-rose-tint);
+  border-color: color-mix(in srgb, var(--kasa-rose) 30%, var(--color-border));
+  border-left: 3px solid var(--kasa-rose);
 }
 
-.card--warning {
-  --card-edge-color: var(--color-warning);
-}
-
-.card--warning::before {
-  height: 48px;
-}
-
-.card--danger {
-  --card-edge-color: var(--color-danger);
-}
-
-.card--danger::before {
-  height: 72px;
-}
-
-.card--ready {
-  --card-edge-color: var(--color-success);
-}
-
-/* Section 6: kritik siparişler kartın tamamında yumuşak bir kırmızı glow ile nabız atar. */
+/* Section 6: kritik siparişler (kabul timeout'una yaklaşan) daha koyu bir kırmızıya
+ * geçip yumuşak bir glow ile nabız atar - taban rose tonundan bilinçli olarak
+ * ayrışan bir eskalasyon sinyali. */
 .card--critical {
   border-color: var(--color-danger);
   animation: critical-order-pulse 2s ease-in-out infinite;
@@ -328,35 +375,39 @@
   }
 }
 
-.cardHeader {
+.cardTop {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-2);
-  margin-bottom: var(--space-2);
-  padding-bottom: var(--space-2);
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding-bottom: var(--space-3);
+  margin-bottom: var(--space-3);
   border-bottom: 1px solid var(--color-border);
 }
 
-.cardHeaderMain {
+.tableChip {
   display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  min-width: 0;
-}
-
-.tableLabel {
-  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-family: var(--font-family-display);
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-bold);
+  justify-content: center;
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-fg-muted);
 }
 
-.tableLabelIcon {
-  color: var(--color-fg-muted);
-  flex-shrink: 0;
+.cardTopMain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tableName {
+  font-family: var(--font-family-display);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-bold);
 }
 
 .orderNumber {
@@ -366,34 +417,105 @@
   letter-spacing: 0.02em;
 }
 
-.orderTotal {
+.cardTopTime {
   flex-shrink: 0;
-  font-family: var(--font-family-display);
-  font-size: var(--font-size-lg);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.timeValue {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--font-size-sm);
   font-weight: var(--font-weight-bold);
+  color: var(--column-accent, var(--color-fg));
   font-variant-numeric: tabular-nums;
 }
 
-.cardMeta {
+.card--pending .timeValue {
+  color: var(--kasa-rose);
+}
+
+.card--preparing .timeValue {
+  color: var(--kasa-accent);
+}
+
+.card--ready .timeValue {
+  color: var(--kasa-green);
+}
+
+.timeSub {
+  font-size: var(--font-size-xs);
+  color: var(--color-fg-muted);
+  white-space: nowrap;
+}
+
+.items {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
+  flex-direction: column;
   margin-bottom: var(--space-3);
 }
 
-.item {
-  padding: var(--space-2) 0;
+.itemRow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: 5px 0;
   font-size: var(--font-size-sm);
-  border-bottom: 1px solid var(--color-border);
 }
 
-.item:last-child {
-  border-bottom: none;
+.itemBullet {
+  flex-shrink: 0;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--kasa-rose);
+  transform: translateY(-2px);
+}
+
+.card--preparing .itemBullet {
+  background: var(--kasa-accent);
+}
+
+.card--ready .itemBullet {
+  background: var(--kasa-green);
+}
+
+.itemName {
+  flex: 1;
+  min-width: 0;
 }
 
 .itemOptions {
   font-size: var(--font-size-xs);
   color: var(--color-fg-muted);
+}
+
+.cardFooter {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+.totalRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+}
+
+.totalLabel {
+  font-size: var(--font-size-sm);
+  color: var(--color-fg-muted);
+}
+
+.totalValue {
+  font-family: var(--font-family-display);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+  font-variant-numeric: tabular-nums;
 }
 
 /* Aksiyon butonları satırı eşit genişlikte dolduruyor - "ana aksiyon saniyeler içinde
@@ -402,11 +524,32 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
-  margin-top: var(--space-3);
 }
 
 .cardActions > * {
   flex: 1;
+}
+
+/* Mockup'ta üç kolonun ana aksiyon butonu da (Siparişi Onayla/Hazırlığı Tamamla) aynı
+ * turuncu - yalnızca "Teslim Et" yeşil. Paylaşılan Button bileşeninin "primary"
+ * varyantı global --color-primary (indigo) kullandığı için burada yerel olarak
+ * override ediliyor (bkz. page.module.css üst not - global marka rengi değişmedi). */
+.acceptButton {
+  background: var(--kasa-accent) !important;
+  border-color: var(--kasa-accent) !important;
+}
+
+.acceptButton:not(:disabled):hover {
+  background: var(--kasa-accent-strong) !important;
+}
+
+.deliverButton {
+  background: var(--kasa-green) !important;
+  border-color: var(--kasa-green) !important;
+}
+
+.deliverButton:not(:disabled):hover {
+  background: var(--kasa-green-strong) !important;
 }
 
 .rejectForm {
@@ -421,5 +564,24 @@
 @media (max-width: 1099px) {
   .board {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .toolbar {
+    flex-wrap: wrap;
+  }
+
+  .dateChip {
+    order: 1;
+  }
+
+  .refreshButton {
+    order: 2;
+  }
+
+  .searchBar {
+    order: 0;
+    flex-basis: 100%;
   }
 }

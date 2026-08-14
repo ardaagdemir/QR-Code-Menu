@@ -4,12 +4,20 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { LogOut } from "lucide-react";
 import { logout, me, type StaffContext } from "@/lib/api";
 import { NAV_GROUPS, ROLE_LABELS } from "@/lib/staffNav";
 import IconButton from "@/components/ui/IconButton";
 import AnnouncementBanner from "./AnnouncementBanner";
 import ThemeToggle from "./ThemeToggle";
 import styles from "./AppShell.module.css";
+
+function initialsFromEmail(email: string): string {
+  const local = email.split("@")[0] ?? email;
+  const parts = local.split(/[._-]/).filter(Boolean);
+  const letters = parts.length > 1 ? parts[0][0] + parts[1][0] : local.slice(0, 2);
+  return letters.toUpperCase();
+}
 
 type Props = {
   children: ReactNode;
@@ -75,20 +83,38 @@ export default function AppShell({ children }: Props) {
           return (
             <div key={group.title} className={styles.group}>
               <div className={styles.groupTitle}>{group.title}</div>
-              {visibleItems.map((item) => (
-                <Link
-                  key={item.key}
-                  href={item.href(context as StaffContext) as string}
-                  className={isActive(item.matchPrefix) ? `${styles.link} ${styles.active}` : styles.link}
-                  onClick={() => setDrawerOpen(false)}
-                >
-                  {item.label}
-                </Link>
-              ))}
+              {visibleItems.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <Link
+                    key={item.key}
+                    href={item.href(context as StaffContext) as string}
+                    className={isActive(item.matchPrefix) ? `${styles.link} ${styles.active}` : styles.link}
+                    onClick={() => setDrawerOpen(false)}
+                  >
+                    <Icon size={17} className={styles.linkIcon} aria-hidden="true" />
+                    {item.label}
+                  </Link>
+                );
+              })}
             </div>
           );
         })}
       </nav>
+      {context ? (
+        <div className={styles.userCard}>
+          <span className={styles.avatar} aria-hidden="true">
+            {initialsFromEmail(context.email)}
+          </span>
+          <span className={styles.userMeta}>
+            <span className={styles.userEmail}>{context.email}</span>
+            <span className={styles.userRole}>{ROLE_LABELS[context.role] ?? context.role}</span>
+          </span>
+          <IconButton aria-label="Çıkış Yap" size="sm" onClick={handleLogout}>
+            <LogOut size={15} />
+          </IconButton>
+        </div>
+      ) : null}
     </>
   );
 
@@ -115,14 +141,6 @@ export default function AppShell({ children }: Props) {
           </div>
           <div className={styles.topbarRight}>
             <ThemeToggle />
-            {context ? (
-              <span className={styles.identity}>
-                {context.email} · {ROLE_LABELS[context.role] ?? context.role}
-              </span>
-            ) : null}
-            <button type="button" className={styles.logout} onClick={handleLogout}>
-              Çıkış Yap
-            </button>
           </div>
         </header>
         {context ? <AnnouncementBanner /> : null}

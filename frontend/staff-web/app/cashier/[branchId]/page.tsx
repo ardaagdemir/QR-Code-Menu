@@ -1,21 +1,24 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   BellRing,
+  CalendarDays,
   Check,
   ChefHat,
+  Clock,
   Loader2,
   Receipt,
+  RefreshCw,
+  Search,
   Send,
   TrendingUp,
   Undo2,
   UtensilsCrossed,
   Wallet,
   Timer,
-  X,
 } from "lucide-react";
 import {
   ApiError,
@@ -36,7 +39,6 @@ import {
 import { formatElapsedMinutes, waitingUrgency } from "@/lib/time";
 import { playCriticalOrderAlert } from "@/lib/alertSound";
 import AppShell from "@/components/layout/AppShell";
-import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import ErrorState from "@/components/ui/ErrorState";
@@ -51,7 +53,17 @@ const REJECT_REASONS: { value: string; label: string }[] = [
   { value: "OTHER", label: "Diğer" },
 ];
 
-const WAITING_BADGE_TONE = { normal: "neutral", warning: "warning", danger: "danger" } as const;
+function formatClockTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
+}
+
+function matchesSearch(order: OrderControlOrder, query: string): boolean {
+  if (!query) {
+    return true;
+  }
+  const haystack = `${order.tableLabel ?? ""} ${order.orderNumber ?? ""}`.toLowerCase();
+  return haystack.includes(query);
+}
 
 /**
  * Ürün kararı: ayrı bir Mutfak/KDS ekranı yok - Kasa, sipariş operasyonunun tek ekranı.
@@ -60,6 +72,12 @@ const WAITING_BADGE_TONE = { normal: "neutral", warning: "warning", danger: "dan
  * karar adımı yok) ve hazır/teslim bekleyen siparişler. Üç liste de aynı SSE kanalını
  * (Section 2: "salt refetch sinyali") paylaşır - branch'in order-control kanalı zaten
  * her durum geçişinde event yayınlıyor.
+ *
+ * Görsel yön: docs/design/QR-Code-Kasa Ekranı Tasarımı.png mockup'ına uyarlandı (bkz.
+ * development-progress.md "Kasa Ekranı - Görsel Referansa Uyarlama"). Mockup'ın "kişi
+ * sayısı", "ortalama hazırlık süresi", "dünkü güne göre %" ve bildirim rozeti gibi
+ * karşılığı backend'de olmayan alanları eklenmedi - yalnızca gerçek veriyle
+ * doldurulabilen alanlar taşındı.
  */
 export default function CashierDashboardPage() {
   const params = useParams<{ branchId: string }>();
@@ -77,6 +95,7 @@ export default function CashierDashboardPage() {
   const [readyingOrderId, setReadyingOrderId] = useState<string | null>(null);
   const [completingOrderId, setCompletingOrderId] = useState<string | null>(null);
   const [financialSummary, setFinancialSummary] = useState<KitchenFinancialSummary | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
   const [now, setNow] = useState(() => Date.now());
   const reasonCodeRef = useRef<Record<string, string>>({});
   const noteRef = useRef<Record<string, string>>({});
@@ -84,6 +103,13 @@ export default function CashierDashboardPage() {
   // Section 6: kritik alarmı sipariş başına yalnızca bir kez çalar - her 15sn'lik "now"
   // tazelemesinde tekrar tekrar öttürmemek için hangi siparişler için zaten uyarıldığını tutar.
   const alertedOrderIdsRef = useRef<Set<string>>(new Set());
+
+  const todayLabel = useMemo(() => {
+    const today = new Date();
+    const date = new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "long", year: "numeric" }).format(today);
+    const weekday = new Intl.DateTimeFormat("tr-TR", { weekday: "long" }).format(today);
+    return `${date}, ${weekday}`;
+  }, []);
 
   // Bekleme süresi rozetlerini yalnızca görsel olarak tazeler - yeniden fetch tetiklemez.
   useEffect(() => {
@@ -254,9 +280,37 @@ export default function CashierDashboardPage() {
     }
   }
 
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+  const filteredPending = pendingOrders.filter((order) => matchesSearch(order, normalizedQuery));
+  const filteredInProgress = inProgressOrders.filter((order) => matchesSearch(order, normalizedQuery));
+  const filteredReady = readyOrders.filter((order) => matchesSearch(order, normalizedQuery));
+  const searchActive = normalizedQuery.length > 0;
+
   return (
     <AppShell>
       <main className={styles.page}>
+        <div className={styles.toolbar}>
+          <label className={styles.searchBar}>
+            <Search size={16} aria-hidden="true" />
+            <input
+              type="text"
+              className={styles.searchInput}
+              placeholder="Sipariş veya masa ara..."
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              aria-label="Sipariş veya masa ara"
+            />
+          </label>
+          <span className={styles.dateChip}>
+            <CalendarDays size={15} aria-hidden="true" />
+            {todayLabel}
+          </span>
+          <button type="button" className={styles.refreshButton} onClick={() => reloadAll()} disabled={loading}>
+            <RefreshCw size={15} aria-hidden="true" />
+            Yenile
+          </button>
+        </div>
+
         <div className={styles.header}>
           <h1 className={styles.title}>Kasa</h1>
           <div className={styles.headerActions}>
@@ -274,23 +328,14 @@ export default function CashierDashboardPage() {
         {error ? <ErrorState message={error} onRetry={reloadAll} /> : null}
 
         {financialSummary ? (
-          <div className={styles.kpiStrip}>
+          <div className={styles.kpiGrid}>
             <div className={styles.kpiCard}>
               <span className={styles.kpiIcon} aria-hidden="true">
                 <Wallet size={20} />
               </span>
               <span className={styles.kpiBody}>
-                <span className={styles.kpiLabel}>Bugün brüt satış</span>
+                <span className={styles.kpiLabel}>Günlük Ciro</span>
                 <span className={styles.kpiValue}>{formatPriceMinorUnits(financialSummary.grossSalesMinorUnits)}</span>
-              </span>
-            </div>
-            <div className={styles.kpiCard}>
-              <span className={styles.kpiIcon} aria-hidden="true">
-                <TrendingUp size={20} />
-              </span>
-              <span className={styles.kpiBody}>
-                <span className={styles.kpiLabel}>Net satış</span>
-                <span className={styles.kpiValue}>{formatPriceMinorUnits(financialSummary.netSalesMinorUnits)}</span>
               </span>
             </div>
             <div className={styles.kpiCard}>
@@ -298,8 +343,17 @@ export default function CashierDashboardPage() {
                 <Receipt size={20} />
               </span>
               <span className={styles.kpiBody}>
-                <span className={styles.kpiLabel}>Sipariş sayısı</span>
+                <span className={styles.kpiLabel}>Toplam Sipariş</span>
                 <span className={styles.kpiValue}>{financialSummary.orderCount}</span>
+              </span>
+            </div>
+            <div className={styles.kpiCard}>
+              <span className={styles.kpiIcon} aria-hidden="true">
+                <TrendingUp size={20} />
+              </span>
+              <span className={styles.kpiBody}>
+                <span className={styles.kpiLabel}>Net Satış</span>
+                <span className={styles.kpiValue}>{formatPriceMinorUnits(financialSummary.netSalesMinorUnits)}</span>
               </span>
             </div>
           </div>
@@ -318,105 +372,116 @@ export default function CashierDashboardPage() {
                   <Timer size={16} />
                 </span>
                 <h2 className={styles.columnTitle}>Onay Bekleyen</h2>
-                <span className={styles.columnCount}>{pendingOrders.length}</span>
+                <span className={styles.columnCount}>{filteredPending.length}</span>
               </header>
-              {pendingOrders.length === 0 ? (
+              {filteredPending.length === 0 ? (
                 <EmptyState
                   icon={<Timer size={28} aria-hidden="true" />}
-                  title="Onay bekleyen sipariş yok"
-                  description="Ödemesi tamamlanan yeni siparişler burada görünecek."
+                  title={searchActive ? "Eşleşen sipariş yok" : "Onay bekleyen sipariş yok"}
+                  description={searchActive ? "Arama kriterine uyan bir sipariş bulunamadı." : "Ödemesi tamamlanan yeni siparişler burada görünecek."}
                 />
               ) : (
                 <div className={styles.columnBody}>
-                  {pendingOrders.map((order) => {
+                  {filteredPending.map((order) => {
                     const urgency = waitingUrgency(order.statusSince, now, order.storeAcceptanceTimeoutSeconds);
                     return (
                       <article
                         key={order.orderId}
-                        className={[styles.card, styles[`card--${urgency}`], urgency === "danger" ? styles["card--critical"] : ""].join(
-                          " ",
-                        )}
+                        className={[styles.card, styles["card--pending"], urgency === "danger" ? styles["card--critical"] : ""].join(" ")}
                       >
-                        <div className={styles.cardHeader}>
-                          <div className={styles.cardHeaderMain}>
-                            <span className={styles.tableLabel}>
-                              <UtensilsCrossed size={14} className={styles.tableLabelIcon} aria-hidden="true" />
-                              {order.tableLabel ?? "Masa —"}
-                            </span>
+                        <div className={styles.cardTop}>
+                          <span className={styles.tableChip} aria-hidden="true">
+                            <UtensilsCrossed size={16} />
+                          </span>
+                          <div className={styles.cardTopMain}>
+                            <span className={styles.tableName}>{order.tableLabel ?? "Masa —"}</span>
                             <span className={styles.orderNumber}>#{order.orderNumber ?? "—"}</span>
                           </div>
-                          <span className={styles.orderTotal}>{formatPriceMinorUnits(order.totalMinorUnits)}</span>
-                        </div>
-
-                        <div className={styles.cardMeta}>
-                          <Badge tone="success">Ödeme Alındı</Badge>
-                          <Badge tone={WAITING_BADGE_TONE[urgency]}>
-                            {urgency === "danger" ? "Kritik · " : ""}
-                            {formatElapsedMinutes(order.statusSince, now)} bekliyor
-                          </Badge>
-                        </div>
-
-                        {order.items.map((item) => (
-                          <div key={item.id} className={styles.item}>
-                            {item.orderedQuantity}× {item.productName}
-                            {item.options.length > 0 ? (
-                              <div className={styles.itemOptions}>{item.options.map((option) => option.name).join(", ")}</div>
-                            ) : null}
+                          <div className={styles.cardTopTime}>
+                            <span className={styles.timeValue}>
+                              <Clock size={13} aria-hidden="true" />
+                              {formatElapsedMinutes(order.statusSince, now)}
+                            </span>
+                            <span className={styles.timeSub}>Bugün {formatClockTime(order.statusSince)}</span>
                           </div>
-                        ))}
+                        </div>
 
-                        {rejectingOrderId === order.orderId ? (
-                          <div className={styles.rejectForm}>
-                            <Select
-                              defaultValue={REJECT_REASONS[0].value}
-                              onChange={(event) => {
-                                reasonCodeRef.current[order.orderId] = event.target.value;
-                              }}
-                              aria-label="Red nedeni"
-                            >
-                              {REJECT_REASONS.map((reason) => (
-                                <option key={reason.value} value={reason.value}>
-                                  {reason.label}
-                                </option>
-                              ))}
-                            </Select>
-                            <Textarea
-                              rows={2}
-                              placeholder="Not (opsiyonel)"
-                              onChange={(event) => {
-                                noteRef.current[order.orderId] = event.target.value;
-                              }}
-                              aria-label="Red notu"
-                            />
+                        <div className={styles.items}>
+                          {order.items.map((item) => (
+                            <div key={item.id} className={styles.itemRow}>
+                              <span className={styles.itemBullet} aria-hidden="true" />
+                              <span className={styles.itemName}>
+                                {item.orderedQuantity}x {item.productName}
+                                {item.options.length > 0 ? (
+                                  <span className={styles.itemOptions}> · {item.options.map((option) => option.name).join(", ")}</span>
+                                ) : null}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className={styles.cardFooter}>
+                          <div className={styles.totalRow}>
+                            <span className={styles.totalLabel}>Toplam</span>
+                            <span className={styles.totalValue}>{formatPriceMinorUnits(order.totalMinorUnits)}</span>
+                          </div>
+
+                          {rejectingOrderId === order.orderId ? (
+                            <div className={styles.rejectForm}>
+                              <Select
+                                defaultValue={REJECT_REASONS[0].value}
+                                onChange={(event) => {
+                                  reasonCodeRef.current[order.orderId] = event.target.value;
+                                }}
+                                aria-label="Red nedeni"
+                              >
+                                {REJECT_REASONS.map((reason) => (
+                                  <option key={reason.value} value={reason.value}>
+                                    {reason.label}
+                                  </option>
+                                ))}
+                              </Select>
+                              <Textarea
+                                rows={2}
+                                placeholder="Not (opsiyonel)"
+                                onChange={(event) => {
+                                  noteRef.current[order.orderId] = event.target.value;
+                                }}
+                                aria-label="Red notu"
+                              />
+                              <div className={styles.cardActions}>
+                                <Button
+                                  variant="danger"
+                                  disabled={pendingOrderId === order.orderId}
+                                  onClick={() => handleSubmitReject(order.orderId)}
+                                >
+                                  {pendingOrderId === order.orderId ? "İşleniyor…" : "Reddi Onayla"}
+                                </Button>
+                                <Button variant="ghost" onClick={() => setRejectingOrderId(null)}>
+                                  Vazgeç
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
                             <div className={styles.cardActions}>
                               <Button
-                                variant="danger"
+                                variant="secondary"
                                 disabled={pendingOrderId === order.orderId}
-                                onClick={() => handleSubmitReject(order.orderId)}
+                                onClick={() => setRejectingOrderId(order.orderId)}
                               >
-                                {pendingOrderId === order.orderId ? "İşleniyor…" : "Reddi Onayla"}
+                                Reddet
                               </Button>
-                              <Button variant="ghost" onClick={() => setRejectingOrderId(null)}>
-                                Vazgeç
+                              <Button
+                                className={styles.acceptButton}
+                                disabled={pendingOrderId === order.orderId}
+                                onClick={() => handleAccept(order.orderId)}
+                              >
+                                <Check size={16} aria-hidden="true" />
+                                Siparişi Onayla
                               </Button>
                             </div>
-                          </div>
-                        ) : (
-                          <div className={styles.cardActions}>
-                            <Button disabled={pendingOrderId === order.orderId} onClick={() => handleAccept(order.orderId)}>
-                              <Check size={16} aria-hidden="true" />
-                              Kabul Et
-                            </Button>
-                            <Button
-                              variant="secondary"
-                              disabled={pendingOrderId === order.orderId}
-                              onClick={() => setRejectingOrderId(order.orderId)}
-                            >
-                              <X size={16} aria-hidden="true" />
-                              Reddet
-                            </Button>
-                          </div>
-                        )}
+                          )}
+                        </div>
                       </article>
                     );
                   })}
@@ -430,53 +495,67 @@ export default function CashierDashboardPage() {
                   <ChefHat size={16} />
                 </span>
                 <h2 className={styles.columnTitle}>Hazırlanıyor</h2>
-                <span className={styles.columnCount}>{inProgressOrders.length}</span>
+                <span className={styles.columnCount}>{filteredInProgress.length}</span>
               </header>
-              {inProgressOrders.length === 0 ? (
+              {filteredInProgress.length === 0 ? (
                 <EmptyState
                   icon={<ChefHat size={28} aria-hidden="true" />}
-                  title="Hazırlanan sipariş yok"
-                  description="Kabul edilen siparişler burada görünecek."
+                  title={searchActive ? "Eşleşen sipariş yok" : "Hazırlanan sipariş yok"}
+                  description={searchActive ? "Arama kriterine uyan bir sipariş bulunamadı." : "Kabul edilen siparişler burada görünecek."}
                 />
               ) : (
                 <div className={styles.columnBody}>
-                  {inProgressOrders.map((order) => {
-                    const urgency = waitingUrgency(order.statusSince, now);
-                    return (
-                      <article key={order.orderId} className={[styles.card, styles[`card--${urgency}`]].join(" ")}>
-                        <div className={styles.cardHeader}>
-                          <div className={styles.cardHeaderMain}>
-                            <span className={styles.tableLabel}>
-                              <UtensilsCrossed size={14} className={styles.tableLabelIcon} aria-hidden="true" />
-                              {order.tableLabel ?? "Masa —"}
-                            </span>
-                            <span className={styles.orderNumber}>#{order.orderNumber ?? "—"}</span>
-                          </div>
-                          <span className={styles.orderTotal}>{formatPriceMinorUnits(order.totalMinorUnits)}</span>
+                  {filteredInProgress.map((order) => (
+                    <article key={order.orderId} className={[styles.card, styles["card--preparing"]].join(" ")}>
+                      <div className={styles.cardTop}>
+                        <span className={styles.tableChip} aria-hidden="true">
+                          <UtensilsCrossed size={16} />
+                        </span>
+                        <div className={styles.cardTopMain}>
+                          <span className={styles.tableName}>{order.tableLabel ?? "Masa —"}</span>
+                          <span className={styles.orderNumber}>#{order.orderNumber ?? "—"}</span>
                         </div>
-
-                        <div className={styles.cardMeta}>
-                          <Badge tone={WAITING_BADGE_TONE[urgency]}>{formatElapsedMinutes(order.statusSince, now)} bekliyor</Badge>
+                        <div className={styles.cardTopTime}>
+                          <span className={styles.timeValue}>
+                            <Clock size={13} aria-hidden="true" />
+                            {formatElapsedMinutes(order.statusSince, now)}
+                          </span>
+                          <span className={styles.timeSub}>{formatClockTime(order.statusSince)}&apos;te alındı</span>
                         </div>
+                      </div>
 
+                      <div className={styles.items}>
                         {order.items.map((item) => (
-                          <div key={item.id} className={styles.item}>
-                            {item.orderedQuantity}× {item.productName}
-                            {item.options.length > 0 ? (
-                              <div className={styles.itemOptions}>{item.options.map((option) => option.name).join(", ")}</div>
-                            ) : null}
+                          <div key={item.id} className={styles.itemRow}>
+                            <span className={styles.itemBullet} aria-hidden="true" />
+                            <span className={styles.itemName}>
+                              {item.orderedQuantity}x {item.productName}
+                              {item.options.length > 0 ? (
+                                <span className={styles.itemOptions}> · {item.options.map((option) => option.name).join(", ")}</span>
+                              ) : null}
+                            </span>
                           </div>
                         ))}
+                      </div>
 
+                      <div className={styles.cardFooter}>
+                        <div className={styles.totalRow}>
+                          <span className={styles.totalLabel}>Toplam</span>
+                          <span className={styles.totalValue}>{formatPriceMinorUnits(order.totalMinorUnits)}</span>
+                        </div>
                         <div className={styles.cardActions}>
-                          <Button disabled={readyingOrderId === order.orderId} onClick={() => handleMarkReady(order.orderId)}>
-                            <BellRing size={16} aria-hidden="true" />
-                            Hazır
+                          <Button
+                            className={styles.acceptButton}
+                            disabled={readyingOrderId === order.orderId}
+                            onClick={() => handleMarkReady(order.orderId)}
+                          >
+                            <ChefHat size={16} aria-hidden="true" />
+                            Hazırlığı Tamamla
                           </Button>
                         </div>
-                      </article>
-                    );
-                  })}
+                      </div>
+                    </article>
+                  ))}
                 </div>
               )}
             </section>
@@ -487,47 +566,64 @@ export default function CashierDashboardPage() {
                   <BellRing size={16} />
                 </span>
                 <h2 className={styles.columnTitle}>Hazır · Teslim Bekliyor</h2>
-                <span className={styles.columnCount}>{readyOrders.length}</span>
+                <span className={styles.columnCount}>{filteredReady.length}</span>
               </header>
-              {readyOrders.length === 0 ? (
+              {filteredReady.length === 0 ? (
                 <EmptyState
                   icon={<BellRing size={28} aria-hidden="true" />}
-                  title="Teslim bekleyen sipariş yok"
-                  description="Hazırlanan siparişler burada görünecek."
+                  title={searchActive ? "Eşleşen sipariş yok" : "Teslim bekleyen sipariş yok"}
+                  description={searchActive ? "Arama kriterine uyan bir sipariş bulunamadı." : "Hazırlanan siparişler burada görünecek."}
                 />
               ) : (
                 <div className={styles.columnBody}>
-                  {readyOrders.map((order) => (
-                    <article key={order.orderId} className={`${styles.card} ${styles["card--ready"]}`}>
-                      <div className={styles.cardHeader}>
-                        <div className={styles.cardHeaderMain}>
-                          <span className={styles.tableLabel}>
-                            <UtensilsCrossed size={14} className={styles.tableLabelIcon} aria-hidden="true" />
-                            {order.tableLabel ?? "Masa —"}
-                          </span>
+                  {filteredReady.map((order) => (
+                    <article key={order.orderId} className={[styles.card, styles["card--ready"]].join(" ")}>
+                      <div className={styles.cardTop}>
+                        <span className={styles.tableChip} aria-hidden="true">
+                          <UtensilsCrossed size={16} />
+                        </span>
+                        <div className={styles.cardTopMain}>
+                          <span className={styles.tableName}>{order.tableLabel ?? "Masa —"}</span>
                           <span className={styles.orderNumber}>#{order.orderNumber ?? "—"}</span>
                         </div>
-                        <span className={styles.orderTotal}>{formatPriceMinorUnits(order.totalMinorUnits)}</span>
-                      </div>
-
-                      <div className={styles.cardMeta}>
-                        <Badge tone="success">Hazır</Badge>
-                      </div>
-
-                      {order.items.map((item) => (
-                        <div key={item.id} className={styles.item}>
-                          {item.orderedQuantity}× {item.productName}
-                          {item.options.length > 0 ? (
-                            <div className={styles.itemOptions}>{item.options.map((option) => option.name).join(", ")}</div>
-                          ) : null}
+                        <div className={styles.cardTopTime}>
+                          <span className={styles.timeValue}>
+                            <Clock size={13} aria-hidden="true" />
+                            {formatElapsedMinutes(order.statusSince, now)}
+                          </span>
+                          <span className={styles.timeSub}>{formatClockTime(order.statusSince)}&apos;de hazır</span>
                         </div>
-                      ))}
+                      </div>
 
-                      <div className={styles.cardActions}>
-                        <Button disabled={completingOrderId === order.orderId} onClick={() => handleComplete(order.orderId)}>
-                          <Send size={16} aria-hidden="true" />
-                          Teslim Edildi / Tamamlandı
-                        </Button>
+                      <div className={styles.items}>
+                        {order.items.map((item) => (
+                          <div key={item.id} className={styles.itemRow}>
+                            <span className={styles.itemBullet} aria-hidden="true" />
+                            <span className={styles.itemName}>
+                              {item.orderedQuantity}x {item.productName}
+                              {item.options.length > 0 ? (
+                                <span className={styles.itemOptions}> · {item.options.map((option) => option.name).join(", ")}</span>
+                              ) : null}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className={styles.cardFooter}>
+                        <div className={styles.totalRow}>
+                          <span className={styles.totalLabel}>Toplam</span>
+                          <span className={styles.totalValue}>{formatPriceMinorUnits(order.totalMinorUnits)}</span>
+                        </div>
+                        <div className={styles.cardActions}>
+                          <Button
+                            className={styles.deliverButton}
+                            disabled={completingOrderId === order.orderId}
+                            onClick={() => handleComplete(order.orderId)}
+                          >
+                            <Send size={16} aria-hidden="true" />
+                            Teslim Et
+                          </Button>
+                        </div>
                       </div>
                     </article>
                   ))}
