@@ -77,11 +77,96 @@ Her şey ayağa kalktığında şurada açılır:
 | Test e-posta kutusu (Mailhog) | http://localhost:8025 | Sistemin gönderdiği bildirim e-postalarını gösterir |
 | PostgreSQL | `localhost:5433` | Veritabanına doğrudan bağlanmak istersen (kullanıcı/şifre `infra/.env` içinde) |
 
-### 5. Durdurma / temizleme
+Bu adımdan sonra `http://localhost:3002`'ye girsen bile giriş yapabileceğin bir hesap,
+`http://localhost:3000`'e girsen bile açacağın bir müşteri menüsü **yoktur** — veritabanı tamamen
+boş gelir. Devam etmeden önce aşağıdaki "İlk işletmeyi kurma" adımını uygulaman gerekir.
+
+### 5. İlk işletmeyi kurma (bootstrap)
+
+Personel paneline giriş yapabilmek için önce bir işletme ve bir personel hesabı olması gerekir, ama
+henüz giriş yapmış kimse olmadığı için normal (oturum/cookie gerektiren) API'ler kullanılamaz — bu
+"tavuk-yumurta" sorununu çözmek için backend'de ayrı, paylaşılan bir tokenla korunan `/internal/**`
+adında bir "bootstrap" API'si var. Bu API sadece bu ilk kurulum için kullanılır; sonrasında şube,
+masa ve QR yönetimi personel panelinin kendi ekranlarından yapılabilir.
+
+Kullanacağın token, `infra/.env` dosyasındaki `INTERNAL_ADMIN_TOKEN` değeridir (3. adımda
+`.env.example`'dan kopyaladıysan varsayılan değer `dev-internal-admin-token-change-me`'dir). Her
+istekte bu değeri `X-Internal-Admin-Token` header'ında göndereceksin.
+
+Terminalde, sırayla, her adımın çıktısındaki `id` değerini bir sonraki adımda kullanarak:
+
+**5.1. İşletme (business) oluştur**
+
+```bash
+curl -X POST http://localhost:8080/internal/businesses \
+  -H "X-Internal-Admin-Token: dev-internal-admin-token-change-me" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Test Restoran"}'
+```
+
+Cevaptaki `"id"` alanını not al — bir sonraki her adımda `{businessId}` yerine bunu kullanacaksın.
+
+**5.2. İlk personel hesabını oluştur**
+
+Bu, personel panelinde (`localhost:3002`) giriş yapacağın e-posta/şifredir. `role` olarak
+`BUSINESS_ADMIN` ver — işletmenin tüm yönetim yetkilerine (şube/masa/menü/personel/rapor) sahip tek
+roldür:
+
+```bash
+curl -X POST http://localhost:8080/internal/businesses/{businessId}/staff-users \
+  -H "X-Internal-Admin-Token: dev-internal-admin-token-change-me" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@qrmenu.local","password":"changeme123","role":"BUSINESS_ADMIN"}'
+```
+
+Şifre en az 8 karakter olmalı. `{businessId}` yerine 5.1'de aldığın `id`'yi yaz.
+
+**5.3. Şube oluştur**
+
+```bash
+curl -X POST http://localhost:8080/internal/businesses/{businessId}/branches \
+  -H "X-Internal-Admin-Token: dev-internal-admin-token-change-me" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Merkez Şube"}'
+```
+
+Cevaptaki `"id"` alanını not al — bu `{branchId}`.
+
+**5.4. Masa oluştur**
+
+```bash
+curl -X POST http://localhost:8080/internal/businesses/{businessId}/branches/{branchId}/tables \
+  -H "X-Internal-Admin-Token: dev-internal-admin-token-change-me" \
+  -H "Content-Type: application/json" \
+  -d '{"label":"Masa 1"}'
+```
+
+Cevaptaki `"id"` alanını not al — bu `{tableId}`.
+
+**5.5. Masa için QR token üret**
+
+```bash
+curl -X POST http://localhost:8080/internal/businesses/{businessId}/tables/{tableId}/qr-tokens \
+  -H "X-Internal-Admin-Token: dev-internal-admin-token-change-me"
+```
+
+Cevaptaki `"token"` alanı, müşteri menüsünü açan bağlantının son parçasıdır.
+
+**Artık her iki tarafı da açabilirsin:**
+
+- **Personel / işletme sahibi** → http://localhost:3002 adresine git, 5.2'de oluşturduğun
+  e-posta/şifre ile giriş yap → kasa/yönetim ekranını görürsün. Buradan ikinci bir şube, masa
+  veya QR token eklemek istersen artık `/internal/**`'e gerek yok — panelin kendi ekranlarından
+  (Şubeler / Masalar) yapılır.
+- **Müşteri** → http://localhost:3000/t/{5.5'te aldığın token} adresine git → menü açılır, sipariş
+  verilebilir. Gerçek bir restoranda bu adres bir QR koda gömülür ve müşteri sadece QR'ı okutur;
+  yerelde test ederken token'ı adrese elle eklemek yeterlidir.
+
+### 6. Durdurma / temizleme
 
 ```bash
 docker compose down        # servisleri durdurur, veritabanı verileri kalır
-docker compose down -v     # servisleri durdurur ve veritabanı verilerini de siler
+docker compose down -v     # servisleri durdurur ve veritabanı verilerini de siler (bootstrap'ı da siler, tekrar 5. adımı yapman gerekir)
 ```
 
 ## Docker olmadan, her parçayı kendi bilgisayarında çalıştırma
