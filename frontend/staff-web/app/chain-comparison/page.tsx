@@ -11,11 +11,7 @@ import TableSkeleton from "@/components/ui/TableSkeleton";
 import tableStyles from "@/components/ui/Table.module.css";
 import styles from "@/styles/admin.module.css";
 
-/**
- * Gap-analysis #7 (product-requirements.md Section 13.2): non-financial branch
- * comparison, deliberately scoped to order count + table-visit count in the last 24h -
- * revenue/refund comparisons belong to the future Reporting module (gap-analysis #8).
- */
+/** Preserved for platform/future chain roles; current user-facing roles receive 403. */
 export default function ChainComparisonPage() {
   const [rows, setRows] = useState<BranchComparisonRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -36,32 +32,21 @@ export default function ChainComparisonPage() {
   return (
     <AppShell>
       <main className={styles.page}>
-        <PageHeader title="Şube Karşılaştırma" description="Son 24 saat, sipariş sayısı ve masa ziyareti sayısı." />
-
-        {loading ? (
-          <TableSkeleton />
-        ) : error ? (
+        <PageHeader title="Şube Karşılaştırma" description="Son 24 saat, sipariş ve masa ziyareti sayısı." />
+        {loading ? <TableSkeleton /> : error ? (
           <ErrorState message={error} onRetry={load} />
         ) : rows.length === 0 ? (
           <EmptyState title="Şube bulunamadı" />
         ) : (
           <Table>
-            <thead>
-              <tr>
-                <th>Şube</th>
-                <th className={tableStyles.numeric}>Sipariş</th>
-                <th className={tableStyles.numeric}>Masa Ziyareti</th>
+            <thead><tr><th>Şube</th><th className={tableStyles.numeric}>Sipariş</th><th className={tableStyles.numeric}>Masa Ziyareti</th></tr></thead>
+            <tbody>{rows.map((row) => (
+              <tr key={row.branchId}>
+                <td className={tableStyles.primary}>{row.branchName}</td>
+                <td className={tableStyles.numeric}>{row.orderCount}</td>
+                <td className={tableStyles.numeric}>{row.tableVisitCount}</td>
               </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.branchId}>
-                  <td className={tableStyles.primary}>{row.branchName}</td>
-                  <td className={tableStyles.numeric}>{row.orderCount}</td>
-                  <td className={tableStyles.numeric}>{row.tableVisitCount}</td>
-                </tr>
-              ))}
-            </tbody>
+            ))}</tbody>
           </Table>
         )}
       </main>

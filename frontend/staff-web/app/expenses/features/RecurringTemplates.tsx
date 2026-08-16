@@ -6,7 +6,7 @@ import {
   deactivateRecurringExpenseTemplate,
   formatPriceMinorUnits,
   listRecurringExpenseTemplates,
-  type Branch,
+  type StaffBranchSummary,
   type ExpenseCategory,
   type RecurringExpenseTemplate,
 } from "@/lib/api";
@@ -31,12 +31,11 @@ function todayIsoDate(): string {
 
 type Props = {
   categories: ExpenseCategory[];
-  accessibleBranches: Branch[];
-  isBusinessAdmin: boolean;
+  accessibleBranches: StaffBranchSummary[];
 };
 
 /** Gider Yönetimi'nin tekrarlayan gider şablonu paneli (product-requirements.md Section 16). */
-export default function RecurringTemplates({ categories, accessibleBranches, isBusinessAdmin }: Props) {
+export default function RecurringTemplates({ categories, accessibleBranches }: Props) {
   const { showToast } = useToast();
   const dialogTitleId = useId();
 
@@ -45,7 +44,6 @@ export default function RecurringTemplates({ categories, accessibleBranches, isB
   const [error, setError] = useState<string | null>(null);
 
   const [createOpen, setCreateOpen] = useState(false);
-  const [branchId, setBranchId] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [amount, setAmount] = useState("");
   const [dayOfMonth, setDayOfMonth] = useState("1");
@@ -80,7 +78,7 @@ export default function RecurringTemplates({ categories, accessibleBranches, isB
     setFormError(null);
     try {
       await createRecurringExpenseTemplate({
-        branchId: branchId || null,
+        branchId: null,
         categoryId,
         amountMinorUnits,
         vendor: null,
@@ -171,18 +169,6 @@ export default function RecurringTemplates({ categories, accessibleBranches, isB
             Yeni Şablon
           </h2>
           <form className={styles.section} onSubmit={handleCreateTemplate}>
-            <FormField label="Şube">
-              {(controlProps) => (
-                <Select {...controlProps} value={branchId} onChange={(event) => setBranchId(event.target.value)}>
-                  {isBusinessAdmin ? <option value="">İşletme geneli</option> : null}
-                  {accessibleBranches.map((branch) => (
-                    <option key={branch.id} value={branch.id}>
-                      {branch.name}
-                    </option>
-                  ))}
-                </Select>
-              )}
-            </FormField>
             <FormField label="Kategori" required>
               {(controlProps) => (
                 <Select {...controlProps} value={categoryId} onChange={(event) => setCategoryId(event.target.value)} required>

@@ -103,6 +103,7 @@ services:
       context: ../frontend/staff-web
       args:
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:?set NEXT_PUBLIC_API_BASE_URL in infra/.env.prod}
+        NEXT_PUBLIC_CUSTOMER_WEB_URL: https://${CUSTOMER_WEB_DOMAIN:?set CUSTOMER_WEB_DOMAIN in infra/.env.prod}
     restart: unless-stopped
     depends_on:
       backend:

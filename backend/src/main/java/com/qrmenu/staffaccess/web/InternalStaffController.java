@@ -32,10 +32,11 @@ class InternalStaffController {
 
     @PostMapping
     ResponseEntity<StaffUserResponse> create(@PathVariable UUID businessId, @Valid @RequestBody CreateStaffUserRequest request) {
+        var branchIds = request.branchIdsOrEmpty();
         StaffUser created =
-                staffAuthService.createStaffUser(businessId, request.email(), request.password(), request.role(), request.branchIdsOrEmpty());
+                staffAuthService.createStaffUser(businessId, request.email(), request.password(), request.role(), branchIds);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(new StaffUserResponse(
-                        created.getId(), created.getEmail(), created.getRole().name(), created.isActive(), request.branchIdsOrEmpty(), created.getCreatedAt()));
+                        created.getId(), created.getEmail(), created.getRole().name(), created.isActive(), branchIds, created.getCreatedAt()));
     }
 }

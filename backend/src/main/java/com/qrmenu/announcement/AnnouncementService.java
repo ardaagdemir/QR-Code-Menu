@@ -52,6 +52,14 @@ public class AnnouncementService {
         return repository.findAllByBusinessIdOrderByCreatedAtDesc(businessId);
     }
 
+    @Transactional(readOnly = true)
+    public List<StaffAnnouncement> listForBranch(UUID businessId, UUID branchId) {
+        return listForBusiness(businessId).stream()
+                .filter(announcement -> announcement.getTarget() == AnnouncementTarget.SELECTED_BRANCHES)
+                .filter(announcement -> announcement.getBranchIds().equals(Set.of(branchId)))
+                .toList();
+    }
+
     /** Section 18.1: filters to not-expired announcements visible to the viewer's branch access. */
     @Transactional(readOnly = true)
     public List<StaffAnnouncement> listActiveFor(StaffContext context) {
@@ -69,6 +77,21 @@ public class AnnouncementService {
                 .findById(announcementId)
                 .filter(existing -> existing.getBusinessId().equals(businessId))
                 .orElseThrow(() -> new ResourceNotFoundException("Announcement not found for business: " + announcementId));
+        announcement.endNow();
+        StaffAnnouncement saved = repository.save(announcement);
+        auditService.record(businessId, actorStaffUserId, "StaffAnnouncement", saved.getId(), "ENDED", Map.of());
+        return saved;
+    }
+
+    @Transactional
+    public StaffAnnouncement endNowForBranch(
+            UUID businessId, UUID branchId, UUID announcementId, UUID actorStaffUserId) {
+        StaffAnnouncement announcement = repository
+                .findById(announcementId)
+                .filter(existing -> existing.getBusinessId().equals(businessId))
+                .filter(existing -> existing.getTarget() == AnnouncementTarget.SELECTED_BRANCHES)
+                .filter(existing -> existing.getBranchIds().equals(Set.of(branchId)))
+                .orElseThrow(() -> new ResourceNotFoundException("Announcement not found for active branch: " + announcementId));
         announcement.endNow();
         StaffAnnouncement saved = repository.save(announcement);
         auditService.record(businessId, actorStaffUserId, "StaffAnnouncement", saved.getId(), "ENDED", Map.of());

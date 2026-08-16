@@ -12,25 +12,37 @@
  * "güçlü sidebar hiyerarşisi" katmanı kuruyor; nav linkleri de kendi zeminlerinden
  * (hover/active) bu sayede daha net ayrışıyor. */
 .sidebar {
-  width: 264px;
+  --sidebar-accent: #e85d24;
+  --sidebar-accent-strong: #c74716;
+  --sidebar-accent-tint: #fff3ed;
+  --sidebar-fg: #25211f;
+  --sidebar-muted: #756f6a;
+  --sidebar-border: #eee9e5;
+
+  width: 248px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
-  padding: var(--space-5) var(--space-4);
-  background: var(--color-surface);
-  border-right: 1px solid var(--color-border);
+  padding: var(--space-6) var(--space-4) var(--space-5);
+  background: #ffffff;
+  color: var(--sidebar-fg);
+  border-right: 1px solid var(--sidebar-border);
   position: sticky;
   top: 0;
   height: 100vh;
   overflow-y: auto;
 }
 
+.sidebar button {
+  color: var(--sidebar-fg);
+}
+
 .brand {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: 0 var(--space-2);
+  padding: 0 var(--space-3) var(--space-2);
 }
 
 .brandMark {
@@ -38,11 +50,11 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-sm);
-  background: var(--color-primary);
-  color: var(--color-primary-fg);
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--sidebar-accent);
+  color: #ffffff;
   font-family: var(--font-family-display);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-bold);
@@ -50,7 +62,7 @@
 
 .brandWordmark {
   font-family: var(--font-family-display);
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-lg);
   font-weight: var(--font-weight-bold);
   letter-spacing: -0.01em;
 }
@@ -71,7 +83,7 @@
 .groupTitle {
   font-size: 0.6875rem;
   font-weight: var(--font-weight-bold);
-  color: var(--color-fg-muted);
+  color: #9a938e;
   text-transform: uppercase;
   letter-spacing: 0.07em;
   padding: 0 var(--space-3);
@@ -85,69 +97,71 @@
   gap: var(--space-3);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
-  color: var(--color-fg-muted);
+  color: var(--sidebar-muted);
   text-decoration: none;
+  min-height: 42px;
   padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-md);
+  border-radius: 9px;
   transition:
     background var(--transition-fast),
     color var(--transition-fast);
 }
 
 .link:hover {
-  color: var(--color-fg);
-  background: var(--color-surface-raised);
+  color: var(--sidebar-fg);
+  background: #faf7f5;
 }
 
 .linkIcon {
   flex-shrink: 0;
-  color: var(--color-fg-muted);
+  color: #8b847f;
   transition: color var(--transition-fast);
 }
 
 .link:hover .linkIcon {
-  color: var(--color-fg);
+  color: var(--sidebar-fg);
 }
 
 /* Aktif sayfanın imzası: dolgun tint zemin + accent metin + sol accent bar - "neredesin"i
  * yalnızca renkle değil üç katmanla (zemin/metin/kenar) birlikte işaretliyor. */
 .active {
-  color: var(--color-primary);
+  color: var(--sidebar-accent);
   font-weight: var(--font-weight-semibold);
-  background: color-mix(in srgb, var(--color-primary) 10%, var(--color-surface-raised));
+  background: var(--sidebar-accent-tint);
+  box-shadow: inset 0 0 0 1px #f7d6c8;
 }
 
 .active::before {
-  content: "";
-  position: absolute;
-  left: -2px;
-  top: 5px;
-  bottom: 5px;
-  width: 3px;
-  border-radius: var(--radius-full);
-  background: var(--color-primary);
+  display: none;
 }
 
 .active:hover {
-  color: var(--color-primary);
-  background: color-mix(in srgb, var(--color-primary) 14%, var(--color-surface-raised));
+  color: var(--sidebar-accent-strong);
+  background: #fbe8df;
 }
 
 .active .linkIcon {
-  color: var(--color-primary);
+  color: var(--sidebar-accent);
 }
 
 /* Sidebar altındaki kimlik kartı - mockup'ın "Ahmet Kaya / Yönetici" kutusuna karşılık
  * gelir, ama burada dropdown yerine gerçek işlevi olan bir çıkış ikon-butonu taşır. */
+.sidebarFooter {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: auto;
+}
+
 .userCard {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  margin-top: auto;
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface-raised);
+  padding: var(--space-3);
+  border: 1px solid var(--sidebar-border);
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(68, 48, 36, 0.04);
 }
 
 .avatar {
@@ -158,8 +172,8 @@
   width: 32px;
   height: 32px;
   border-radius: var(--radius-full);
-  background: color-mix(in srgb, var(--color-primary) 16%, transparent);
-  color: var(--color-primary);
+  background: #fcebe3;
+  color: var(--sidebar-accent-strong);
   font-family: var(--font-family-display);
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-bold);
@@ -176,7 +190,7 @@
 .userEmail {
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-semibold);
-  color: var(--color-fg);
+  color: var(--sidebar-fg);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -184,7 +198,21 @@
 
 .userRole {
   font-size: 0.6875rem;
-  color: var(--color-fg-muted);
+  color: var(--sidebar-muted);
+}
+
+.supportCard {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 48px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--sidebar-border);
+  border-radius: 10px;
+  background: #ffffff;
+  color: var(--sidebar-accent-strong);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
 }
 
 .main {
@@ -200,11 +228,12 @@
   justify-content: space-between;
   gap: var(--space-4);
   padding: var(--space-3) var(--space-6);
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-surface-raised);
+  border-bottom: 1px solid #eee9e5;
+  background: rgba(255, 255, 255, 0.96);
   position: sticky;
   top: 0;
   z-index: var(--z-sticky-header);
+  color: #25211f;
 }
 
 .topbarLeft {
@@ -220,14 +249,14 @@
 
 .context {
   font-size: var(--font-size-sm);
-  color: var(--color-fg-muted);
+  color: #756f6a;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .contextBusiness {
-  color: var(--color-fg);
+  color: #25211f;
   font-weight: var(--font-weight-semibold);
 }
 
@@ -240,7 +269,7 @@
 
 .content {
   flex: 1;
-  background: var(--color-bg);
+  background: #fbfaf8;
 }
 
 @media (max-width: 1023px) {

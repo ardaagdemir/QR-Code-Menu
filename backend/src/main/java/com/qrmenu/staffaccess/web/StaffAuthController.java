@@ -71,9 +71,10 @@ public class StaffAuthController {
     private StaffContextResponse toResponse(StaffContext context) {
         String businessName = tenantService.getBusiness(context.businessId()).getName();
         List<BranchSummary> branches = tenantService.listBranches(context.businessId()).stream()
-                .filter(branch -> context.branchIds().contains(branch.getId()))
+                .filter(branch -> context.canAccessBranch(branch.getId()))
                 .map(branch -> new BranchSummary(branch.getId(), branch.getName()))
                 .toList();
+        BranchSummary activeBranch = branches.size() == 1 ? branches.getFirst() : null;
         return new StaffContextResponse(
                 context.staffUserId(),
                 context.businessId(),
@@ -81,7 +82,9 @@ public class StaffAuthController {
                 context.role().name(),
                 context.branchIds().stream().toList(),
                 businessName,
-                branches);
+                branches,
+                activeBranch == null ? null : activeBranch.id(),
+                activeBranch == null ? null : activeBranch.name());
     }
 
     private ResponseCookie sessionCookie(UUID sessionId, Duration maxAge) {

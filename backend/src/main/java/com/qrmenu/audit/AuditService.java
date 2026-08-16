@@ -42,8 +42,9 @@ public class AuditService {
     }
 
     @Transactional(readOnly = true)
-    public List<AuditEntryView> getRecentForBusiness(UUID businessId) {
-        return repository.findAllByBusinessIdOrderByCreatedAtDesc(businessId, PageRequest.of(0, DEFAULT_LIMIT)).stream()
+    public List<AuditEntryView> getRecentForBranch(UUID businessId, UUID branchId) {
+        return repository.findAllByBusinessIdAndBranchIdOrderByCreatedAtDesc(
+                        businessId, branchId, PageRequest.of(0, DEFAULT_LIMIT)).stream()
                 .map(entry -> new AuditEntryView(
                         entry.getId(), entry.getActorStaffUserId(), entry.getEntityType(), entry.getEntityId(), entry.getAction(), entry.getDetails(), entry.getCreatedAt()))
                 .toList();

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LogOut } from "lucide-react";
+import { CircleHelp, LogOut } from "lucide-react";
 import { logout, me, type StaffContext } from "@/lib/api";
 import { NAV_GROUPS, ROLE_LABELS } from "@/lib/staffNav";
 import IconButton from "@/components/ui/IconButton";
@@ -102,17 +102,23 @@ export default function AppShell({ children }: Props) {
         })}
       </nav>
       {context ? (
-        <div className={styles.userCard}>
-          <span className={styles.avatar} aria-hidden="true">
-            {initialsFromEmail(context.email)}
-          </span>
-          <span className={styles.userMeta}>
-            <span className={styles.userEmail}>{context.email}</span>
-            <span className={styles.userRole}>{ROLE_LABELS[context.role] ?? context.role}</span>
-          </span>
-          <IconButton aria-label="Çıkış Yap" size="sm" onClick={handleLogout}>
-            <LogOut size={15} />
-          </IconButton>
+        <div className={styles.sidebarFooter}>
+          <div className={styles.userCard}>
+            <span className={styles.avatar} aria-hidden="true">
+              {initialsFromEmail(context.email)}
+            </span>
+            <span className={styles.userMeta}>
+              <span className={styles.userEmail}>{context.email}</span>
+              <span className={styles.userRole}>{ROLE_LABELS[context.role] ?? context.role}</span>
+            </span>
+            <IconButton aria-label="Çıkış Yap" size="sm" onClick={handleLogout}>
+              <LogOut size={15} />
+            </IconButton>
+          </div>
+          <div className={styles.supportCard}>
+            <CircleHelp size={17} aria-hidden="true" />
+            <span>Yardım &amp; Destek</span>
+          </div>
         </div>
       ) : null}
     </>
@@ -135,7 +141,7 @@ export default function AppShell({ children }: Props) {
             {context ? (
               <span className={styles.context}>
                 <span className={styles.contextBusiness}>{context.businessName}</span>
-                {context.branches.length > 0 ? ` · ${context.branches.map((branch) => branch.name).join(", ")}` : ""}
+                {context.activeBranchName ? ` · ${context.activeBranchName}` : ""}
               </span>
             ) : null}
           </div>

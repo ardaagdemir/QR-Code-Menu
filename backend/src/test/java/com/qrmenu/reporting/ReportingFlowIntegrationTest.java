@@ -6,10 +6,15 @@ import com.qrmenu.support.AbstractIntegrationTest;
 import com.qrmenu.support.StaffFixtures;
 import com.qrmenu.support.TenantFixtures;
 import com.qrmenu.support.TenantFixtures.CheckedInVisit;
+import java.sql.Timestamp;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockCookie;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
@@ -28,11 +33,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 class ReportingFlowIntegrationTest extends AbstractIntegrationTest {
 
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
     @Test
     void branchReportComputesGrossNetRefundAndProductCategoryBreakdown() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Report Business 1");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
-        String adminCookie = StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, "report-admin-1@example.com");
+        String adminCookie = StaffFixtures.bootstrapBusinessAdminAndLogin(
+                mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "report-admin-1@example.com");
         String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "İçecekler");
         String productId = TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Kahve", 3000, 10);
         TenantFixtures.upsertBranchProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, productId, "AVAILABLE", null);
@@ -42,6 +51,16 @@ class ReportingFlowIntegrationTest extends AbstractIntegrationTest {
         String qrA = TenantFixtures.createQrToken(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, tableA);
         CheckedInVisit visitA = payAndAwaitStoreAcceptance(businessId, productId, qrA, 2);
         String orderIdA = acceptOrder(branchId, adminCookie, visitA);
+        mockMvc.perform(post("/api/staff/orders/{orderId}/ready", orderIdA)
+                        .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, adminCookie)))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/staff/orders/{orderId}/complete", orderIdA)
+                        .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, adminCookie)))
+                .andExpect(status().isOk());
+        Instant readyAt = Instant.now();
+        jdbcTemplate.update(
+                "UPDATE customer_order SET preparation_started_at = ?, ready_at = ? WHERE id = ?",
+                Timestamp.from(readyAt.minusSeconds(600)), Timestamp.from(readyAt), UUID.fromString(orderIdA));
         // Gap-analysis #17: only visitA records a headcount - visitB stays unset (never
         // defaulted to 1), so guestCountTotal must reflect just the one recorded visit.
         mockMvc.perform(withCookie(patch("/api/table-visits/{tableVisitId}/guest-count", visitA.tableVisitId()), visitA)
@@ -57,7 +76,7 @@ class ReportingFlowIntegrationTest extends AbstractIntegrationTest {
         rejectOrder(branchId, adminCookie, visitB);
 
         LocalDate today = LocalDate.now(ZoneOffset.UTC);
-        JsonNode report = objectMapper.readTree(mockMvc.perform(get("/api/staff/branches/{branchId}/reports", branchId)
+        JsonNode report = objectMapper.readTree(mockMvc.perform(get("/api/staff/reports")
                         .param("from", today.toString())
                         .param("to", today.toString())
                         .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, adminCookie)))
@@ -78,6 +97,8 @@ class ReportingFlowIntegrationTest extends AbstractIntegrationTest {
         assertThat(report.get("tableVisitCount").asLong()).isEqualTo(2);
         assertThat(report.get("guestCountTotal").asLong()).isEqualTo(3);
         assertThat(report.get("guestCountRecordedVisitCount").asLong()).isEqualTo(1);
+        assertThat(report.get("averagePreparationSeconds").asLong()).isEqualTo(600);
+        assertThat(report.get("completedOrderCount").asLong()).isEqualTo(1);
 
         JsonNode products = report.get("productBreakdown");
         assertThat(products).hasSize(1);
@@ -97,11 +118,12 @@ class ReportingFlowIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void chainReportAggregatesAcrossBranchesAndIsAdminOnly() throws Exception {
+    void currentStaffRolesCannotAccessChainReportsOrAnotherBranch() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Report Business 2");
         String branchA = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube A");
         String branchB = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube B");
-        String adminCookie = StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, "report-admin-2@example.com");
+        String adminCookie = StaffFixtures.bootstrapAndLogin(
+                mockMvc, TEST_ADMIN_TOKEN, businessId, branchA, "report-admin-2@example.com", "BUSINESS_ADMIN");
         String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Kategori");
         String productId = TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Çay", 1000, 10);
         TenantFixtures.upsertBranchProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchA, productId, "AVAILABLE", null);
@@ -112,28 +134,24 @@ class ReportingFlowIntegrationTest extends AbstractIntegrationTest {
         acceptOrder(branchA, adminCookie, visitA);
 
         LocalDate today = LocalDate.now(ZoneOffset.UTC);
+        String platformCookie = StaffFixtures.bootstrapAndLogin(
+                mockMvc, TEST_ADMIN_TOKEN, businessId, branchA, "report-platform-2@example.com", "PLATFORM_ADMIN");
         JsonNode chain = objectMapper.readTree(mockMvc.perform(get("/api/staff/reports/chain")
                         .param("from", today.toString())
                         .param("to", today.toString())
-                        .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, adminCookie)))
+                        .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, platformCookie)))
                 .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString());
-
+                .andReturn().getResponse().getContentAsString());
         assertThat(chain.get("totalGrossSalesMinorUnits").asLong()).isEqualTo(1000);
-        assertThat(chain.get("totalOrderCount").asInt()).isEqualTo(1);
         assertThat(chain.get("branches")).hasSize(2);
-        for (JsonNode branch : chain.get("branches")) {
-            if (branch.get("branchId").asText().equals(branchA)) {
-                assertThat(branch.get("grossSalesMinorUnits").asLong()).isEqualTo(1000);
-            } else {
-                assertThat(branch.get("branchId").asText()).isEqualTo(branchB);
-                assertThat(branch.get("grossSalesMinorUnits").asLong()).isEqualTo(0);
-            }
-        }
 
-        // BRANCH_MANAGER has REPORT_VIEW but not REPORT_CHAIN_VIEW - business-wide comparison stays admin-only.
+        mockMvc.perform(get("/api/staff/reports/chain")
+                        .param("from", today.toString())
+                        .param("to", today.toString())
+                        .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, adminCookie)))
+                .andExpect(status().isForbidden());
+
+        // BRANCH_MANAGER has REPORT_VIEW but no business-wide comparison permission.
         String managerEmail = "report-manager-2@example.com";
         mockMvc.perform(post("/internal/businesses/{businessId}/staff-users", businessId)
                         .header("X-Internal-Admin-Token", TEST_ADMIN_TOKEN)
@@ -173,7 +191,8 @@ class ReportingFlowIntegrationTest extends AbstractIntegrationTest {
     void kitchenFinancialSummaryIsGatedToItsOwnPermissionNotPlainReportView() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Report Business 4");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
-        String adminCookie = StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, "report-admin-4@example.com");
+        String adminCookie = StaffFixtures.bootstrapBusinessAdminAndLogin(
+                mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "report-admin-4@example.com");
         String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Kategori");
         String productId = TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Kahve", 1500, 10);
         TenantFixtures.upsertBranchProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, productId, "AVAILABLE", null);

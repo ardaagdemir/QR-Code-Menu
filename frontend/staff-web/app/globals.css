@@ -7,7 +7,7 @@
  * "staff-web Görsel Yön Değişikliği" bölümü) - "Tide" kimliği yerini bu tokenlara bıraktı.
  */
 :root {
-  /* Color - beyaz/nötr zemin + koyu charcoal tipografi + tek güçlü indigo-mor accent.
+  /* Color - beyaz/nötr zemin + koyu charcoal tipografi + rafine restoran turuncusu accent.
    * Accent (--color-primary) tüm primary aksiyon/link/focus-ring için tek kaynak -
    * durum renklerinden (warning/info/success/danger) hue olarak bilinçli şekilde uzak
    * tutulur. --color-info, dört ayrı sipariş durumunun (bekliyor/hazırlanıyor/hazır/
@@ -19,8 +19,8 @@
   --color-fg-muted: #667085;
   --color-border: rgba(28, 31, 38, 0.09);
   --color-border-strong: rgba(28, 31, 38, 0.18);
-  --color-primary: #5b3df0;
-  --color-primary-strong: #4527c9;
+  --color-primary: #e85d24;
+  --color-primary-strong: #c74716;
   --color-primary-fg: #ffffff;
   --color-danger: #b91c1c;
   --color-danger-bg: rgba(185, 28, 28, 0.12);
@@ -115,9 +115,9 @@
   --color-fg-muted: #9aa1ad;
   --color-border: rgba(255, 255, 255, 0.1);
   --color-border-strong: rgba(255, 255, 255, 0.2);
-  --color-primary: #8b7bff;
-  --color-primary-strong: #a595ff;
-  --color-primary-fg: #14101f;
+  --color-primary: #e85d24;
+  --color-primary-strong: #c74716;
+  --color-primary-fg: #ffffff;
   --color-danger: #f0847a;
   --color-danger-bg: rgba(240, 132, 122, 0.14);
   --color-success: #6fce93;

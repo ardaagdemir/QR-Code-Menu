@@ -1,198 +1,256 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
-import Link from "next/link";
-import { ApiError, createBranch, listBranches, setDeliveryModel, setOrderingEnabled, type Branch, type DeliveryModel } from "@/lib/api";
+import { useEffect, useState } from "react";
+import {
+  getBusinessHours,
+  listBranches,
+  setAddress,
+  setBranchTimezone,
+  setBusinessHours,
+  setDeliveryModel,
+  setOrderingEnabled,
+  setStoreAcceptanceTimeout,
+  type Branch,
+  type BranchBusinessHoursEntry,
+  type DayOfWeek,
+  type DeliveryModel,
+} from "@/lib/api";
 import AppShell from "@/components/layout/AppShell";
-import PageHeader from "@/components/ui/PageHeader";
-import Table from "@/components/ui/Table";
-import EmptyState from "@/components/ui/EmptyState";
-import ErrorState from "@/components/ui/ErrorState";
-import TableSkeleton from "@/components/ui/TableSkeleton";
-import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
-import Dialog from "@/components/ui/Dialog";
+import Button from "@/components/ui/Button";
+import ErrorState from "@/components/ui/ErrorState";
 import FormField from "@/components/ui/FormField";
 import Input from "@/components/ui/Input";
+import PageHeader from "@/components/ui/PageHeader";
 import Select from "@/components/ui/Select";
+import Table from "@/components/ui/Table";
+import TableSkeleton from "@/components/ui/TableSkeleton";
 import { useToast } from "@/components/ui/ToastProvider";
 import tableStyles from "@/components/ui/Table.module.css";
 import styles from "@/styles/admin.module.css";
 
-/** Section 4, staff-web admin screen: Branch management (Permission.BRANCH_MANAGE). */
-export default function BranchesPage() {
-  const { showToast } = useToast();
-  const dialogTitleId = useId();
+const DAY_LABELS: Record<DayOfWeek, string> = {
+  MONDAY: "Pazartesi",
+  TUESDAY: "Salı",
+  WEDNESDAY: "Çarşamba",
+  THURSDAY: "Perşembe",
+  FRIDAY: "Cuma",
+  SATURDAY: "Cumartesi",
+  SUNDAY: "Pazar",
+};
 
-  const [branches, setBranches] = useState<Branch[]>([]);
+const DAYS_OF_WEEK: DayOfWeek[] = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
+
+function defaultHoursForDay(dayOfWeek: DayOfWeek): BranchBusinessHoursEntry {
+  return { dayOfWeek, openingTime: null, closingTime: null, closed: false };
+}
+
+export default function BranchSettingsPage() {
+  const { showToast } = useToast();
+  const [branch, setBranch] = useState<Branch | null>(null);
+  const [addressInput, setAddressInput] = useState("");
+  const [timezoneInput, setTimezoneInput] = useState("");
+  const [timeoutMinutesInput, setTimeoutMinutesInput] = useState("5");
+  const [deliveryModel, setDeliveryModelInput] = useState<DeliveryModel>("WAITER_DELIVERY");
+  const [hours, setHours] = useState<BranchBusinessHoursEntry[]>(DAYS_OF_WEEK.map(defaultHoursForDay));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [saving, setSaving] = useState<string | null>(null);
 
-  const [createOpen, setCreateOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [deliveryModel, setDeliveryModelInput] = useState<DeliveryModel>("WAITER_DELIVERY");
-  const [creating, setCreating] = useState(false);
-
-  function load() {
-    listBranches()
-      .then((data) => {
-        setBranches(data);
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([listBranches(), getBusinessHours()])
+      .then(([branches, hoursList]) => {
+        if (cancelled) return;
+        const current = branches[0] ?? null;
+        setBranch(current);
+        setAddressInput(current?.address ?? "");
+        setTimezoneInput(current?.timezone ?? "");
+        setTimeoutMinutesInput(current ? String(Math.round(current.storeAcceptanceTimeoutSeconds / 60)) : "5");
+        setDeliveryModelInput(current?.deliveryModel ?? "WAITER_DELIVERY");
+        const byDay = Object.fromEntries(hoursList.map((entry) => [entry.dayOfWeek, entry]));
+        setHours(DAYS_OF_WEEK.map((day) => byDay[day] ?? defaultHoursForDay(day)));
         setError(null);
       })
-      .catch((err) => setError(err instanceof ApiError ? "Şubeler yüklenemedi." : "Beklenmedik bir hata oluştu."))
-      .finally(() => setLoading(false));
-  }
+      .catch(() => {
+        if (!cancelled) setError("Şube ayarları yüklenemedi.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-  useEffect(load, []);
-
-  async function handleCreate(event: React.FormEvent) {
-    event.preventDefault();
-    if (!name.trim()) {
-      return;
-    }
-    setCreating(true);
+  async function handleToggleOrdering() {
+    if (!branch) return;
+    setSaving("ordering");
     try {
-      await createBranch(name.trim(), deliveryModel);
-      setName("");
-      setDeliveryModelInput("WAITER_DELIVERY");
-      setCreateOpen(false);
-      load();
-      showToast("Şube oluşturuldu.", "success");
-    } catch {
-      showToast("Şube oluşturulamadı.", "error");
-    } finally {
-      setCreating(false);
-    }
-  }
-
-  async function handleToggleDeliveryModel(branch: Branch) {
-    setTogglingId(branch.id);
-    try {
-      const nextModel = branch.deliveryModel === "CUSTOMER_PICKUP" ? "WAITER_DELIVERY" : "CUSTOMER_PICKUP";
-      const updated = await setDeliveryModel(branch.id, nextModel);
-      setBranches((current) => current.map((b) => (b.id === updated.id ? updated : b)));
-    } catch {
-      showToast("Teslimat modeli güncellenemedi.", "error");
-    } finally {
-      setTogglingId(null);
-    }
-  }
-
-  async function handleToggleOrdering(branch: Branch) {
-    setTogglingId(branch.id);
-    try {
-      const updated = await setOrderingEnabled(branch.id, !branch.orderingEnabled);
-      setBranches((current) => current.map((b) => (b.id === updated.id ? updated : b)));
+      setBranch(await setOrderingEnabled(!branch.orderingEnabled));
+      showToast("Sipariş durumu güncellendi.", "success");
     } catch {
       showToast("Sipariş durumu güncellenemedi.", "error");
     } finally {
-      setTogglingId(null);
+      setSaving(null);
     }
+  }
+
+  async function handleSaveDeliveryModel(event: React.FormEvent) {
+    event.preventDefault();
+    setSaving("delivery");
+    try {
+      setBranch(await setDeliveryModel(deliveryModel));
+      showToast("Teslimat modeli kaydedildi.", "success");
+    } catch {
+      showToast("Teslimat modeli kaydedilemedi.", "error");
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function handleSaveAddress(event: React.FormEvent) {
+    event.preventDefault();
+    setSaving("address");
+    try {
+      setBranch(await setAddress(addressInput.trim()));
+      showToast("Adres kaydedildi.", "success");
+    } catch {
+      showToast("Adres kaydedilemedi.", "error");
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function handleSaveTimezone(event: React.FormEvent) {
+    event.preventDefault();
+    setSaving("timezone");
+    try {
+      setBranch(await setBranchTimezone(timezoneInput.trim() || null));
+      showToast("Saat dilimi kaydedildi.", "success");
+    } catch {
+      showToast("Saat dilimi kaydedilemedi. Geçerli bir IANA saat dilimi girin.", "error");
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function handleSaveTimeout(event: React.FormEvent) {
+    event.preventDefault();
+    const minutes = Number(timeoutMinutesInput);
+    if (!Number.isFinite(minutes) || minutes <= 0) {
+      showToast("Geçerli bir dakika değeri girin.", "error");
+      return;
+    }
+    setSaving("timeout");
+    try {
+      setBranch(await setStoreAcceptanceTimeout(Math.round(minutes * 60)));
+      showToast("Kasa kabul bekleme süresi kaydedildi.", "success");
+    } catch {
+      showToast("Kasa kabul bekleme süresi kaydedilemedi.", "error");
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function handleSaveHours() {
+    setSaving("hours");
+    try {
+      setHours(await setBusinessHours(hours));
+      showToast("Çalışma saatleri kaydedildi.", "success");
+    } catch {
+      showToast("Çalışma saatleri kaydedilemedi.", "error");
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  function updateDay(dayOfWeek: DayOfWeek, patch: Partial<BranchBusinessHoursEntry>) {
+    setHours((current) => current.map((entry) => (entry.dayOfWeek === dayOfWeek ? { ...entry, ...patch } : entry)));
   }
 
   return (
     <AppShell>
       <main className={styles.page}>
-        <PageHeader
-          title="Şubeler"
-          description="İşletmenin şubeleri, teslimat modeli ve sipariş durumu."
-          actions={<Button onClick={() => setCreateOpen(true)}>+ Şube Ekle</Button>}
-        />
+        <PageHeader title="Şube Ayarları" description={branch?.name ?? "Aktif şube ayarları"} />
 
-        {loading ? (
-          <TableSkeleton />
-        ) : error ? (
-          <ErrorState message={error} onRetry={load} />
-        ) : branches.length === 0 ? (
-          <EmptyState title="Henüz şube yok" description="Başlamak için bir şube ekleyin." />
-        ) : (
-          <Table>
-            <thead>
-              <tr>
-                <th>Şube</th>
-                <th>Sipariş</th>
-                <th>Teslimat modeli</th>
-                <th>Kısayollar</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {branches.map((branch) => (
-                <tr key={branch.id}>
-                  <td>
-                    <Link href={`/branches/${branch.id}`} className={tableStyles.primary}>
-                      {branch.name}
-                    </Link>
-                  </td>
-                  <td>
-                    <Badge tone={branch.orderingEnabled ? "neutral" : "danger"}>
-                      {branch.orderingEnabled ? "Açık" : "Kapalı"}
-                    </Badge>
-                  </td>
-                  <td>{branch.deliveryModel === "CUSTOMER_PICKUP" ? "Pickup" : "Garson servisi"}</td>
-                  <td>
-                    <div className={styles.rowActions}>
-                      <Link href={`/cashier/${branch.id}`} className={styles.backLink}>
-                        Kasa
-                      </Link>
-                      <Link href={`/refunds/${branch.id}`} className={styles.backLink}>
-                        İadeler
-                      </Link>
-                      <Link href={`/reports/${branch.id}`} className={styles.backLink}>
-                        Raporlar
-                      </Link>
-                      {branch.deliveryModel === "CUSTOMER_PICKUP" ? (
-                        <Link href={`/pickup/${branch.id}`} className={styles.backLink} target="_blank">
-                          Pickup Board
-                        </Link>
-                      ) : null}
-                    </div>
-                  </td>
-                  <td>
-                    <div className={tableStyles.actions}>
-                      <Button size="md" variant="secondary" disabled={togglingId === branch.id} onClick={() => handleToggleOrdering(branch)}>
-                        {branch.orderingEnabled ? "Siparişi Kapat" : "Siparişi Aç"}
-                      </Button>
-                      <Button size="md" variant="ghost" disabled={togglingId === branch.id} onClick={() => handleToggleDeliveryModel(branch)}>
-                        {branch.deliveryModel === "CUSTOMER_PICKUP" ? "Garson servisine geç" : "Pickup'a geç"}
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
-        )}
+        {loading ? <TableSkeleton /> : error ? <ErrorState message={error} /> : null}
+
+        {!loading && !error && branch ? (
+          <>
+            <section className={styles.section}>
+              <h2 className={styles.sectionTitle}>Operasyon</h2>
+              <div className={styles.rowActions}>
+                <Badge tone={branch.orderingEnabled ? "neutral" : "danger"}>
+                  Sipariş {branch.orderingEnabled ? "açık" : "kapalı"}
+                </Badge>
+                <Button variant="secondary" disabled={saving === "ordering"} onClick={handleToggleOrdering}>
+                  {branch.orderingEnabled ? "Siparişi Kapat" : "Siparişi Aç"}
+                </Button>
+              </div>
+              <form className={styles.form} onSubmit={handleSaveDeliveryModel}>
+                <FormField label="Teslimat modeli">
+                  {(controlProps) => (
+                    <Select
+                      {...controlProps}
+                      value={deliveryModel}
+                      onChange={(event) => setDeliveryModelInput(event.target.value as DeliveryModel)}
+                    >
+                      <option value="WAITER_DELIVERY">Garson servisi</option>
+                      <option value="CUSTOMER_PICKUP">Müşteri kendi alır (pickup)</option>
+                    </Select>
+                  )}
+                </FormField>
+                <Button type="submit" disabled={saving === "delivery"}>Teslimat Modelini Kaydet</Button>
+              </form>
+            </section>
+
+            <section className={styles.section}>
+              <h2 className={styles.sectionTitle}>Şube Bilgileri</h2>
+              <form className={styles.form} onSubmit={handleSaveAddress}>
+                <FormField label="Adres">
+                  {(controlProps) => <Input {...controlProps} value={addressInput} onChange={(event) => setAddressInput(event.target.value)} />}
+                </FormField>
+                <Button type="submit" disabled={saving === "address"}>Adresi Kaydet</Button>
+              </form>
+              <form className={styles.form} onSubmit={handleSaveTimezone}>
+                <FormField label="Saat dilimi (boşsa işletme varsayılanı)">
+                  {(controlProps) => (
+                    <Input {...controlProps} placeholder="Europe/Istanbul" value={timezoneInput} onChange={(event) => setTimezoneInput(event.target.value)} />
+                  )}
+                </FormField>
+                <Button type="submit" disabled={saving === "timezone"}>Saat Dilimini Kaydet</Button>
+              </form>
+              <form className={styles.form} onSubmit={handleSaveTimeout}>
+                <FormField label="Kasa kabul bekleme süresi (dakika)">
+                  {(controlProps) => (
+                    <Input {...controlProps} type="number" min={1} step={1} value={timeoutMinutesInput} onChange={(event) => setTimeoutMinutesInput(event.target.value)} />
+                  )}
+                </FormField>
+                <Button type="submit" disabled={saving === "timeout"}>Bekleme Süresini Kaydet</Button>
+              </form>
+            </section>
+
+            <section className={styles.section}>
+              <h2 className={styles.sectionTitle}>Çalışma Saatleri</h2>
+              <Table>
+                <thead><tr><th>Gün</th><th>Kapalı</th><th>Açılış</th><th>Kapanış</th></tr></thead>
+                <tbody>
+                  {hours.map((entry) => (
+                    <tr key={entry.dayOfWeek}>
+                      <td className={tableStyles.primary}>{DAY_LABELS[entry.dayOfWeek]}</td>
+                      <td><input type="checkbox" checked={entry.closed} onChange={(event) => updateDay(entry.dayOfWeek, { closed: event.target.checked })} /></td>
+                      <td><input type="time" className={styles.input} disabled={entry.closed} value={entry.openingTime?.slice(0, 5) ?? ""} onChange={(event) => updateDay(entry.dayOfWeek, { openingTime: event.target.value || null })} /></td>
+                      <td><input type="time" className={styles.input} disabled={entry.closed} value={entry.closingTime?.slice(0, 5) ?? ""} onChange={(event) => updateDay(entry.dayOfWeek, { closingTime: event.target.value || null })} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+              <Button disabled={saving === "hours"} onClick={handleSaveHours}>Çalışma Saatlerini Kaydet</Button>
+            </section>
+          </>
+        ) : null}
       </main>
-
-      {createOpen ? (
-        <Dialog onClose={() => setCreateOpen(false)} labelledBy={dialogTitleId}>
-          <h2 id={dialogTitleId} className={styles.sectionTitle}>
-            Yeni Şube
-          </h2>
-          <form className={styles.section} onSubmit={handleCreate}>
-            <FormField label="Şube adı" required>
-              {(controlProps) => <Input {...controlProps} value={name} onChange={(event) => setName(event.target.value)} required />}
-            </FormField>
-            <FormField label="Teslimat modeli">
-              {(controlProps) => (
-                <Select
-                  {...controlProps}
-                  value={deliveryModel}
-                  onChange={(event) => setDeliveryModelInput(event.target.value as DeliveryModel)}
-                >
-                  <option value="WAITER_DELIVERY">Garson servisi</option>
-                  <option value="CUSTOMER_PICKUP">Müşteri kendi alır (pickup)</option>
-                </Select>
-              )}
-            </FormField>
-            <Button type="submit" disabled={creating}>
-              {creating ? "Oluşturuluyor…" : "Şube Ekle"}
-            </Button>
-          </form>
-        </Dialog>
-      ) : null}
     </AppShell>
   );
 }

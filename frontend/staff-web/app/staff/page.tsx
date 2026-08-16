@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useState } from "react";
-import { createStaffUser, deactivateStaffUser, listBranches, listStaffUsers, type Branch, type StaffRole, type StaffUser } from "@/lib/api";
+import { createStaffUser, deactivateStaffUser, listStaffUsers, type StaffRole, type StaffUser } from "@/lib/api";
 import AppShell from "@/components/layout/AppShell";
 import PageHeader from "@/components/ui/PageHeader";
 import Table from "@/components/ui/Table";
@@ -31,7 +31,6 @@ export default function StaffPage() {
   const dialogTitleId = useId();
 
   const [staffUsers, setStaffUsers] = useState<StaffUser[]>([]);
-  const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -39,17 +38,15 @@ export default function StaffPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<StaffRole>("CASHIER");
-  const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>([]);
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [deactivateTarget, setDeactivateTarget] = useState<StaffUser | null>(null);
   const [deactivating, setDeactivating] = useState(false);
 
   function load() {
-    Promise.all([listStaffUsers(), listBranches()])
-      .then(([users, branchList]) => {
+    listStaffUsers()
+      .then((users) => {
         setStaffUsers(users);
-        setBranches(branchList);
         setError(null);
       })
       .catch(() => setError("Personel listesi yüklenemedi."))
@@ -57,10 +54,6 @@ export default function StaffPage() {
   }
 
   useEffect(load, []);
-
-  function toggleBranch(branchId: string) {
-    setSelectedBranchIds((current) => (current.includes(branchId) ? current.filter((id) => id !== branchId) : [...current, branchId]));
-  }
 
   async function handleCreate(event: React.FormEvent) {
     event.preventDefault();
@@ -71,10 +64,9 @@ export default function StaffPage() {
     setCreating(true);
     setFormError(null);
     try {
-      await createStaffUser(email.trim(), password, role, role === "BUSINESS_ADMIN" ? [] : selectedBranchIds);
+      await createStaffUser(email.trim(), password, role);
       setEmail("");
       setPassword("");
-      setSelectedBranchIds([]);
       setCreateOpen(false);
       load();
       showToast("Personel oluşturuldu.", "success");
@@ -100,13 +92,6 @@ export default function StaffPage() {
       setDeactivating(false);
       setDeactivateTarget(null);
     }
-  }
-
-  function branchNames(branchIds: string[]): string {
-    if (branchIds.length === 0) {
-      return "Tüm şubeler";
-    }
-    return branchIds.map((id) => branches.find((b) => b.id === id)?.name ?? id).join(", ");
   }
 
   return (
@@ -138,7 +123,6 @@ export default function StaffPage() {
               <tr>
                 <th>E-posta</th>
                 <th>Rol</th>
-                <th>Şubeler</th>
                 <th>Durum</th>
                 <th></th>
               </tr>
@@ -148,7 +132,6 @@ export default function StaffPage() {
                 <tr key={user.id}>
                   <td className={tableStyles.primary}>{user.email}</td>
                   <td>{ROLE_LABELS[user.role] ?? user.role}</td>
-                  <td className={tableStyles.muted}>{branchNames(user.branchIds)}</td>
                   <td>
                     <Badge tone={user.active ? "neutral" : "danger"}>{user.active ? "Aktif" : "Devre dışı"}</Badge>
                   </td>
@@ -191,20 +174,6 @@ export default function StaffPage() {
                 </Select>
               )}
             </FormField>
-
-            {role !== "BUSINESS_ADMIN" && branches.length > 0 ? (
-              <div className={styles.field}>
-                <span className={styles.label}>Şubeler</span>
-                <div className={styles.rowActions}>
-                  {branches.map((branch) => (
-                    <label key={branch.id} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                      <input type="checkbox" checked={selectedBranchIds.includes(branch.id)} onChange={() => toggleBranch(branch.id)} />
-                      {branch.name}
-                    </label>
-                  ))}
-                </div>
-              </div>
-            ) : null}
 
             {formError ? <ErrorState message={formError} /> : null}
 

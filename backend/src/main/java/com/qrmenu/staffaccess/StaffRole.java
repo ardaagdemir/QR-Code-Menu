@@ -41,7 +41,6 @@ public enum StaffRole {
                     Permission.BUSINESS_SETTINGS_MANAGE,
                     Permission.ANNOUNCEMENT_MANAGE,
                     Permission.REPORT_VIEW,
-                    Permission.REPORT_CHAIN_VIEW,
                     Permission.REPORT_FINANCIAL_SUMMARY_VIEW,
                     Permission.EXPENSE_VIEW,
                     Permission.EXPENSE_MANAGE,

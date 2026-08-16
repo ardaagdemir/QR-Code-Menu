@@ -113,6 +113,12 @@ public class TenantService {
     }
 
     @Transactional
+    public TableQrToken regenerateQrToken(UUID businessId, UUID branchId, UUID tableId) {
+        requireTableInBranch(businessId, branchId, tableId);
+        return regenerateQrToken(businessId, tableId);
+    }
+
+    @Transactional
     public void revokeQrToken(UUID businessId, UUID qrTokenId, UUID actorStaffUserId) {
         TableQrToken token = qrTokenRepository
                 .findByIdAndBusinessId(qrTokenId, businessId)
@@ -122,6 +128,15 @@ public class TenantService {
         auditService.record(
                 businessId, actorStaffUserId, "TableQrToken", token.getId(), "REVOKED",
                 Map.of("tableId", token.getTableId().toString()));
+    }
+
+    @Transactional
+    public void revokeQrToken(UUID businessId, UUID branchId, UUID qrTokenId, UUID actorStaffUserId) {
+        TableQrToken token = qrTokenRepository
+                .findByIdAndBusinessId(qrTokenId, businessId)
+                .orElseThrow(() -> new ResourceNotFoundException("QR token not found for business: " + qrTokenId));
+        requireTableInBranch(businessId, branchId, token.getTableId());
+        revokeQrToken(businessId, qrTokenId, actorStaffUserId);
     }
 
     @Transactional(readOnly = true)
@@ -149,6 +164,16 @@ public class TenantService {
                 .findByIdAndBusinessId(branchId, businessId)
                 .orElseThrow(() -> new ResourceNotFoundException("Branch not found for business: " + branchId));
         return tableRepository.findAllByBranchIdOrderByLabelAsc(branchId);
+    }
+
+    private RestaurantTable requireTableInBranch(UUID businessId, UUID branchId, UUID tableId) {
+        RestaurantTable table = tableRepository
+                .findByIdAndBusinessId(tableId, businessId)
+                .orElseThrow(() -> new ResourceNotFoundException("Table not found for business: " + tableId));
+        if (!table.getBranchId().equals(branchId)) {
+            throw new ResourceNotFoundException("Table not found in active branch: " + tableId);
+        }
+        return table;
     }
 
     /** Bölüm 19.3 kasa/KDS kartlarındaki masa etiketi için: tekil, tenant-scoped, throw etmeyen lookup. */
@@ -313,6 +338,12 @@ public class TenantService {
         return qrTokenRepository
                 .findByTableIdAndStatus(table.getId(), QrTokenStatus.ACTIVE)
                 .orElseThrow(() -> new ResourceNotFoundException("No active QR token for table: " + tableId));
+    }
+
+    @Transactional(readOnly = true)
+    public TableQrToken getActiveQrToken(UUID businessId, UUID branchId, UUID tableId) {
+        requireTableInBranch(businessId, branchId, tableId);
+        return getActiveQrToken(businessId, tableId);
     }
 
     /**

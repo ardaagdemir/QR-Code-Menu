@@ -48,7 +48,7 @@ class DailyCloseFlowIntegrationTest extends AbstractIntegrationTest {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Close Business 1");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String adminCookie =
-                StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, "close-admin-1@example.com");
+                StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "close-admin-1@example.com");
         String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Kategori");
         String productId = TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Ürün", 3000, 10);
         TenantFixtures.upsertBranchProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, productId, "AVAILABLE", null);
@@ -102,7 +102,7 @@ class DailyCloseFlowIntegrationTest extends AbstractIntegrationTest {
         String managerCookie = StaffFixtures.login(mockMvc, managerEmail);
         LocalDate today = LocalDate.now(ZoneOffset.UTC);
 
-        mockMvc.perform(get("/api/staff/daily-close/excel")
+        mockMvc.perform(get("/api/staff/daily-close/chain/excel")
                         .param("from", today.toString())
                         .param("to", today.toString())
                         .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, managerCookie)))
@@ -114,7 +114,7 @@ class DailyCloseFlowIntegrationTest extends AbstractIntegrationTest {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Close Business 3");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Excel Şube");
         String adminCookie =
-                StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, "close-admin-3@example.com");
+                StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "close-admin-3@example.com");
         MockCookie cookie = new MockCookie(StaffCookieSupport.COOKIE_NAME, adminCookie);
         LocalDate today = LocalDate.now(ZoneOffset.UTC);
 
@@ -146,14 +146,16 @@ class DailyCloseFlowIntegrationTest extends AbstractIntegrationTest {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Close Business 4");
         String previewBranchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Preview Şube");
         String finalBranchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Final Şube");
-        String adminCookie =
-                StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, "close-admin-4@example.com");
+        String previewAdminCookie = StaffFixtures.bootstrapAndLogin(
+                mockMvc, TEST_ADMIN_TOKEN, businessId, previewBranchId, "close-admin-4a@example.com", "BUSINESS_ADMIN");
+        String finalAdminCookie = StaffFixtures.bootstrapAndLogin(
+                mockMvc, TEST_ADMIN_TOKEN, businessId, finalBranchId, "close-admin-4b@example.com", "BUSINESS_ADMIN");
 
         // Branches default to UTC (no timezone configured) - hours must be set in UTC wall-clock time to match.
         // Closing in 3 minutes: inside the 10-minute preview lead, but not yet past the 5-minute final grace.
-        setTodayHours(previewBranchId, adminCookie, LocalTime.now(ZoneOffset.UTC).plusMinutes(3));
+        setTodayHours(previewBranchId, previewAdminCookie, LocalTime.now(ZoneOffset.UTC).plusMinutes(3));
         // Closed 6 minutes ago: already past closing + 5-minute grace -> should go straight to FINAL.
-        setTodayHours(finalBranchId, adminCookie, LocalTime.now(ZoneOffset.UTC).minusMinutes(6));
+        setTodayHours(finalBranchId, finalAdminCookie, LocalTime.now(ZoneOffset.UTC).minusMinutes(6));
 
         scheduler.generateDueSnapshots();
 
@@ -181,12 +183,14 @@ class DailyCloseFlowIntegrationTest extends AbstractIntegrationTest {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Close Business 5");
         String brokenBranchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Broken Şube");
         String healthyBranchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Healthy Şube");
-        String adminCookie =
-                StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, "close-admin-5@example.com");
+        String brokenAdminCookie = StaffFixtures.bootstrapAndLogin(
+                mockMvc, TEST_ADMIN_TOKEN, businessId, brokenBranchId, "close-admin-5a@example.com", "BUSINESS_ADMIN");
+        String healthyAdminCookie = StaffFixtures.bootstrapAndLogin(
+                mockMvc, TEST_ADMIN_TOKEN, businessId, healthyBranchId, "close-admin-5b@example.com", "BUSINESS_ADMIN");
 
         // Both branches close 6 minutes ago (UTC wall-clock, matching schedulerRespectsPreviewLeadAndFinalGraceThresholds).
-        setTodayHours(brokenBranchId, adminCookie, LocalTime.now(ZoneOffset.UTC).minusMinutes(6));
-        setTodayHours(healthyBranchId, adminCookie, LocalTime.now(ZoneOffset.UTC).minusMinutes(6));
+        setTodayHours(brokenBranchId, brokenAdminCookie, LocalTime.now(ZoneOffset.UTC).minusMinutes(6));
+        setTodayHours(healthyBranchId, healthyAdminCookie, LocalTime.now(ZoneOffset.UTC).minusMinutes(6));
         corruptBranchTimezone(brokenBranchId, "Not/ARealZone");
 
         scheduler.generateDueSnapshots();

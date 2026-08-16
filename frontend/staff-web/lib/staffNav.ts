@@ -7,6 +7,7 @@ import {
   Scale,
   Settings,
   ShoppingBag,
+  Store,
   Table2,
   Undo2,
   User,
@@ -24,37 +25,8 @@ export const ROLE_LABELS: Record<string, string> = {
 
 export type StaffRole = StaffContext["role"];
 
-/** True for roles whose backend permissions span every branch in the business
- * (Permission.BRANCH_MANAGE), so they pick a branch via /branches rather than being
- * deep-linked to one. */
-export function isBusinessWide(role: StaffRole): boolean {
-  return role === "BUSINESS_ADMIN" || role === "PLATFORM_ADMIN";
-}
-
-/** Kasa/İadeler have no "all branches" screen - a business-wide role goes
- * through /branches to pick one, an operator scoped to their own branch(es) goes
- * straight there (first assigned branch, the common single-branch case). */
-export function singleBranchHref(context: StaffContext, basePath: string): string | null {
-  if (isBusinessWide(context.role)) {
-    return "/branches";
-  }
-  if (context.branches.length === 0) {
-    return null;
-  }
-  return `${basePath}/${context.branches[0].id}`;
-}
-
-/** Unlike Kasa/İadeler, sales reporting has a real "all branches" screen
- * (Permission.REPORT_CHAIN_VIEW, /reports) - business-wide roles land there directly
- * instead of being routed through /branches first. */
 export function reportsHref(context: StaffContext): string | null {
-  if (isBusinessWide(context.role)) {
-    return "/reports";
-  }
-  if (context.branches.length === 0) {
-    return null;
-  }
-  return `/reports/${context.branches[0].id}`;
+  return context.activeBranchId ? "/reports" : null;
 }
 
 export type NavItem = {
@@ -91,7 +63,7 @@ export const NAV_GROUPS: NavGroup[] = [
         label: "Kasa",
         matchPrefix: "/cashier",
         roles: ["PLATFORM_ADMIN", "BUSINESS_ADMIN", "BRANCH_MANAGER", "CASHIER"],
-        href: (context) => singleBranchHref(context, "/cashier"),
+        href: (context) => (context.activeBranchId ? "/cashier" : null),
         icon: ShoppingBag,
       },
     ],
@@ -108,12 +80,20 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: BookOpen,
       },
       {
-        key: "branches",
+        key: "tables",
         label: "Masalar",
+        matchPrefix: "/tables",
+        roles: ["PLATFORM_ADMIN", "BUSINESS_ADMIN"],
+        href: () => "/tables",
+        icon: Table2,
+      },
+      {
+        key: "branch-settings",
+        label: "Şube Ayarları",
         matchPrefix: "/branches",
         roles: ["PLATFORM_ADMIN", "BUSINESS_ADMIN"],
-        href: () => "/branches",
-        icon: Table2,
+        href: (context) => (context.activeBranchId ? "/branches" : null),
+        icon: Store,
       },
       {
         key: "staff",
@@ -137,10 +117,18 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: BarChart3,
       },
       {
+        key: "chain-reports",
+        label: "Zincir Raporları",
+        matchPrefix: "/chain-reports",
+        roles: ["PLATFORM_ADMIN"],
+        href: () => "/chain-reports",
+        icon: BarChart3,
+      },
+      {
         key: "chain-comparison",
         label: "Şube Karşılaştırma",
         matchPrefix: "/chain-comparison",
-        roles: ["PLATFORM_ADMIN", "BUSINESS_ADMIN"],
+        roles: ["PLATFORM_ADMIN"],
         href: () => "/chain-comparison",
         icon: Scale,
       },
@@ -157,7 +145,7 @@ export const NAV_GROUPS: NavGroup[] = [
         label: "İadeler",
         matchPrefix: "/refunds",
         roles: ["PLATFORM_ADMIN", "BUSINESS_ADMIN", "BRANCH_MANAGER"],
-        href: (context) => singleBranchHref(context, "/refunds"),
+        href: (context) => (context.activeBranchId ? "/refunds" : null),
         icon: Undo2,
       },
     ],

@@ -10,7 +10,9 @@ public record StaffContextResponse(
         String role,
         List<UUID> branchIds,
         String businessName,
-        List<BranchSummary> branches) {
+        List<BranchSummary> branches,
+        UUID activeBranchId,
+        String activeBranchName) {
 
     public record BranchSummary(UUID id, String name) {
     }

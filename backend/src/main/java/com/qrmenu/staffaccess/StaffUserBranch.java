@@ -9,10 +9,10 @@ import jakarta.persistence.Table;
 import java.util.UUID;
 
 /**
- * Section 5: "StaffUser *-* Branch (yalnızca BRANCH_MANAGER/CASHIER için
- * scoping)". A plain join entity (not a JPA @ManyToMany collection), same "every id
- * visible in code" convention as TableQrToken/BranchProduct. BUSINESS_ADMIN has no
- * rows here - their scope is every branch in their business, checked via businessId.
+ * Gap-analysis #16: the persisted active branch assignment for every user-facing
+ * staff role. Kept as a plain join entity for migration compatibility; the database
+ * permits at most one row per user-facing staff user; PLATFORM_ADMIN is outside
+ * that invariant.
  */
 @Entity
 @Table(name = "staff_user_branch")

@@ -5,9 +5,6 @@ import {
   createAnnouncement,
   endAnnouncement,
   listAnnouncements,
-  listBranches,
-  type Branch,
-  type BranchAssignmentTarget,
   type StaffAnnouncement,
 } from "@/lib/api";
 import AppShell from "@/components/layout/AppShell";
@@ -25,33 +22,24 @@ import { useToast } from "@/components/ui/ToastProvider";
 import tableStyles from "@/components/ui/Table.module.css";
 import styles from "@/styles/admin.module.css";
 
-/**
- * Section 18.1 "Şube duyuruları" (gap-analysis #7): fully manual, staff-authored
- * announcements shown as a banner on every staff-web page (Permission.ANNOUNCEMENT_MANAGE).
- */
+/** Active-branch announcement management; no branch is selected by the browser. */
 export default function AnnouncementsPage() {
   const { showToast } = useToast();
   const dialogTitleId = useId();
-
   const [announcements, setAnnouncements] = useState<StaffAnnouncement[]>([]);
-  const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-
   const [createOpen, setCreateOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
-  const [target, setTarget] = useState<BranchAssignmentTarget>("ALL_BRANCHES");
-  const [selectedBranchIds, setSelectedBranchIds] = useState<Set<string>>(new Set());
   const [expiresAt, setExpiresAt] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
 
   function load() {
-    Promise.all([listAnnouncements(), listBranches()])
-      .then(([announcementList, branchList]) => {
-        setAnnouncements(announcementList);
-        setBranches(branchList);
+    listAnnouncements()
+      .then((items) => {
+        setAnnouncements(items);
         setError(null);
       })
       .catch(() => setError("Duyurular yüklenemedi."))
@@ -60,41 +48,19 @@ export default function AnnouncementsPage() {
 
   useEffect(load, []);
 
-  function toggleBranch(branchId: string) {
-    setSelectedBranchIds((current) => {
-      const next = new Set(current);
-      if (next.has(branchId)) {
-        next.delete(branchId);
-      } else {
-        next.add(branchId);
-      }
-      return next;
-    });
-  }
-
   async function handleCreate(event: React.FormEvent) {
     event.preventDefault();
-    if (!title.trim() || !message.trim()) {
-      return;
-    }
-    if (target === "SELECTED_BRANCHES" && selectedBranchIds.size === 0) {
-      setFormError("Seçili şubeler için en az bir şube seçin.");
-      return;
-    }
+    if (!title.trim() || !message.trim()) return;
     setBusy(true);
     setFormError(null);
     try {
       await createAnnouncement(
         title.trim(),
         message.trim(),
-        target,
-        Array.from(selectedBranchIds),
         expiresAt.trim() === "" ? null : new Date(expiresAt).toISOString(),
       );
       setTitle("");
       setMessage("");
-      setTarget("ALL_BRANCHES");
-      setSelectedBranchIds(new Set());
       setExpiresAt("");
       setCreateOpen(false);
       load();
@@ -128,53 +94,23 @@ export default function AnnouncementsPage() {
       <main className={styles.page}>
         <PageHeader
           title="Duyurular"
-          actions={
-            <Button
-              onClick={() => {
-                setFormError(null);
-                setCreateOpen(true);
-              }}
-            >
-              + Duyuru Yayınla
-            </Button>
-          }
+          description="Yalnızca aktif şubenizdeki personele gösterilir."
+          actions={<Button onClick={() => setCreateOpen(true)}>+ Duyuru Yayınla</Button>}
         />
-
-        {loading ? (
-          <TableSkeleton />
-        ) : error ? (
+        {loading ? <TableSkeleton /> : error ? (
           <ErrorState message={error} onRetry={load} />
         ) : announcements.length === 0 ? (
           <EmptyState title="Henüz duyuru yok" />
         ) : (
           <Table>
-            <thead>
-              <tr>
-                <th>Başlık</th>
-                <th>Mesaj</th>
-                <th>Hedef</th>
-                <th>Durum</th>
-                <th></th>
-              </tr>
-            </thead>
+            <thead><tr><th>Başlık</th><th>Mesaj</th><th>Durum</th><th></th></tr></thead>
             <tbody>
               {announcements.map((announcement) => (
                 <tr key={announcement.id}>
                   <td className={tableStyles.primary}>{announcement.title}</td>
                   <td className={tableStyles.muted}>{announcement.message}</td>
-                  <td>{announcement.target === "ALL_BRANCHES" ? "Tüm şubeler" : `${announcement.branchIds.length} şube`}</td>
-                  <td>
-                    <Badge tone={isActive(announcement) ? "neutral" : "danger"}>{isActive(announcement) ? "Aktif" : "Sona erdi"}</Badge>
-                  </td>
-                  <td>
-                    {isActive(announcement) ? (
-                      <div className={tableStyles.actions}>
-                        <Button size="md" variant="ghost" disabled={busy} onClick={() => handleEnd(announcement)}>
-                          Sonlandır
-                        </Button>
-                      </div>
-                    ) : null}
-                  </td>
+                  <td><Badge tone={isActive(announcement) ? "neutral" : "danger"}>{isActive(announcement) ? "Aktif" : "Sona erdi"}</Badge></td>
+                  <td>{isActive(announcement) ? <Button size="md" variant="ghost" disabled={busy} onClick={() => handleEnd(announcement)}>Sonlandır</Button> : null}</td>
                 </tr>
               ))}
             </tbody>
@@ -184,59 +120,13 @@ export default function AnnouncementsPage() {
 
       {createOpen ? (
         <Dialog onClose={() => setCreateOpen(false)} labelledBy={dialogTitleId}>
-          <h2 id={dialogTitleId} className={styles.sectionTitle}>
-            Yeni Duyuru
-          </h2>
+          <h2 id={dialogTitleId} className={styles.sectionTitle}>Yeni Duyuru</h2>
           <form className={styles.section} onSubmit={handleCreate}>
-            <FormField label="Başlık" required>
-              {(controlProps) => <Input {...controlProps} value={title} onChange={(event) => setTitle(event.target.value)} required />}
-            </FormField>
-            <FormField label="Mesaj" required>
-              {(controlProps) => <Input {...controlProps} value={message} onChange={(event) => setMessage(event.target.value)} required />}
-            </FormField>
-            <FormField label="Bitiş tarihi (opsiyonel)">
-              {(controlProps) => (
-                <Input {...controlProps} type="datetime-local" value={expiresAt} onChange={(event) => setExpiresAt(event.target.value)} />
-              )}
-            </FormField>
-
-            <div className={styles.field}>
-              <span className={styles.label}>Hedef</span>
-              <div className={styles.rowActions}>
-                <label className={styles.rowMeta}>
-                  <input type="radio" name="announcement-target" checked={target === "ALL_BRANCHES"} onChange={() => setTarget("ALL_BRANCHES")} />{" "}
-                  Tüm şubeler
-                </label>
-                <label className={styles.rowMeta}>
-                  <input
-                    type="radio"
-                    name="announcement-target"
-                    checked={target === "SELECTED_BRANCHES"}
-                    onChange={() => setTarget("SELECTED_BRANCHES")}
-                  />{" "}
-                  Seçili şubeler
-                </label>
-              </div>
-            </div>
-
-            {target === "SELECTED_BRANCHES" ? (
-              <div className={styles.field}>
-                <span className={styles.label}>Şubeler</span>
-                <div className={styles.rowActions}>
-                  {branches.map((branch) => (
-                    <label key={branch.id} className={styles.rowMeta}>
-                      <input type="checkbox" checked={selectedBranchIds.has(branch.id)} onChange={() => toggleBranch(branch.id)} /> {branch.name}
-                    </label>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
+            <FormField label="Başlık" required>{(props) => <Input {...props} value={title} onChange={(event) => setTitle(event.target.value)} required />}</FormField>
+            <FormField label="Mesaj" required>{(props) => <Input {...props} value={message} onChange={(event) => setMessage(event.target.value)} required />}</FormField>
+            <FormField label="Bitiş tarihi (opsiyonel)">{(props) => <Input {...props} type="datetime-local" value={expiresAt} onChange={(event) => setExpiresAt(event.target.value)} />}</FormField>
             {formError ? <ErrorState message={formError} /> : null}
-
-            <Button type="submit" disabled={busy}>
-              {busy ? "Yayınlanıyor…" : "Duyuru Yayınla"}
-            </Button>
+            <Button type="submit" disabled={busy}>{busy ? "Yayınlanıyor…" : "Duyuru Yayınla"}</Button>
           </form>
         </Dialog>
       ) : null}

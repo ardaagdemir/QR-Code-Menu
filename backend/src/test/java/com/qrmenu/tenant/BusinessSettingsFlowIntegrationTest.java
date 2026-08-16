@@ -26,8 +26,10 @@ class BusinessSettingsFlowIntegrationTest extends AbstractIntegrationTest {
     @Test
     void newBusinessGetsSensibleDefaultSettings() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Defaults Business");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String staffCookie =
-                StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, "settings-admin-1@example.com");
+                StaffFixtures.bootstrapBusinessAdminAndLogin(
+                        mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "settings-admin-1@example.com");
 
         JsonNode business = readBusiness(staffCookie);
         assertThat(business.get("defaultCurrency").asText()).isEqualTo("TRY");
@@ -37,8 +39,10 @@ class BusinessSettingsFlowIntegrationTest extends AbstractIntegrationTest {
     @Test
     void businessAdminCanUpdateAndReadBackSettings() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Settings Business");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String staffCookie =
-                StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, "settings-admin-2@example.com");
+                StaffFixtures.bootstrapBusinessAdminAndLogin(
+                        mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "settings-admin-2@example.com");
 
         mockMvc.perform(post("/api/staff/business/settings")
                         .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, staffCookie))
@@ -56,8 +60,10 @@ class BusinessSettingsFlowIntegrationTest extends AbstractIntegrationTest {
     @Test
     void invalidCurrencyOrTimeZoneIsRejected() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Invalid Settings Business");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String staffCookie =
-                StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, "settings-admin-3@example.com");
+                StaffFixtures.bootstrapBusinessAdminAndLogin(
+                        mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "settings-admin-3@example.com");
 
         mockMvc.perform(post("/api/staff/business/settings")
                         .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, staffCookie))
@@ -75,12 +81,13 @@ class BusinessSettingsFlowIntegrationTest extends AbstractIntegrationTest {
     @Test
     void staffWithoutPermissionCannotReadOrChangeBusinessSettings() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Locked Settings Business");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String cashierEmail = "settings-cashier-1@example.com";
         mockMvc.perform(post("/internal/businesses/{businessId}/staff-users", businessId)
                         .header("X-Internal-Admin-Token", TEST_ADMIN_TOKEN)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"" + cashierEmail + "\",\"password\":\"" + StaffFixtures.DEFAULT_PASSWORD
-                                + "\",\"role\":\"CASHIER\"}"))
+                                + "\",\"role\":\"CASHIER\",\"branchIds\":[\"" + branchId + "\"]}"))
                 .andExpect(status().isCreated());
         String cashierCookie = StaffFixtures.login(mockMvc, cashierEmail);
 
@@ -93,7 +100,8 @@ class BusinessSettingsFlowIntegrationTest extends AbstractIntegrationTest {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Branch Timezone Business");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String staffCookie =
-                StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, "settings-admin-4@example.com");
+                StaffFixtures.bootstrapBusinessAdminAndLogin(
+                        mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "settings-admin-4@example.com");
 
         mockMvc.perform(post("/api/staff/branches/{branchId}/timezone", branchId)
                         .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, staffCookie))
@@ -118,7 +126,8 @@ class BusinessSettingsFlowIntegrationTest extends AbstractIntegrationTest {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Bad Branch Timezone Business");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String staffCookie =
-                StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, "settings-admin-5@example.com");
+                StaffFixtures.bootstrapBusinessAdminAndLogin(
+                        mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "settings-admin-5@example.com");
 
         mockMvc.perform(post("/api/staff/branches/{branchId}/timezone", branchId)
                         .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, staffCookie))
@@ -132,7 +141,8 @@ class BusinessSettingsFlowIntegrationTest extends AbstractIntegrationTest {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Timeout Default Business");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String staffCookie =
-                StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, "settings-admin-7@example.com");
+                StaffFixtures.bootstrapBusinessAdminAndLogin(
+                        mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "settings-admin-7@example.com");
 
         JsonNode branch = objectMapper.readTree(mockMvc.perform(get("/api/staff/branches")
                         .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, staffCookie)))
@@ -150,7 +160,8 @@ class BusinessSettingsFlowIntegrationTest extends AbstractIntegrationTest {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Timeout Business");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String staffCookie =
-                StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, "settings-admin-8@example.com");
+                StaffFixtures.bootstrapBusinessAdminAndLogin(
+                        mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "settings-admin-8@example.com");
 
         mockMvc.perform(post("/api/staff/branches/{branchId}/store-acceptance-timeout", branchId)
                         .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, staffCookie))
@@ -165,7 +176,8 @@ class BusinessSettingsFlowIntegrationTest extends AbstractIntegrationTest {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Bad Timeout Business");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String staffCookie =
-                StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, "settings-admin-9@example.com");
+                StaffFixtures.bootstrapBusinessAdminAndLogin(
+                        mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "settings-admin-9@example.com");
 
         mockMvc.perform(post("/api/staff/branches/{branchId}/store-acceptance-timeout", branchId)
                         .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, staffCookie))
@@ -177,8 +189,10 @@ class BusinessSettingsFlowIntegrationTest extends AbstractIntegrationTest {
     @Test
     void businessAdminCanCreateListAndUpdateBusinessContacts() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Contacts Business");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String staffCookie =
-                StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, "settings-admin-6@example.com");
+                StaffFixtures.bootstrapBusinessAdminAndLogin(
+                        mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "settings-admin-6@example.com");
 
         String createBody = "{\"name\":\"Ayşe Yılmaz\",\"phone\":\"+905551112233\",\"email\":\"ayse@example.com\","
                 + "\"whatsappEnabled\":true,\"dailyReportRecipient\":true,\"monthlyReportRecipient\":false}";

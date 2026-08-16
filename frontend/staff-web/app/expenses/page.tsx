@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { listBranches, listExpenseCategories, me, type Branch, type ExpenseCategory, type StaffContext } from "@/lib/api";
+import { listExpenseCategories, me, type ExpenseCategory, type StaffBranchSummary, type StaffContext } from "@/lib/api";
 import AppShell from "@/components/layout/AppShell";
 import PageHeader from "@/components/ui/PageHeader";
 import ErrorState from "@/components/ui/ErrorState";
@@ -19,23 +19,27 @@ import styles from "@/styles/admin.module.css";
  */
 export default function ExpensesPage() {
   const [context, setContext] = useState<StaffContext | null>(null);
-  const [branches, setBranches] = useState<Branch[]>([]);
+  const [branches, setBranches] = useState<StaffBranchSummary[]>([]);
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [expenseRefreshToken, setExpenseRefreshToken] = useState(0);
 
   useEffect(() => {
-    Promise.all([me(), listBranches(), listExpenseCategories()])
-      .then(([staffContext, branchList, categoryList]) => {
+    Promise.all([me(), listExpenseCategories()])
+      .then(([staffContext, categoryList]) => {
         setContext(staffContext);
-        setBranches(branchList);
+        setBranches(
+          staffContext.activeBranchId
+            ? [{ id: staffContext.activeBranchId, name: staffContext.activeBranchName ?? "Aktif şube" }]
+            : [],
+        );
         setCategories(categoryList);
       })
       .catch(() => setError("Sayfa yüklenemedi."));
   }, []);
 
   const isBusinessAdmin = context?.role === "BUSINESS_ADMIN" || context?.role === "PLATFORM_ADMIN";
-  const accessibleBranches = isBusinessAdmin ? branches : branches.filter((branch) => context?.branchIds.includes(branch.id));
+  const accessibleBranches = branches;
 
   return (
     <AppShell>
@@ -55,14 +59,12 @@ export default function ExpensesPage() {
 
         <ExpenseForm
           categories={categories}
-          accessibleBranches={accessibleBranches}
-          isBusinessAdmin={isBusinessAdmin}
           onCreated={() => setExpenseRefreshToken((current) => current + 1)}
         />
 
         <ExpenseList accessibleBranches={accessibleBranches} isBusinessAdmin={isBusinessAdmin} refreshToken={expenseRefreshToken} />
 
-        <RecurringTemplates categories={categories} accessibleBranches={accessibleBranches} isBusinessAdmin={isBusinessAdmin} />
+        <RecurringTemplates categories={categories} accessibleBranches={accessibleBranches} />
       </main>
     </AppShell>
   );

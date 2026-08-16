@@ -11,7 +11,7 @@ import TableSkeleton from "@/components/ui/TableSkeleton";
 import tableStyles from "@/components/ui/Table.module.css";
 import styles from "@/styles/admin.module.css";
 
-/** Section 4, staff-web admin screen #7: "Sipariş/Ödeme/İade geçmişi ve audit görünümü" (Permission.AUDIT_VIEW). */
+/** Audit entries returned by the backend are restricted to the active branch. */
 export default function AuditPage() {
   const [entries, setEntries] = useState<AuditEntry[]>([]);
   const [staffUsers, setStaffUsers] = useState<StaffUser[]>([]);
@@ -32,34 +32,21 @@ export default function AuditPage() {
   useEffect(load, []);
 
   function actorLabel(actorStaffUserId: string | null): string {
-    if (!actorStaffUserId) {
-      return "Sistem";
-    }
-    return staffUsers.find((u) => u.id === actorStaffUserId)?.email ?? actorStaffUserId;
+    if (!actorStaffUserId) return "Sistem";
+    return staffUsers.find((user) => user.id === actorStaffUserId)?.email ?? actorStaffUserId;
   }
 
   return (
     <AppShell>
       <main className={styles.page}>
-        <PageHeader title="Denetim Kaydı" description="Ödeme, sipariş, iade ve yönetim işlemlerinin denetim izi." />
-
-        {loading ? (
-          <TableSkeleton />
-        ) : error ? (
+        <PageHeader title="Denetim Kaydı" description="Aktif şubenizdeki kritik işlemlerin denetim izi." />
+        {loading ? <TableSkeleton /> : error ? (
           <ErrorState message={error} onRetry={load} />
         ) : entries.length === 0 ? (
           <EmptyState title="Henüz kayıt yok" />
         ) : (
           <Table>
-            <thead>
-              <tr>
-                <th>Tarih</th>
-                <th>Aktör</th>
-                <th>Varlık</th>
-                <th>Aksiyon</th>
-                <th>Detay</th>
-              </tr>
-            </thead>
+            <thead><tr><th>Tarih</th><th>Aktör</th><th>Varlık</th><th>Aksiyon</th><th>Detay</th></tr></thead>
             <tbody>
               {entries.map((entry) => (
                 <tr key={entry.id}>

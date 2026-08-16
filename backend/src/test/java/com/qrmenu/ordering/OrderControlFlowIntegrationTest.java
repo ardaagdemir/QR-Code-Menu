@@ -77,7 +77,8 @@ class OrderControlFlowIntegrationTest extends AbstractIntegrationTest {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Timeout Order Business");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String adminCookie =
-                StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, "timeout-admin@example.com");
+                StaffFixtures.bootstrapBusinessAdminAndLogin(
+                        mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "timeout-admin@example.com");
         mockMvc.perform(post("/api/staff/branches/{branchId}/store-acceptance-timeout", branchId)
                         .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, adminCookie))
                         .contentType(MediaType.APPLICATION_JSON)

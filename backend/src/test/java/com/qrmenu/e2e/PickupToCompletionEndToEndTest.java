@@ -33,7 +33,8 @@ class PickupToCompletionEndToEndTest extends AbstractIntegrationTest {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "E2E Pickup Business");
         String branchId =
                 TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube", "CUSTOMER_PICKUP");
-        String staffCookie = StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, "e2e-admin@example.com");
+        String staffCookie = StaffFixtures.bootstrapBusinessAdminAndLogin(
+                mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "e2e-admin@example.com");
         MockCookie staffMockCookie = new MockCookie(StaffCookieSupport.COOKIE_NAME, staffCookie);
 
         String tableId = TenantFixtures.createTable(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, "Masa 1");

@@ -28,9 +28,11 @@ public class AuditController {
 
     @GetMapping
     public List<AuditEntryResponse> list(@CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie) {
-        StaffContext context =
-                staffAuthService.resolveStaffContext(StaffCookieSupport.parseSessionId(sessionCookie), Permission.AUDIT_VIEW);
-        return auditService.getRecentForBusiness(context.businessId()).stream().map(AuditController::toResponse).toList();
+        StaffContext context = staffAuthService.resolveStaffContextForActiveBranch(
+                StaffCookieSupport.parseSessionId(sessionCookie), Permission.AUDIT_VIEW);
+        return auditService.getRecentForBranch(context.businessId(), context.activeBranchId()).stream()
+                .map(AuditController::toResponse)
+                .toList();
     }
 
     private static AuditEntryResponse toResponse(AuditEntryView view) {

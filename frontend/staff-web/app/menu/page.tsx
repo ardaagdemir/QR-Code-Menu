@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { listBranches, listMenuCategories, type Branch, type MenuCategoryAdmin } from "@/lib/api";
+import { listMenuCategories, type MenuCategoryAdmin } from "@/lib/api";
 import AppShell from "@/components/layout/AppShell";
 import PageHeader from "@/components/ui/PageHeader";
 import ErrorState from "@/components/ui/ErrorState";
@@ -18,20 +18,14 @@ import styles from "@/styles/admin.module.css";
 export default function MenuPage() {
   const [categories, setCategories] = useState<MenuCategoryAdmin[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
-  const [branches, setBranches] = useState<Branch[]>([]);
-  const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([listMenuCategories(), listBranches()])
-      .then(([categoryList, branchList]) => {
+    listMenuCategories()
+      .then((categoryList) => {
         setCategories(categoryList);
-        setBranches(branchList);
         if (categoryList.length > 0) {
           setSelectedCategoryId(categoryList[0].id);
-        }
-        if (branchList.length > 0) {
-          setSelectedBranchId(branchList[0].id);
         }
       })
       .catch(() => setError("Menü verileri yüklenemedi."));
@@ -55,12 +49,7 @@ export default function MenuPage() {
         />
 
         {selectedCategoryId ? (
-          <ProductsSection
-            categoryId={selectedCategoryId}
-            branches={branches}
-            selectedBranchId={selectedBranchId}
-            onSelectBranch={setSelectedBranchId}
-          />
+          <ProductsSection categoryId={selectedCategoryId} />
         ) : null}
       </main>
     </AppShell>

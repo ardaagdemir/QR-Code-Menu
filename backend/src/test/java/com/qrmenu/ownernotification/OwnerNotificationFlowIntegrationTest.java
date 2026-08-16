@@ -64,7 +64,8 @@ class OwnerNotificationFlowIntegrationTest extends AbstractIntegrationTest {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Notify Business 1");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String adminCookie =
-                StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, "notify-admin-1@example.com");
+                StaffFixtures.bootstrapBusinessAdminAndLogin(
+                        mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "notify-admin-1@example.com");
         createContact(businessId, adminCookie, "owner1@example.com", true, true);
 
         DailyBranchCloseReport report = dailyCloseService.generateFinal(
@@ -90,7 +91,8 @@ class OwnerNotificationFlowIntegrationTest extends AbstractIntegrationTest {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Notify Business 2");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String adminCookie =
-                StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, "notify-admin-2@example.com");
+                StaffFixtures.bootstrapBusinessAdminAndLogin(
+                        mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "notify-admin-2@example.com");
         createContact(businessId, adminCookie, "eligible@example.com", true, true);
         createContact(businessId, adminCookie, "not-opted-in@example.com", false, true);
         createContact(businessId, adminCookie, "inactive@example.com", true, false);
@@ -108,7 +110,8 @@ class OwnerNotificationFlowIntegrationTest extends AbstractIntegrationTest {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Notify Business 3");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String adminCookie =
-                StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, "notify-admin-3@example.com");
+                StaffFixtures.bootstrapBusinessAdminAndLogin(
+                        mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "notify-admin-3@example.com");
         createContact(businessId, adminCookie, "owner3@example.com", true, true);
 
         DailyBranchCloseReport report = dailyCloseService.generateFinal(

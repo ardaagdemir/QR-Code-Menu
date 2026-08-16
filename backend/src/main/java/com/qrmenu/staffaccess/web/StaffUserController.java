@@ -44,14 +44,14 @@ public class StaffUserController {
             @Valid @RequestBody CreateStaffUserRequest request) {
         StaffContext context = requireStaffManage(sessionCookie);
         StaffUser created = staffAuthService.createStaffUser(
-                context.businessId(), request.email(), request.password(), request.role(), request.branchIdsOrEmpty());
-        return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(created, request.branchIdsOrEmpty()));
+                context.businessId(), request.email(), request.password(), request.role(), List.of(context.activeBranchId()));
+        return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(created, List.of(context.activeBranchId())));
     }
 
     @GetMapping
     public List<StaffUserResponse> list(@CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie) {
         StaffContext context = requireStaffManage(sessionCookie);
-        return staffAuthService.listStaffUsers(context.businessId()).stream()
+        return staffAuthService.listStaffUsers(context.businessId(), context.activeBranchId()).stream()
                 .map(staffUser -> toResponse(staffUser, staffAuthService.getBranchIds(staffUser.getId()).stream().toList()))
                 .toList();
     }
@@ -60,12 +60,13 @@ public class StaffUserController {
     public ResponseEntity<Void> deactivate(
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie, @PathVariable UUID staffUserId) {
         StaffContext context = requireStaffManage(sessionCookie);
-        staffAuthService.deactivateStaffUser(context.businessId(), staffUserId);
+        staffAuthService.deactivateStaffUser(context.businessId(), context.activeBranchId(), staffUserId);
         return ResponseEntity.noContent().build();
     }
 
     private StaffContext requireStaffManage(String sessionCookie) {
-        return staffAuthService.resolveStaffContext(StaffCookieSupport.parseSessionId(sessionCookie), Permission.STAFF_MANAGE);
+        return staffAuthService.resolveStaffContextForActiveBranch(
+                StaffCookieSupport.parseSessionId(sessionCookie), Permission.STAFF_MANAGE);
     }
 
     private static StaffUserResponse toResponse(StaffUser staffUser, List<UUID> branchIds) {

@@ -16,7 +16,6 @@ import com.qrmenu.tenant.web.dto.BranchBusinessHoursResponse;
 import com.qrmenu.tenant.web.dto.BranchResponse;
 import com.qrmenu.tenant.web.dto.BusinessContactResponse;
 import com.qrmenu.tenant.web.dto.BusinessResponse;
-import com.qrmenu.tenant.web.dto.CreateBranchRequest;
 import com.qrmenu.tenant.web.dto.CreateBusinessContactRequest;
 import com.qrmenu.tenant.web.dto.CreateTableRequest;
 import com.qrmenu.tenant.web.dto.QrTokenResponse;
@@ -110,133 +109,122 @@ public class StaffTenantController {
         return ResponseEntity.ok(toResponse(contact));
     }
 
-    @GetMapping("/branches")
+    @GetMapping({"/branch", "/branches"})
     public List<BranchResponse> listBranches(
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie) {
-        StaffContext context = resolveContext(sessionCookie, Permission.BRANCH_MANAGE);
-        return tenantService.listBranches(context.businessId()).stream().map(this::toResponse).toList();
+        StaffContext context = resolveActiveContext(sessionCookie, Permission.BRANCH_MANAGE);
+        return List.of(toResponse(tenantService.getBranch(context.businessId(), context.activeBranchId())));
     }
 
-    @PostMapping("/branches")
-    public ResponseEntity<BranchResponse> createBranch(
-            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
-            @Valid @RequestBody CreateBranchRequest request) {
-        StaffContext context = resolveContext(sessionCookie, Permission.BRANCH_MANAGE);
-        Branch branch = tenantService.createBranch(
-                context.businessId(), request.name(), request.orderingEnabledOrDefault(), request.address(),
-                request.deliveryModelOrDefault());
-        return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(branch));
-    }
-
-    @PostMapping("/branches/{branchId}/address")
+    @PostMapping({"/branch/address", "/branches/{branchId}/address"})
     public ResponseEntity<BranchResponse> setAddress(
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
-            @PathVariable UUID branchId,
+            @PathVariable(required = false) UUID branchId,
             @Valid @RequestBody SetAddressRequest request) {
-        StaffContext context = resolveContext(sessionCookie, Permission.BRANCH_MANAGE);
-        Branch branch = tenantService.setAddress(context.businessId(), branchId, request.address(), context.staffUserId());
+        StaffContext context = resolveActiveContext(sessionCookie, Permission.BRANCH_MANAGE, branchId);
+        Branch branch = tenantService.setAddress(context.businessId(), context.activeBranchId(), request.address(), context.staffUserId());
         return ResponseEntity.ok(toResponse(branch));
     }
 
-    @PostMapping("/branches/{branchId}/timezone")
+    @PostMapping({"/branch/timezone", "/branches/{branchId}/timezone"})
     public ResponseEntity<BranchResponse> setTimezone(
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
-            @PathVariable UUID branchId,
+            @PathVariable(required = false) UUID branchId,
             @Valid @RequestBody SetBranchTimezoneRequest request) {
-        StaffContext context = resolveContext(sessionCookie, Permission.BRANCH_MANAGE);
-        Branch branch = tenantService.setBranchTimezone(context.businessId(), branchId, request.timezone(), context.staffUserId());
+        StaffContext context = resolveActiveContext(sessionCookie, Permission.BRANCH_MANAGE, branchId);
+        Branch branch = tenantService.setBranchTimezone(context.businessId(), context.activeBranchId(), request.timezone(), context.staffUserId());
         return ResponseEntity.ok(toResponse(branch));
     }
 
-    @PostMapping("/branches/{branchId}/store-acceptance-timeout")
+    @PostMapping({"/branch/store-acceptance-timeout", "/branches/{branchId}/store-acceptance-timeout"})
     public ResponseEntity<BranchResponse> setStoreAcceptanceTimeout(
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
-            @PathVariable UUID branchId,
+            @PathVariable(required = false) UUID branchId,
             @Valid @RequestBody SetStoreAcceptanceTimeoutRequest request) {
-        StaffContext context = resolveContext(sessionCookie, Permission.BRANCH_MANAGE);
+        StaffContext context = resolveActiveContext(sessionCookie, Permission.BRANCH_MANAGE, branchId);
         Branch branch = tenantService.setStoreAcceptanceTimeoutSeconds(
-                context.businessId(), branchId, request.timeoutSeconds(), context.staffUserId());
+                context.businessId(), context.activeBranchId(), request.timeoutSeconds(), context.staffUserId());
         return ResponseEntity.ok(toResponse(branch));
     }
 
-    @PostMapping("/branches/{branchId}/ordering-enabled")
+    @PostMapping({"/branch/ordering-enabled", "/branches/{branchId}/ordering-enabled"})
     public ResponseEntity<BranchResponse> setOrderingEnabled(
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
-            @PathVariable UUID branchId,
+            @PathVariable(required = false) UUID branchId,
             @Valid @RequestBody SetOrderingEnabledRequest request) {
-        StaffContext context = staffAuthService.resolveStaffContextForBranch(
-                StaffCookieSupport.parseSessionId(sessionCookie), Permission.ORDERING_TOGGLE, branchId);
-        Branch branch = tenantService.setOrderingEnabled(context.businessId(), branchId, request.enabled(), context.staffUserId());
+        StaffContext context = resolveActiveContext(sessionCookie, Permission.ORDERING_TOGGLE, branchId);
+        Branch branch = tenantService.setOrderingEnabled(context.businessId(), context.activeBranchId(), request.enabled(), context.staffUserId());
         return ResponseEntity.ok(toResponse(branch));
     }
 
-    @PostMapping("/branches/{branchId}/delivery-model")
+    @PostMapping({"/branch/delivery-model", "/branches/{branchId}/delivery-model"})
     public ResponseEntity<BranchResponse> setDeliveryModel(
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
-            @PathVariable UUID branchId,
+            @PathVariable(required = false) UUID branchId,
             @Valid @RequestBody SetDeliveryModelRequest request) {
-        StaffContext context = resolveContext(sessionCookie, Permission.BRANCH_MANAGE);
+        StaffContext context = resolveActiveContext(sessionCookie, Permission.BRANCH_MANAGE, branchId);
         Branch branch =
-                tenantService.setDeliveryModel(context.businessId(), branchId, request.deliveryModel(), context.staffUserId());
+                tenantService.setDeliveryModel(context.businessId(), context.activeBranchId(), request.deliveryModel(), context.staffUserId());
         return ResponseEntity.ok(toResponse(branch));
     }
 
-    @GetMapping("/branches/{branchId}/business-hours")
+    @GetMapping({"/branch/business-hours", "/branches/{branchId}/business-hours"})
     public List<BranchBusinessHoursResponse> getBusinessHours(
-            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie, @PathVariable UUID branchId) {
-        StaffContext context = resolveContext(sessionCookie, Permission.BRANCH_MANAGE);
-        return tenantService.getBranchBusinessHours(context.businessId(), branchId).stream().map(StaffTenantController::toResponse).toList();
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
+            @PathVariable(required = false) UUID branchId) {
+        StaffContext context = resolveActiveContext(sessionCookie, Permission.BRANCH_MANAGE, branchId);
+        return tenantService.getBranchBusinessHours(context.businessId(), context.activeBranchId()).stream().map(StaffTenantController::toResponse).toList();
     }
 
-    @PostMapping("/branches/{branchId}/business-hours")
+    @PostMapping({"/branch/business-hours", "/branches/{branchId}/business-hours"})
     public List<BranchBusinessHoursResponse> setBusinessHours(
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
-            @PathVariable UUID branchId,
+            @PathVariable(required = false) UUID branchId,
             @Valid @RequestBody SetBranchBusinessHoursRequest request) {
-        StaffContext context = resolveContext(sessionCookie, Permission.BRANCH_MANAGE);
+        StaffContext context = resolveActiveContext(sessionCookie, Permission.BRANCH_MANAGE, branchId);
         List<BranchBusinessHoursEntry> entries = request.days().stream()
                 .map(day -> new BranchBusinessHoursEntry(day.dayOfWeek(), day.openingTime(), day.closingTime(), day.closed()))
                 .toList();
-        return tenantService.setBranchBusinessHours(context.businessId(), branchId, entries, context.staffUserId()).stream()
+        return tenantService.setBranchBusinessHours(context.businessId(), context.activeBranchId(), entries, context.staffUserId()).stream()
                 .map(StaffTenantController::toResponse)
                 .toList();
     }
 
-    @GetMapping("/branches/{branchId}/tables")
+    @GetMapping({"/tables", "/branches/{branchId}/tables"})
     public List<TableResponse> listTables(
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
-            @PathVariable UUID branchId) {
-        StaffContext context = resolveContext(sessionCookie, Permission.BRANCH_MANAGE);
-        return tenantService.listTables(context.businessId(), branchId).stream().map(this::toResponse).toList();
+            @PathVariable(required = false) UUID branchId) {
+        StaffContext context = resolveActiveContext(sessionCookie, Permission.BRANCH_MANAGE, branchId);
+        return tenantService.listTables(context.businessId(), context.activeBranchId()).stream().map(this::toResponse).toList();
     }
 
-    @PostMapping("/branches/{branchId}/tables")
+    @PostMapping({"/tables", "/branches/{branchId}/tables"})
     public ResponseEntity<TableResponse> createTable(
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
-            @PathVariable UUID branchId,
+            @PathVariable(required = false) UUID branchId,
             @Valid @RequestBody CreateTableRequest request) {
-        StaffContext context = resolveContext(sessionCookie, Permission.BRANCH_MANAGE);
-        RestaurantTable table = tenantService.createTable(context.businessId(), branchId, request.label());
+        StaffContext context = resolveActiveContext(sessionCookie, Permission.BRANCH_MANAGE, branchId);
+        RestaurantTable table = tenantService.createTable(context.businessId(), context.activeBranchId(), request.label());
         return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(table));
     }
 
-    @PostMapping("/branches/{branchId}/tables/{tableId}/qr-tokens")
+    @PostMapping({"/tables/{tableId}/qr-tokens", "/branches/{branchId}/tables/{tableId}/qr-tokens"})
     public ResponseEntity<QrTokenResponse> regenerateQrToken(
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
-            @PathVariable UUID branchId,
+            @PathVariable(required = false) UUID branchId,
             @PathVariable UUID tableId) {
-        StaffContext context = resolveContext(sessionCookie, Permission.QR_MANAGE);
-        TableQrToken token = tenantService.regenerateQrToken(context.businessId(), tableId);
+        StaffContext context = resolveActiveContext(sessionCookie, Permission.QR_MANAGE, branchId);
+        TableQrToken token = tenantService.regenerateQrToken(context.businessId(), context.activeBranchId(), tableId);
         return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(token));
     }
 
-    @GetMapping("/branches/{branchId}/tables/{tableId}/qr-tokens/active")
+    @GetMapping({"/tables/{tableId}/qr-tokens/active", "/branches/{branchId}/tables/{tableId}/qr-tokens/active"})
     public ResponseEntity<QrTokenResponse> getActiveQrToken(
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
-            @PathVariable UUID branchId,
+            @PathVariable(required = false) UUID branchId,
             @PathVariable UUID tableId) {
-        StaffContext context = resolveContext(sessionCookie, Permission.QR_MANAGE);
-        TableQrToken token = tenantService.getActiveQrToken(context.businessId(), tableId);
+        StaffContext context = resolveActiveContext(sessionCookie, Permission.QR_MANAGE, branchId);
+        TableQrToken token = tenantService.getActiveQrToken(context.businessId(), context.activeBranchId(), tableId);
         return ResponseEntity.ok(toResponse(token));
     }
 
@@ -244,13 +232,26 @@ public class StaffTenantController {
     public ResponseEntity<Void> revokeQrToken(
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
             @PathVariable UUID qrTokenId) {
-        StaffContext context = resolveContext(sessionCookie, Permission.QR_MANAGE);
-        tenantService.revokeQrToken(context.businessId(), qrTokenId, context.staffUserId());
+        StaffContext context = resolveActiveContext(sessionCookie, Permission.QR_MANAGE);
+        tenantService.revokeQrToken(context.businessId(), context.activeBranchId(), qrTokenId, context.staffUserId());
         return ResponseEntity.noContent().build();
     }
 
     private StaffContext resolveContext(String sessionCookie, Permission required) {
         return staffAuthService.resolveStaffContext(StaffCookieSupport.parseSessionId(sessionCookie), required);
+    }
+
+    private StaffContext resolveActiveContext(String sessionCookie, Permission required) {
+        return staffAuthService.resolveStaffContextForActiveBranch(StaffCookieSupport.parseSessionId(sessionCookie), required);
+    }
+
+    private StaffContext resolveActiveContext(String sessionCookie, Permission required, UUID requestedBranchId) {
+        StaffContext context = resolveActiveContext(sessionCookie, required);
+        if (requestedBranchId != null && !context.activeBranchId().equals(requestedBranchId)) {
+            return staffAuthService.resolveStaffContextForBranch(
+                    StaffCookieSupport.parseSessionId(sessionCookie), required, requestedBranchId);
+        }
+        return context;
     }
 
     private BranchResponse toResponse(Branch branch) {

@@ -21,12 +21,26 @@ public final class StaffFixtures {
     public static final String DEFAULT_PASSWORD = "test-password-1234";
 
     /** Bootstraps a BUSINESS_ADMIN for the business - has every business-scoped permission. */
-    public static String bootstrapBusinessAdminAndLogin(MockMvc mockMvc, String adminToken, String businessId, String email)
+    public static String bootstrapBusinessAdminAndLogin(
+            MockMvc mockMvc, String adminToken, String businessId, String branchId, String email)
             throws Exception {
         mockMvc.perform(post("/internal/businesses/{businessId}/staff-users", businessId)
                         .header("X-Internal-Admin-Token", adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + email + "\",\"password\":\"" + DEFAULT_PASSWORD + "\",\"role\":\"BUSINESS_ADMIN\"}"))
+                        .content("{\"email\":\"" + email + "\",\"password\":\"" + DEFAULT_PASSWORD
+                                + "\",\"role\":\"BUSINESS_ADMIN\",\"branchIds\":[\"" + branchId + "\"]}"))
+                .andExpect(status().isCreated());
+        return login(mockMvc, email);
+    }
+
+    public static String bootstrapAndLogin(
+            MockMvc mockMvc, String adminToken, String businessId, String branchId, String email, String role)
+            throws Exception {
+        mockMvc.perform(post("/internal/businesses/{businessId}/staff-users", businessId)
+                        .header("X-Internal-Admin-Token", adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"" + email + "\",\"password\":\"" + DEFAULT_PASSWORD
+                                + "\",\"role\":\"" + role + "\",\"branchIds\":[\"" + branchId + "\"]}"))
                 .andExpect(status().isCreated());
         return login(mockMvc, email);
     }

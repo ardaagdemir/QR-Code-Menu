@@ -17,6 +17,8 @@ COPY . .
 # infra/.env.prod.example. lib/api.ts's own fallback only covers `next dev` without Docker.
 ARG NEXT_PUBLIC_API_BASE_URL
 ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}
+ARG NEXT_PUBLIC_CUSTOMER_WEB_URL
+ENV NEXT_PUBLIC_CUSTOMER_WEB_URL=${NEXT_PUBLIC_CUSTOMER_WEB_URL}
 RUN npm run build
 
 # --- Runtime (Next.js standalone output) ---

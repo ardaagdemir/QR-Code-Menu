@@ -43,7 +43,8 @@ class BranchBusinessHoursFlowIntegrationTest extends AbstractIntegrationTest {
     void aClosedTodayRowBlocksOrderingRegardlessOfHours() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Closed Today Business");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
-        String staffCookie = StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, "hours-admin-1@example.com");
+        String staffCookie = StaffFixtures.bootstrapBusinessAdminAndLogin(
+                mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "hours-admin-1@example.com");
         setTodayHours(branchId, staffCookie, LocalTime.of(0, 0), LocalTime.of(23, 59), true);
 
         String tableId = TenantFixtures.createTable(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, "Masa 1");
@@ -57,7 +58,8 @@ class BranchBusinessHoursFlowIntegrationTest extends AbstractIntegrationTest {
     void anHoursWindowThatExcludesNowBlocksOrdering() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Outside Hours Business");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
-        String staffCookie = StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, "hours-admin-2@example.com");
+        String staffCookie = StaffFixtures.bootstrapBusinessAdminAndLogin(
+                mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "hours-admin-2@example.com");
         LocalTime now = LocalTime.now();
         setTodayHours(branchId, staffCookie, now.plusHours(1), now.plusHours(2), false);
 
@@ -72,7 +74,8 @@ class BranchBusinessHoursFlowIntegrationTest extends AbstractIntegrationTest {
     void anHoursWindowThatIncludesNowAllowsOrdering() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Within Hours Business");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
-        String staffCookie = StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, "hours-admin-3@example.com");
+        String staffCookie = StaffFixtures.bootstrapBusinessAdminAndLogin(
+                mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "hours-admin-3@example.com");
         LocalTime now = LocalTime.now();
         setTodayHours(branchId, staffCookie, now.minusHours(1), now.plusHours(1), false);
 
@@ -87,7 +90,8 @@ class BranchBusinessHoursFlowIntegrationTest extends AbstractIntegrationTest {
     void staffCanReadBackTheHoursTheyJustSet() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Readback Business");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
-        String staffCookie = StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, "hours-admin-4@example.com");
+        String staffCookie = StaffFixtures.bootstrapBusinessAdminAndLogin(
+                mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "hours-admin-4@example.com");
         setTodayHours(branchId, staffCookie, LocalTime.of(9, 0), LocalTime.of(22, 0), false);
 
         JsonNode hours = objectMapper.readTree(mockMvc.perform(get("/api/staff/branches/{branchId}/business-hours", branchId)

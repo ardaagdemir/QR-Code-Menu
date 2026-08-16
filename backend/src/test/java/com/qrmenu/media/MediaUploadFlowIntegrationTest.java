@@ -38,8 +38,9 @@ class MediaUploadFlowIntegrationTest extends AbstractIntegrationTest {
         String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Ana Yemekler");
         String productId =
                 TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Pizza", 25000, 10);
-        String staffCookie =
-                StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, "media-admin-1@example.com");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
+        String staffCookie = StaffFixtures.bootstrapAndLogin(
+                mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "media-admin-1@example.com", "BUSINESS_ADMIN");
 
         JsonNode uploadResult = objectMapper.readTree(mockMvc.perform(multipart("/api/staff/media/product-images")
                         .file(new MockMultipartFile("file", "dish.png", "image/png", PNG_BYTES))
@@ -66,8 +67,10 @@ class MediaUploadFlowIntegrationTest extends AbstractIntegrationTest {
     @Test
     void businessAdminCanUploadAPdfReceipt() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Media Business 2");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String staffCookie =
-                StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, "media-admin-2@example.com");
+                StaffFixtures.bootstrapBusinessAdminAndLogin(
+                        mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "media-admin-2@example.com");
 
         JsonNode uploadResult = objectMapper.readTree(mockMvc.perform(multipart("/api/staff/media/receipts")
                         .file(new MockMultipartFile("file", "fis.pdf", "application/pdf", PDF_BYTES))
@@ -88,8 +91,10 @@ class MediaUploadFlowIntegrationTest extends AbstractIntegrationTest {
     @Test
     void uploadWithUnrecognizedContentIsRejected() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Media Business 3");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String staffCookie =
-                StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, "media-admin-3@example.com");
+                StaffFixtures.bootstrapBusinessAdminAndLogin(
+                        mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "media-admin-3@example.com");
 
         mockMvc.perform(multipart("/api/staff/media/product-images")
                         .file(new MockMultipartFile(
@@ -101,8 +106,10 @@ class MediaUploadFlowIntegrationTest extends AbstractIntegrationTest {
     @Test
     void oversizedProductImageIsRejected() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Media Business 4");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String staffCookie =
-                StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, "media-admin-4@example.com");
+                StaffFixtures.bootstrapBusinessAdminAndLogin(
+                        mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "media-admin-4@example.com");
 
         byte[] oversized = new byte[6 * 1024 * 1024];
         System.arraycopy(PNG_BYTES, 0, oversized, 0, PNG_BYTES.length);

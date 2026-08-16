@@ -101,6 +101,9 @@ public class ReportingService {
         long guestCountTotal = customerSessionService.sumGuestCountBetween(branch.getId(), fromInstant, toInstant);
         long guestCountRecordedVisitCount =
                 customerSessionService.countVisitsWithGuestCountBetween(branch.getId(), fromInstant, toInstant);
+        long averagePreparationSeconds =
+                orderingService.averagePreparationSecondsBetween(branch.getId(), fromInstant, toInstant);
+        long completedOrderCount = orderingService.countCompletedOrdersBetween(branch.getId(), fromInstant, toInstant);
 
         List<ProductSalesView> productBreakdown = buildProductBreakdown(orders);
         List<CategorySalesView> categoryBreakdown = buildCategoryBreakdown(orders, branch.getBusinessId());
@@ -121,6 +124,8 @@ public class ReportingService {
                 tableVisitCount,
                 guestCountTotal,
                 guestCountRecordedVisitCount,
+                averagePreparationSeconds,
+                completedOrderCount,
                 productBreakdown,
                 categoryBreakdown,
                 hourlyDistribution);

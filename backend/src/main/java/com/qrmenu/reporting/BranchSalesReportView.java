@@ -29,6 +29,8 @@ public record BranchSalesReportView(
         long tableVisitCount,
         long guestCountTotal,
         long guestCountRecordedVisitCount,
+        long averagePreparationSeconds,
+        long completedOrderCount,
         List<ProductSalesView> productBreakdown,
         List<CategorySalesView> categoryBreakdown,
         List<HourlySalesView> hourlyDistribution) {

@@ -42,26 +42,26 @@ public class StaffReportingController {
     }
 
     /** Section 13.1: Kasa/yönetim panelinde temel metrikler - CASHIER/BRANCH_MANAGER/BUSINESS_ADMIN, kendi şubeleri. */
-    @GetMapping("/api/staff/branches/{branchId}/reports")
+    @GetMapping({"/api/staff/reports", "/api/staff/branches/{branchId}/reports"})
     public BranchSalesReportResponse branchReport(
-            @PathVariable UUID branchId,
+            @PathVariable(required = false) UUID branchId,
             @RequestParam LocalDate from,
             @RequestParam LocalDate to,
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie) {
-        StaffContext context = staffAuthService.resolveStaffContextForBranch(
-                StaffCookieSupport.parseSessionId(sessionCookie), Permission.REPORT_VIEW, branchId);
+        StaffContext context = resolveReportContext(sessionCookie, Permission.REPORT_VIEW, branchId);
+        branchId = context.activeBranchId();
         return toResponse(reportingService.getBranchReport(context.businessId(), branchId, from, to));
     }
 
     /** Section 17: brüt/net satış + onaylı giderler = "Yönetimsel Net Sonuç" - kâr olarak sunulmaz (bkz. OperatingResultResponse javadoc). */
-    @GetMapping("/api/staff/branches/{branchId}/reports/operating-result")
+    @GetMapping({"/api/staff/reports/operating-result", "/api/staff/branches/{branchId}/reports/operating-result"})
     public OperatingResultResponse operatingResult(
-            @PathVariable UUID branchId,
+            @PathVariable(required = false) UUID branchId,
             @RequestParam LocalDate from,
             @RequestParam LocalDate to,
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie) {
-        StaffContext context = staffAuthService.resolveStaffContextForBranch(
-                StaffCookieSupport.parseSessionId(sessionCookie), Permission.REPORT_VIEW, branchId);
+        StaffContext context = resolveReportContext(sessionCookie, Permission.REPORT_VIEW, branchId);
+        branchId = context.activeBranchId();
         BranchSalesReportView report = reportingService.getBranchReport(context.businessId(), branchId, from, to);
         long approvedExpenses = expenseService.sumApprovedExpenses(context.businessId(), branchId, from, to);
         return new OperatingResultResponse(
@@ -85,14 +85,14 @@ public class StaffReportingController {
      * değiştirilmedi - çalışan, test edilmiş bir URL'yi kozmetik nedenle yeniden
      * adlandırmak gereksiz churn olurdu (bkz. RefundController'ın aynı gerekçesi).
      */
-    @GetMapping("/api/staff/branches/{branchId}/reports/kitchen-summary")
+    @GetMapping({"/api/staff/reports/kitchen-summary", "/api/staff/branches/{branchId}/reports/kitchen-summary"})
     public KitchenFinancialSummaryResponse kitchenFinancialSummary(
-            @PathVariable UUID branchId,
+            @PathVariable(required = false) UUID branchId,
             @RequestParam LocalDate from,
             @RequestParam LocalDate to,
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie) {
-        StaffContext context = staffAuthService.resolveStaffContextForBranch(
-                StaffCookieSupport.parseSessionId(sessionCookie), Permission.REPORT_FINANCIAL_SUMMARY_VIEW, branchId);
+        StaffContext context = resolveReportContext(sessionCookie, Permission.REPORT_FINANCIAL_SUMMARY_VIEW, branchId);
+        branchId = context.activeBranchId();
         BranchSalesReportView report = reportingService.getBranchReport(context.businessId(), branchId, from, to);
         return new KitchenFinancialSummaryResponse(
                 branchId, from, to, report.grossSalesMinorUnits(), report.netSalesMinorUnits(), report.orderCount());
@@ -107,6 +107,13 @@ public class StaffReportingController {
         StaffContext context = staffAuthService.resolveStaffContext(
                 StaffCookieSupport.parseSessionId(sessionCookie), Permission.REPORT_CHAIN_VIEW);
         return toResponse(reportingService.getChainReport(context.businessId(), from, to));
+    }
+
+    private StaffContext resolveReportContext(String sessionCookie, Permission permission, UUID requestedBranchId) {
+        UUID sessionId = StaffCookieSupport.parseSessionId(sessionCookie);
+        return requestedBranchId == null
+                ? staffAuthService.resolveStaffContextForActiveBranch(sessionId, permission)
+                : staffAuthService.resolveStaffContextForBranch(sessionId, permission, requestedBranchId);
     }
 
     private static BranchSalesReportResponse toResponse(BranchSalesReportView view) {
@@ -125,6 +132,8 @@ public class StaffReportingController {
                 view.tableVisitCount(),
                 view.guestCountTotal(),
                 view.guestCountRecordedVisitCount(),
+                view.averagePreparationSeconds(),
+                view.completedOrderCount(),
                 view.productBreakdown().stream().map(StaffReportingController::toResponse).toList(),
                 view.categoryBreakdown().stream().map(StaffReportingController::toResponse).toList(),
                 view.hourlyDistribution().stream().map(StaffReportingController::toResponse).toList());

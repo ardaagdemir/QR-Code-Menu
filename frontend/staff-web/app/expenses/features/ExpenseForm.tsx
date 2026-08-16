@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
-import { createExpense, uploadReceiptImage, type Branch, type Expense, type ExpenseCategory } from "@/lib/api";
+import { createExpense, uploadReceiptImage, type Expense, type ExpenseCategory } from "@/lib/api";
 import PageHeader from "@/components/ui/PageHeader";
 import Button from "@/components/ui/Button";
 import Dialog from "@/components/ui/Dialog";
@@ -19,18 +19,15 @@ function todayIsoDate(): string {
 
 type Props = {
   categories: ExpenseCategory[];
-  accessibleBranches: Branch[];
-  isBusinessAdmin: boolean;
   onCreated: (expense: Expense) => void;
 };
 
 /** Gider Yönetimi'nin yeni gider ekleme paneli (product-requirements.md Section 16). */
-export default function ExpenseForm({ categories, accessibleBranches, isBusinessAdmin, onCreated }: Props) {
+export default function ExpenseForm({ categories, onCreated }: Props) {
   const { showToast } = useToast();
   const dialogTitleId = useId();
 
   const [open, setOpen] = useState(false);
-  const [branchId, setBranchId] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(todayIsoDate());
@@ -52,7 +49,7 @@ export default function ExpenseForm({ categories, accessibleBranches, isBusiness
     setFormError(null);
     try {
       const expense = await createExpense({
-        branchId: branchId || null,
+        branchId: null,
         categoryId,
         amountMinorUnits,
         incurredAt: date,
@@ -83,18 +80,6 @@ export default function ExpenseForm({ categories, accessibleBranches, isBusiness
             Yeni Gider
           </h2>
           <form className={styles.section} onSubmit={handleCreate}>
-            <FormField label="Şube">
-              {(controlProps) => (
-                <Select {...controlProps} value={branchId} onChange={(event) => setBranchId(event.target.value)}>
-                  {isBusinessAdmin ? <option value="">İşletme geneli</option> : null}
-                  {accessibleBranches.map((branch) => (
-                    <option key={branch.id} value={branch.id}>
-                      {branch.name}
-                    </option>
-                  ))}
-                </Select>
-              )}
-            </FormField>
             <FormField label="Kategori" required>
               {(controlProps) => (
                 <Select {...controlProps} value={categoryId} onChange={(event) => setCategoryId(event.target.value)} required>

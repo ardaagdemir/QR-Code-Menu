@@ -16,6 +16,7 @@ import com.qrmenu.staffaccess.Permission;
 import com.qrmenu.staffaccess.StaffAuthService;
 import com.qrmenu.staffaccess.StaffContext;
 import com.qrmenu.staffaccess.StaffCookieSupport;
+import com.qrmenu.common.web.StaffPermissionDeniedException;
 import jakarta.validation.Valid;
 import java.time.LocalDate;
 import java.util.List;
@@ -79,8 +80,9 @@ public class StaffExpenseController {
             @RequestParam LocalDate from,
             @RequestParam LocalDate to) {
         StaffContext context = requireView(sessionCookie);
+        UUID activeBranchId = requireRequestedBranch(context, branchId);
         Map<UUID, String> categoryNames = categoryNameMap(context.businessId());
-        return expenseService.listExpenses(context, branchId, from, to).stream()
+        return expenseService.listExpenses(context, activeBranchId, from, to).stream()
                 .map(expense -> toResponse(expense, categoryNames))
                 .toList();
     }
@@ -90,9 +92,10 @@ public class StaffExpenseController {
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
             @Valid @RequestBody CreateExpenseRequest request) {
         StaffContext context = requireManage(sessionCookie);
+        UUID activeBranchId = requireRequestedBranch(context, request.branchId());
         Expense expense = expenseService.createExpense(
                 context,
-                request.branchId(),
+                activeBranchId,
                 request.categoryId(),
                 request.amountMinorUnits(),
                 request.incurredAt(),
@@ -149,7 +152,7 @@ public class StaffExpenseController {
     public ExpenseResponse approve(
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
             @PathVariable UUID expenseId) {
-        StaffContext context = staffAuthService.resolveStaffContext(
+        StaffContext context = staffAuthService.resolveStaffContextForActiveBranch(
                 StaffCookieSupport.parseSessionId(sessionCookie), Permission.EXPENSE_APPROVE);
         return toResponse(expenseService.approve(context, expenseId), categoryNameMap(context.businessId()));
     }
@@ -158,7 +161,7 @@ public class StaffExpenseController {
     public ExpenseResponse reject(
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
             @PathVariable UUID expenseId) {
-        StaffContext context = staffAuthService.resolveStaffContext(
+        StaffContext context = staffAuthService.resolveStaffContextForActiveBranch(
                 StaffCookieSupport.parseSessionId(sessionCookie), Permission.EXPENSE_APPROVE);
         return toResponse(expenseService.reject(context, expenseId), categoryNameMap(context.businessId()));
     }
@@ -169,6 +172,7 @@ public class StaffExpenseController {
         StaffContext context = requireView(sessionCookie);
         Map<UUID, String> categoryNames = categoryNameMap(context.businessId());
         return expenseService.listTemplates(context.businessId()).stream()
+                .filter(template -> context.activeBranchId().equals(template.getBranchId()))
                 .map(template -> toResponse(template, categoryNames))
                 .toList();
     }
@@ -178,9 +182,10 @@ public class StaffExpenseController {
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
             @Valid @RequestBody CreateRecurringExpenseTemplateRequest request) {
         StaffContext context = requireManage(sessionCookie);
+        UUID activeBranchId = requireRequestedBranch(context, request.branchId());
         RecurringExpenseTemplate template = expenseService.createTemplate(
                 context,
-                request.branchId(),
+                activeBranchId,
                 request.categoryId(),
                 request.amountMinorUnits(),
                 request.vendor(),
@@ -201,11 +206,20 @@ public class StaffExpenseController {
     }
 
     private StaffContext requireView(String sessionCookie) {
-        return staffAuthService.resolveStaffContext(StaffCookieSupport.parseSessionId(sessionCookie), Permission.EXPENSE_VIEW);
+        return staffAuthService.resolveStaffContextForActiveBranch(
+                StaffCookieSupport.parseSessionId(sessionCookie), Permission.EXPENSE_VIEW);
     }
 
     private StaffContext requireManage(String sessionCookie) {
-        return staffAuthService.resolveStaffContext(StaffCookieSupport.parseSessionId(sessionCookie), Permission.EXPENSE_MANAGE);
+        return staffAuthService.resolveStaffContextForActiveBranch(
+                StaffCookieSupport.parseSessionId(sessionCookie), Permission.EXPENSE_MANAGE);
+    }
+
+    private UUID requireRequestedBranch(StaffContext context, UUID requestedBranchId) {
+        if (requestedBranchId != null && !context.activeBranchId().equals(requestedBranchId)) {
+            throw new StaffPermissionDeniedException("Not authorized for branch: " + requestedBranchId);
+        }
+        return context.activeBranchId();
     }
 
     private Map<UUID, String> categoryNameMap(UUID businessId) {

@@ -31,8 +31,8 @@ class RefundFlowIntegrationTest extends AbstractIntegrationTest {
     @Test
     void staffCanIssueAPartialRefundForARejectedItemFoundByOrderNumber() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Refund Business");
-        String staffCookie = bootstrapStaffAdmin(businessId, "refund-admin-1");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
+        String staffCookie = bootstrapStaffAdmin(businessId, branchId, "refund-admin-1");
         String tableId = TenantFixtures.createTable(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, "Masa 1");
         String qrToken = TenantFixtures.createQrToken(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, tableId);
         CheckedInVisit visit = createPaidOrderWithOneItem(businessId, branchId, qrToken, "Pizza", 10000, 3, staffCookie);
@@ -69,8 +69,8 @@ class RefundFlowIntegrationTest extends AbstractIntegrationTest {
     @Test
     void multiplePartialRefundsAccumulateAndCannotExceedThePaidAmount() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Over Refund Business");
-        String staffCookie = bootstrapStaffAdmin(businessId, "refund-admin-2");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
+        String staffCookie = bootstrapStaffAdmin(businessId, branchId, "refund-admin-2");
         String tableId = TenantFixtures.createTable(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, "Masa 1");
         String qrToken = TenantFixtures.createQrToken(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, tableId);
         CheckedInVisit visit = createPaidOrderWithOneItem(businessId, branchId, qrToken, "Tatlı", 5000, 4, staffCookie);
@@ -112,8 +112,8 @@ class RefundFlowIntegrationTest extends AbstractIntegrationTest {
     @Test
     void theReceiptEndpointReflectsRefundsAndTheNetPaidAmount() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Receipt Business");
-        String staffCookie = bootstrapStaffAdmin(businessId, "refund-admin-3");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
+        String staffCookie = bootstrapStaffAdmin(businessId, branchId, "refund-admin-3");
         String tableId = TenantFixtures.createTable(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, "Masa 1");
         String qrToken = TenantFixtures.createQrToken(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, tableId);
 
@@ -161,9 +161,9 @@ class RefundFlowIntegrationTest extends AbstractIntegrationTest {
         mockMvc.perform(get("/api/staff/branches/{branchId}/orders/search?orderNumber=1", branchId)).andExpect(status().isUnauthorized());
     }
 
-    private String bootstrapStaffAdmin(String businessId, String emailLocalPart) throws Exception {
+    private String bootstrapStaffAdmin(String businessId, String branchId, String emailLocalPart) throws Exception {
         return StaffFixtures.bootstrapBusinessAdminAndLogin(
-                mockMvc, TEST_ADMIN_TOKEN, businessId, emailLocalPart + "@example.com");
+                mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, emailLocalPart + "@example.com");
     }
 
     private int fetchLatestOrderNumber(String branchId, String staffCookie) throws Exception {

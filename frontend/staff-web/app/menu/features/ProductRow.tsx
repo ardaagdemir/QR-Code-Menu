@@ -3,13 +3,10 @@
 import { useState } from "react";
 import {
   ALLERGENS,
-  bulkAssignProductToBranches,
   updateProductDetails,
   uploadProductImage,
   upsertBranchProduct,
   type Allergen,
-  type Branch,
-  type BranchAssignmentTarget,
   type BranchProductAdmin,
   type ProductAdmin,
 } from "@/lib/api";
@@ -42,16 +39,14 @@ const ALLERGEN_LABELS: Record<Allergen, string> = {
 type Props = {
   product: ProductAdmin;
   branchProduct: BranchProductAdmin | undefined;
-  branches: Branch[];
-  selectedBranchId: string | null;
   onProductUpdated: (product: ProductAdmin) => void;
   onBranchProductUpdated: (branchProduct: BranchProductAdmin) => void;
 };
 
-type Panel = "none" | "edit" | "assign";
+type Panel = "none" | "edit";
 
 /** Menü Yönetimi'nde tek bir ürün satırı: müsaitlik/aktiflik toggle'ları + genişleyen düzenle/ata panelleri. */
-export default function ProductRow({ product, branchProduct, branches, selectedBranchId, onProductUpdated, onBranchProductUpdated }: Props) {
+export default function ProductRow({ product, branchProduct, onProductUpdated, onBranchProductUpdated }: Props) {
   const { showToast } = useToast();
   const [panel, setPanel] = useState<Panel>("none");
   const [busy, setBusy] = useState(false);
@@ -60,8 +55,6 @@ export default function ProductRow({ product, branchProduct, branches, selectedB
   const [allergens, setAllergens] = useState<Set<Allergen>>(new Set(product.allergens));
   const [imageUrl, setImageUrl] = useState<string | null>(product.imageUrl);
 
-  const [assignTarget, setAssignTarget] = useState<BranchAssignmentTarget>("ALL_BRANCHES");
-  const [assignBranchIds, setAssignBranchIds] = useState<Set<string>>(new Set());
 
   const isAvailable = branchProduct?.availability === "AVAILABLE";
 
@@ -70,12 +63,6 @@ export default function ProductRow({ product, branchProduct, branches, selectedB
     setAllergens(new Set(product.allergens));
     setImageUrl(product.imageUrl);
     setPanel(panel === "edit" ? "none" : "edit");
-  }
-
-  function openAssign() {
-    setAssignTarget("ALL_BRANCHES");
-    setAssignBranchIds(new Set());
-    setPanel(panel === "assign" ? "none" : "assign");
   }
 
   function toggleAllergen(allergen: Allergen) {
@@ -90,26 +77,11 @@ export default function ProductRow({ product, branchProduct, branches, selectedB
     });
   }
 
-  function toggleAssignBranch(branchId: string) {
-    setAssignBranchIds((current) => {
-      const next = new Set(current);
-      if (next.has(branchId)) {
-        next.delete(branchId);
-      } else {
-        next.add(branchId);
-      }
-      return next;
-    });
-  }
-
   async function handleToggleAvailability() {
-    if (!selectedBranchId) {
-      return;
-    }
     setBusy(true);
     try {
       const nextAvailability = isAvailable ? "UNAVAILABLE" : "AVAILABLE";
-      const updated = await upsertBranchProduct(selectedBranchId, product.id, nextAvailability);
+      const updated = await upsertBranchProduct(product.id, nextAvailability);
       onBranchProductUpdated(updated);
     } catch {
       showToast("Şube ürün durumu güncellenemedi.", "error");
@@ -155,30 +127,6 @@ export default function ProductRow({ product, branchProduct, branches, selectedB
     }
   }
 
-  async function handleBulkAssign() {
-    const branchIds = Array.from(assignBranchIds);
-    if (assignTarget === "SELECTED_BRANCHES" && branchIds.length === 0) {
-      showToast("Seçili şubeler için en az bir şube seçin.", "error");
-      return;
-    }
-    setBusy(true);
-    try {
-      const updated = await bulkAssignProductToBranches(product.id, assignTarget, branchIds);
-      if (selectedBranchId) {
-        const forSelectedBranch = updated.find((bp) => bp.branchId === selectedBranchId);
-        if (forSelectedBranch) {
-          onBranchProductUpdated(forSelectedBranch);
-        }
-      }
-      setPanel("none");
-      showToast("Şubelere atandı.", "success");
-    } catch {
-      showToast("Şubelere atama yapılamadı.", "error");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   return (
     <>
       <tr>
@@ -190,23 +138,18 @@ export default function ProductRow({ product, branchProduct, branches, selectedB
         <td className={tableStyles.muted}>{product.allergens.length > 0 ? product.allergens.map((a) => ALLERGEN_LABELS[a]).join(", ") : "—"}</td>
         <td>
           {!product.active ? <Badge tone="danger">Pasif</Badge> : null}{" "}
-          {selectedBranchId ? <Badge tone={isAvailable ? "neutral" : "danger"}>{isAvailable ? "Şubede satışta" : "Şubede yok"}</Badge> : null}
+          <Badge tone={isAvailable ? "neutral" : "danger"}>{isAvailable ? "Şubede satışta" : "Şubede yok"}</Badge>
         </td>
         <td>
           <div className={tableStyles.actions}>
-            {selectedBranchId ? (
-              <Button size="md" variant="secondary" disabled={busy} onClick={handleToggleAvailability}>
-                {isAvailable ? "Kaldır" : "Şubeye Ekle"}
-              </Button>
-            ) : null}
+            <Button size="md" variant="secondary" disabled={busy} onClick={handleToggleAvailability}>
+              {isAvailable ? "Kaldır" : "Şubeye Ekle"}
+            </Button>
             <Button size="md" variant="secondary" disabled={busy} onClick={handleTogglePassive}>
               {product.active ? "Pasif Yap" : "Aktif Yap"}
             </Button>
             <Button size="md" variant="ghost" disabled={busy} onClick={openEdit}>
               {panel === "edit" ? "Vazgeç" : "Düzenle"}
-            </Button>
-            <Button size="md" variant="ghost" disabled={busy} onClick={openAssign}>
-              {panel === "assign" ? "Vazgeç" : "Şubelere Ata"}
             </Button>
           </div>
         </td>
@@ -245,52 +188,6 @@ export default function ProductRow({ product, branchProduct, branches, selectedB
         </tr>
       ) : null}
 
-      {panel === "assign" ? (
-        <tr className={tableStyles.expandedRow}>
-          <td colSpan={5}>
-            <div className={styles.section}>
-              <div className={styles.field}>
-                <span className={styles.label}>Hedef</span>
-                <div className={styles.rowActions}>
-                  <label className={styles.rowMeta}>
-                    <input
-                      type="radio"
-                      name={`assign-target-${product.id}`}
-                      checked={assignTarget === "ALL_BRANCHES"}
-                      onChange={() => setAssignTarget("ALL_BRANCHES")}
-                    />{" "}
-                    Tüm şubelere ata
-                  </label>
-                  <label className={styles.rowMeta}>
-                    <input
-                      type="radio"
-                      name={`assign-target-${product.id}`}
-                      checked={assignTarget === "SELECTED_BRANCHES"}
-                      onChange={() => setAssignTarget("SELECTED_BRANCHES")}
-                    />{" "}
-                    Seçili şubelere ata
-                  </label>
-                </div>
-              </div>
-              {assignTarget === "SELECTED_BRANCHES" ? (
-                <div className={styles.field}>
-                  <span className={styles.label}>Şubeler</span>
-                  <div className={styles.rowActions}>
-                    {branches.map((branch) => (
-                      <label key={branch.id} className={styles.rowMeta}>
-                        <input type="checkbox" checked={assignBranchIds.has(branch.id)} onChange={() => toggleAssignBranch(branch.id)} /> {branch.name}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-              <Button size="md" disabled={busy} onClick={handleBulkAssign}>
-                Ata
-              </Button>
-            </div>
-          </td>
-        </tr>
-      ) : null}
     </>
   );
 }

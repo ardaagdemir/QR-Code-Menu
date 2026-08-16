@@ -55,14 +55,14 @@ public class StaffDailyCloseController {
         this.ownerNotificationService = ownerNotificationService;
     }
 
-    @GetMapping("/api/staff/branches/{branchId}/daily-close")
+    @GetMapping({"/api/staff/daily-close", "/api/staff/branches/{branchId}/daily-close"})
     public List<DailyCloseReportResponse> listBranchCloseReports(
-            @PathVariable UUID branchId,
+            @PathVariable(required = false) UUID branchId,
             @RequestParam LocalDate from,
             @RequestParam LocalDate to,
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie) {
-        StaffContext context = staffAuthService.resolveStaffContextForBranch(
-                StaffCookieSupport.parseSessionId(sessionCookie), Permission.REPORT_VIEW, branchId);
+        StaffContext context = resolveReportContext(sessionCookie, branchId);
+        branchId = context.activeBranchId();
         String branchName = tenantService.getBranch(context.businessId(), branchId).getName();
         return dailyCloseService.listForBranch(branchId, from, to).stream()
                 .map(report -> toResponse(report, branchName))
@@ -70,26 +70,26 @@ public class StaffDailyCloseController {
     }
 
     /** Section 14.1/14.2: personel, otomatik zamanlama beklemeden bugünü elle kapatabilir (ör. hatalı business hours). */
-    @PostMapping("/api/staff/branches/{branchId}/daily-close/final")
+    @PostMapping({"/api/staff/daily-close/final", "/api/staff/branches/{branchId}/daily-close/final"})
     public DailyCloseReportResponse generateFinal(
-            @PathVariable UUID branchId,
+            @PathVariable(required = false) UUID branchId,
             @RequestParam LocalDate businessDate,
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie) {
-        StaffContext context = staffAuthService.resolveStaffContextForBranch(
-                StaffCookieSupport.parseSessionId(sessionCookie), Permission.REPORT_VIEW, branchId);
+        StaffContext context = resolveReportContext(sessionCookie, branchId);
+        branchId = context.activeBranchId();
         DailyBranchCloseReport report = dailyCloseService.generateFinal(context.businessId(), branchId, businessDate);
         String branchName = tenantService.getBranch(context.businessId(), branchId).getName();
         return toResponse(report, branchName);
     }
 
-    @GetMapping("/api/staff/branches/{branchId}/daily-close/excel")
+    @GetMapping({"/api/staff/daily-close/excel", "/api/staff/branches/{branchId}/daily-close/excel"})
     public ResponseEntity<byte[]> exportBranchExcel(
-            @PathVariable UUID branchId,
+            @PathVariable(required = false) UUID branchId,
             @RequestParam LocalDate from,
             @RequestParam LocalDate to,
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie) {
-        StaffContext context = staffAuthService.resolveStaffContextForBranch(
-                StaffCookieSupport.parseSessionId(sessionCookie), Permission.REPORT_VIEW, branchId);
+        StaffContext context = resolveReportContext(sessionCookie, branchId);
+        branchId = context.activeBranchId();
         Branch branch = tenantService.getBranch(context.businessId(), branchId);
         List<DailyBranchCloseReport> rows = dailyCloseService.listForBranch(branchId, from, to);
         byte[] workbook = excelExportService.export(rows, Map.of(branchId, branch.getName()));
@@ -98,13 +98,13 @@ public class StaffDailyCloseController {
 
     /** Section 13.2 ile aynı BUSINESS_ADMIN/PLATFORM_ADMIN-only zincir görünürlüğü. */
     /** Gap-analysis #11 (Section 15): hangi rapor kime, ne zaman, hangi durumda gönderildi. */
-    @GetMapping("/api/staff/branches/{branchId}/daily-close/{reportId}/notifications")
+    @GetMapping({"/api/staff/daily-close/{reportId}/notifications", "/api/staff/branches/{branchId}/daily-close/{reportId}/notifications"})
     public List<OwnerNotificationLogResponse> listNotifications(
-            @PathVariable UUID branchId,
+            @PathVariable(required = false) UUID branchId,
             @PathVariable UUID reportId,
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie) {
-        StaffContext context = staffAuthService.resolveStaffContextForBranch(
-                StaffCookieSupport.parseSessionId(sessionCookie), Permission.REPORT_VIEW, branchId);
+        StaffContext context = resolveReportContext(sessionCookie, branchId);
+        branchId = context.activeBranchId();
         dailyCloseService.getById(context.businessId(), branchId, reportId);
         return ownerNotificationService.listForReport(reportId).stream()
                 .map(StaffDailyCloseController::toNotificationResponse)
@@ -112,20 +112,20 @@ public class StaffDailyCloseController {
     }
 
     /** Manuel yeniden gönderme - AUTO idempotency kontrolünü atlar, uygun her alıcıya yeni bir deneme yazar. */
-    @PostMapping("/api/staff/branches/{branchId}/daily-close/{reportId}/notifications/resend")
+    @PostMapping({"/api/staff/daily-close/{reportId}/notifications/resend", "/api/staff/branches/{branchId}/daily-close/{reportId}/notifications/resend"})
     public List<OwnerNotificationLogResponse> resendNotifications(
-            @PathVariable UUID branchId,
+            @PathVariable(required = false) UUID branchId,
             @PathVariable UUID reportId,
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie) {
-        StaffContext context = staffAuthService.resolveStaffContextForBranch(
-                StaffCookieSupport.parseSessionId(sessionCookie), Permission.REPORT_VIEW, branchId);
+        StaffContext context = resolveReportContext(sessionCookie, branchId);
+        branchId = context.activeBranchId();
         DailyBranchCloseReport report = dailyCloseService.getById(context.businessId(), branchId, reportId);
         return ownerNotificationService.resend(report, context.staffUserId()).stream()
                 .map(StaffDailyCloseController::toNotificationResponse)
                 .toList();
     }
 
-    @GetMapping("/api/staff/daily-close/excel")
+    @GetMapping("/api/staff/daily-close/chain/excel")
     public ResponseEntity<byte[]> exportChainExcel(
             @RequestParam LocalDate from,
             @RequestParam LocalDate to,
@@ -137,6 +137,13 @@ public class StaffDailyCloseController {
         List<DailyBranchCloseReport> rows = dailyCloseService.listForBusiness(context.businessId(), from, to);
         byte[] workbook = excelExportService.export(rows, branchNames);
         return excelResponse(workbook, "gun-sonu-zincir-" + from + "_" + to + ".xlsx");
+    }
+
+    private StaffContext resolveReportContext(String sessionCookie, UUID requestedBranchId) {
+        UUID sessionId = StaffCookieSupport.parseSessionId(sessionCookie);
+        return requestedBranchId == null
+                ? staffAuthService.resolveStaffContextForActiveBranch(sessionId, Permission.REPORT_VIEW)
+                : staffAuthService.resolveStaffContextForBranch(sessionId, Permission.REPORT_VIEW, requestedBranchId);
     }
 
     private static ResponseEntity<byte[]> excelResponse(byte[] workbook, String filename) {

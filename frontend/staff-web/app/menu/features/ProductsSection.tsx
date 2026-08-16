@@ -6,7 +6,6 @@ import {
   listBranchProducts,
   listProductsForCategory,
   uploadProductImage,
-  type Branch,
   type BranchProductAdmin,
   type ProductAdmin,
 } from "@/lib/api";
@@ -19,7 +18,6 @@ import Button from "@/components/ui/Button";
 import Dialog from "@/components/ui/Dialog";
 import FormField from "@/components/ui/FormField";
 import Input from "@/components/ui/Input";
-import Select from "@/components/ui/Select";
 import FileUploadField from "@/components/ui/FileUploadField";
 import { useToast } from "@/components/ui/ToastProvider";
 import ProductRow from "./ProductRow";
@@ -27,14 +25,11 @@ import styles from "@/styles/admin.module.css";
 
 type Props = {
   categoryId: string;
-  branches: Branch[];
-  selectedBranchId: string | null;
-  onSelectBranch: (branchId: string) => void;
 };
 
 /** Menü Yönetimi'nin ürün paneli - Milestone 4'ün "opt-in" kuralı: bir ürün, ilgili
  * şubede bir BranchProduct satırı oluşana kadar o şubede görünmez. */
-export default function ProductsSection({ categoryId, branches, selectedBranchId, onSelectBranch }: Props) {
+export default function ProductsSection({ categoryId }: Props) {
   const { showToast } = useToast();
   const dialogTitleId = useId();
 
@@ -62,13 +57,10 @@ export default function ProductsSection({ categoryId, branches, selectedBranchId
   }, [categoryId]);
 
   useEffect(() => {
-    if (!selectedBranchId) {
-      return;
-    }
-    listBranchProducts(selectedBranchId)
+    listBranchProducts()
       .then(setBranchProducts)
       .catch(() => showToast("Şube ürün durumları yüklenemedi.", "error"));
-  }, [selectedBranchId, showToast]);
+  }, [showToast]);
 
   async function handleCreateProduct(event: React.FormEvent) {
     event.preventDefault();
@@ -110,20 +102,6 @@ export default function ProductsSection({ categoryId, branches, selectedBranchId
     <section className={styles.section}>
       <PageHeader title="Ürünler" actions={<Button onClick={() => setCreateOpen(true)}>+ Ürün Ekle</Button>} />
 
-      {branches.length > 0 ? (
-        <FormField label="Şube (satış durumu için)">
-          {(controlProps) => (
-            <Select {...controlProps} value={selectedBranchId ?? ""} onChange={(event) => onSelectBranch(event.target.value)}>
-              {branches.map((branch) => (
-                <option key={branch.id} value={branch.id}>
-                  {branch.name}
-                </option>
-              ))}
-            </Select>
-          )}
-        </FormField>
-      ) : null}
-
       {loading ? (
         <TableSkeleton />
       ) : error ? (
@@ -147,8 +125,6 @@ export default function ProductsSection({ categoryId, branches, selectedBranchId
                 key={product.id}
                 product={product}
                 branchProduct={branchProducts.find((bp) => bp.productId === product.id)}
-                branches={branches}
-                selectedBranchId={selectedBranchId}
                 onProductUpdated={handleProductUpdated}
                 onBranchProductUpdated={handleBranchProductUpdated}
               />

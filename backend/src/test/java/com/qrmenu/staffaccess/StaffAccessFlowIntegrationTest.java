@@ -27,8 +27,9 @@ class StaffAccessFlowIntegrationTest extends AbstractIntegrationTest {
     @Test
     void loginSucceedsMeReflectsContextAndLogoutInvalidatesTheSession() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Auth Business");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Auth Şube");
         String email = "auth-admin-1@example.com";
-        String cookie = StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, email);
+        String cookie = StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, email);
 
         mockMvc.perform(get("/api/staff/auth/me").cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, cookie)))
                 .andExpect(status().isOk())
@@ -36,7 +37,8 @@ class StaffAccessFlowIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.email").value(email))
                 .andExpect(jsonPath("$.role").value("BUSINESS_ADMIN"))
                 .andExpect(jsonPath("$.businessName").value("Auth Business"))
-                .andExpect(jsonPath("$.branches").isEmpty());
+                .andExpect(jsonPath("$.branches[0].id").value(branchId))
+                .andExpect(jsonPath("$.activeBranchId").value(branchId));
 
         mockMvc.perform(post("/api/staff/auth/logout").cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, cookie)))
                 .andExpect(status().isNoContent());
@@ -48,11 +50,13 @@ class StaffAccessFlowIntegrationTest extends AbstractIntegrationTest {
     @Test
     void loginWithWrongPasswordIsRejected() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Wrong Password Business");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String email = "auth-admin-2@example.com";
         mockMvc.perform(post("/internal/businesses/{businessId}/staff-users", businessId)
                         .header("X-Internal-Admin-Token", TEST_ADMIN_TOKEN)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + email + "\",\"password\":\"" + StaffFixtures.DEFAULT_PASSWORD + "\",\"role\":\"BUSINESS_ADMIN\"}"))
+                        .content("{\"email\":\"" + email + "\",\"password\":\"" + StaffFixtures.DEFAULT_PASSWORD
+                                + "\",\"role\":\"BUSINESS_ADMIN\",\"branchIds\":[\"" + branchId + "\"]}"))
                 .andExpect(status().isCreated());
 
         mockMvc.perform(post("/api/staff/auth/login")
@@ -62,10 +66,24 @@ class StaffAccessFlowIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void userFacingStaffCreationWithoutAnExplicitBranchIsRejected() throws Exception {
+        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Missing Branch Business");
+        TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Tek Şube");
+
+        mockMvc.perform(post("/internal/businesses/{businessId}/staff-users", businessId)
+                        .header("X-Internal-Admin-Token", TEST_ADMIN_TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"missing-branch@example.com\",\"password\":\"" + StaffFixtures.DEFAULT_PASSWORD
+                                + "\",\"role\":\"BUSINESS_ADMIN\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void aPermissionTheRoleDoesNotHoldIsForbidden() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Permission Business");
-        String adminCookie = StaffFixtures.bootstrapBusinessAdminAndLogin(
-                mockMvc, TEST_ADMIN_TOKEN, businessId, "permission-admin@example.com");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
+        String adminCookie = StaffFixtures.bootstrapAndLogin(
+                mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "permission-admin@example.com", "BUSINESS_ADMIN");
 
         String cashierEmail = "boundary-cashier@example.com";
         mockMvc.perform(post("/api/staff/staff-users")
@@ -84,25 +102,11 @@ class StaffAccessFlowIntegrationTest extends AbstractIntegrationTest {
     @Test
     void branchScopedPermissionsAreDeniedOutsideTheStaffUsersAssignedBranches() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Branch Scope Business");
-        String adminCookie = StaffFixtures.bootstrapBusinessAdminAndLogin(
-                mockMvc, TEST_ADMIN_TOKEN, businessId, "scope-admin@example.com");
-
+        String branchAId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Branch A");
+        String branchBId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Branch B");
+        String adminCookie = StaffFixtures.bootstrapAndLogin(
+                mockMvc, TEST_ADMIN_TOKEN, businessId, branchAId, "scope-admin@example.com", "BUSINESS_ADMIN");
         MockCookie adminMockCookie = new MockCookie(StaffCookieSupport.COOKIE_NAME, adminCookie);
-        MvcResult branchAResult = mockMvc.perform(post("/api/staff/branches")
-                        .cookie(adminMockCookie)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"Branch A\"}"))
-                .andExpect(status().isCreated())
-                .andReturn();
-        String branchAId = objectMapper.readTree(branchAResult.getResponse().getContentAsString()).get("id").asText();
-
-        MvcResult branchBResult = mockMvc.perform(post("/api/staff/branches")
-                        .cookie(adminMockCookie)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"Branch B\"}"))
-                .andExpect(status().isCreated())
-                .andReturn();
-        String branchBId = objectMapper.readTree(branchBResult.getResponse().getContentAsString()).get("id").asText();
 
         String cashierEmail = "scoped-cashier@example.com";
         mockMvc.perform(post("/api/staff/staff-users")
@@ -129,41 +133,49 @@ class StaffAccessFlowIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void mutationsThroughTheStaffAdminEndpointsAreRecordedInTheAuditLog() throws Exception {
+    void auditScreenReturnsOnlyTheActiveBranchsEntries() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Audit Business");
-        String adminCookie = StaffFixtures.bootstrapBusinessAdminAndLogin(
-                mockMvc, TEST_ADMIN_TOKEN, businessId, "audit-admin@example.com");
-        MockCookie adminMockCookie = new MockCookie(StaffCookieSupport.COOKIE_NAME, adminCookie);
+        String branchA = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube A");
+        String branchB = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube B");
+        MockCookie adminACookie = new MockCookie(StaffCookieSupport.COOKIE_NAME, StaffFixtures.bootstrapAndLogin(
+                mockMvc, TEST_ADMIN_TOKEN, businessId, branchA, "audit-admin-a@example.com", "BUSINESS_ADMIN"));
+        MockCookie adminBCookie = new MockCookie(StaffCookieSupport.COOKIE_NAME, StaffFixtures.bootstrapAndLogin(
+                mockMvc, TEST_ADMIN_TOKEN, businessId, branchB, "audit-admin-b@example.com", "BUSINESS_ADMIN"));
 
-        String meBody = mockMvc.perform(get("/api/staff/auth/me").cookie(adminMockCookie))
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
-        String staffUserId = objectMapper.readTree(meBody).get("staffUserId").asText();
+        String staffAId = objectMapper.readTree(mockMvc.perform(get("/api/staff/auth/me").cookie(adminACookie))
+                .andReturn().getResponse().getContentAsString()).get("staffUserId").asText();
+        String staffBId = objectMapper.readTree(mockMvc.perform(get("/api/staff/auth/me").cookie(adminBCookie))
+                .andReturn().getResponse().getContentAsString()).get("staffUserId").asText();
 
         mockMvc.perform(post("/api/staff/menu-categories")
-                        .cookie(adminMockCookie)
+                        .cookie(adminACookie)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"Ana Yemekler\"}"))
+                        .content("{\"name\":\"Şube A Menüsü\"}"))
+                .andExpect(status().isCreated());
+        mockMvc.perform(post("/api/staff/menu-categories")
+                        .cookie(adminBCookie)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Şube B Menüsü\"}"))
                 .andExpect(status().isCreated());
 
-        JsonNode entries = objectMapper.readTree(mockMvc.perform(get("/api/staff/audit").cookie(adminMockCookie))
-                        .andExpect(status().isOk())
-                        .andReturn()
-                        .getResponse()
-                        .getContentAsString());
+        JsonNode entries = objectMapper.readTree(mockMvc.perform(get("/api/staff/audit").cookie(adminACookie))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString());
         assertThat(entries).anySatisfy(entry -> {
             assertThat(entry.get("entityType").asText()).isEqualTo("MenuCategory");
             assertThat(entry.get("action").asText()).isEqualTo("CREATED");
-            assertThat(entry.get("actorStaffUserId").asText()).isEqualTo(staffUserId);
+            assertThat(entry.get("actorStaffUserId").asText()).isEqualTo(staffAId);
         });
+        assertThat(entries).noneSatisfy(entry ->
+                assertThat(entry.get("actorStaffUserId").asText()).isEqualTo(staffBId));
     }
 
     @Test
     void staffCanTogglePassiveOnAnExistingProductAndTheChangePersists() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Product Toggle Business");
-        String adminCookie = StaffFixtures.bootstrapBusinessAdminAndLogin(
-                mockMvc, TEST_ADMIN_TOKEN, businessId, "product-toggle-admin@example.com");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
+        String adminCookie = StaffFixtures.bootstrapAndLogin(
+                mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "product-toggle-admin@example.com", "BUSINESS_ADMIN");
         MockCookie adminMockCookie = new MockCookie(StaffCookieSupport.COOKIE_NAME, adminCookie);
         String categoryId =
                 TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Ana Yemekler");

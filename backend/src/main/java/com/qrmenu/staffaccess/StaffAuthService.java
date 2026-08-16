@@ -85,7 +85,7 @@ public class StaffAuthService {
         return toContext(staffUser);
     }
 
-    /** Authenticated + must hold the given Permission (business-wide, no branch scoping check). */
+    /** Authenticated + must hold the given Permission; no active-branch resolution is performed here. */
     @Transactional(readOnly = true)
     public StaffContext resolveStaffContext(UUID sessionId, Permission required) {
         StaffContext context = resolveStaffContext(sessionId);
@@ -107,6 +107,17 @@ public class StaffAuthService {
         return context;
     }
 
+    /** Resolve the only branch that staff-web is allowed to operate on. */
+    @Transactional(readOnly = true)
+    public StaffContext resolveStaffContextForActiveBranch(UUID sessionId, Permission required) {
+        StaffContext context = resolveStaffContext(sessionId, required);
+        UUID branchId = context.activeBranchId();
+        if (!tenantService.requireBusinessIdForBranch(branchId).equals(context.businessId())) {
+            throw new StaffPermissionDeniedException("Active branch does not belong to staff business");
+        }
+        return context;
+    }
+
     public void requirePermission(StaffContext context, Permission required) {
         if (!context.role().hasPermission(required)) {
             throw new StaffPermissionDeniedException("Missing permission: " + required);
@@ -116,6 +127,14 @@ public class StaffAuthService {
     @Transactional
     public StaffUser createStaffUser(
             UUID businessId, String email, String rawPassword, StaffRole role, List<UUID> branchIds) {
+        if (role != StaffRole.PLATFORM_ADMIN && branchIds.size() != 1) {
+            throw new IllegalArgumentException("User-facing staff users must be assigned to exactly one branch");
+        }
+        for (UUID branchId : branchIds) {
+            if (!tenantService.requireBusinessIdForBranch(branchId).equals(businessId)) {
+                throw new StaffPermissionDeniedException("Branch does not belong to staff business");
+            }
+        }
         StaffUser staffUser =
                 staffUserRepository.save(new StaffUser(businessId, email, passwordEncoder.encode(rawPassword), role));
         for (UUID branchId : branchIds) {
@@ -127,6 +146,13 @@ public class StaffAuthService {
     @Transactional(readOnly = true)
     public List<StaffUser> listStaffUsers(UUID businessId) {
         return staffUserRepository.findAllByBusinessIdOrderByCreatedAtAsc(businessId);
+    }
+
+    @Transactional(readOnly = true)
+    public List<StaffUser> listStaffUsers(UUID businessId, UUID branchId) {
+        return listStaffUsers(businessId).stream()
+                .filter(user -> hasEffectiveBranchAssignment(user, branchId))
+                .toList();
     }
 
     @Transactional(readOnly = true)
@@ -145,8 +171,27 @@ public class StaffAuthService {
         staffUserRepository.save(staffUser);
     }
 
+    @Transactional
+    public void deactivateStaffUser(UUID businessId, UUID branchId, UUID staffUserId) {
+        StaffUser staffUser = staffUserRepository
+                .findByIdAndBusinessId(staffUserId, businessId)
+                .orElseThrow(() -> new ResourceNotFoundException("Staff user not found: " + staffUserId));
+        if (!hasEffectiveBranchAssignment(staffUser, branchId)) {
+            throw new ResourceNotFoundException("Staff user not found in active branch: " + staffUserId);
+        }
+        staffUser.deactivate();
+        staffUserRepository.save(staffUser);
+    }
+
+    private boolean hasEffectiveBranchAssignment(StaffUser staffUser, UUID branchId) {
+        return getBranchIds(staffUser.getId()).contains(branchId);
+    }
+
     private StaffContext toContext(StaffUser staffUser) {
         Set<UUID> branchIds = getBranchIds(staffUser.getId());
+        if (staffUser.getRole() != StaffRole.PLATFORM_ADMIN && branchIds.size() != 1) {
+            throw new StaffPermissionDeniedException("Staff user must have exactly one active branch assignment");
+        }
         return new StaffContext(staffUser.getId(), staffUser.getBusinessId(), staffUser.getEmail(), staffUser.getRole(), branchIds);
     }
 

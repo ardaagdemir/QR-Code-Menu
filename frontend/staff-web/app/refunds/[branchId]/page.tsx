@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { redirect, useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { ApiError, completeOrder, createRefund, formatPriceMinorUnits, searchOrderByNumber, type StaffOrderLookup } from "@/lib/api";
 import AppShell from "@/components/layout/AppShell";
@@ -21,9 +21,13 @@ import styles from "./page.module.css";
  * picked up (Milestone 9, Permission.ORDER_COMPLETE). Permission.REFUND_ISSUE + branch
  * scoping via the qrmenu_staff_session cookie (Milestone 8).
  */
-export default function RefundsPage() {
-  const params = useParams<{ branchId: string }>();
-  const branchId = params.branchId;
+export default function LegacyRefundsPage() {
+  const params = useParams<{ branchId?: string }>();
+  if (params.branchId) redirect("/refunds");
+  return <RefundsPage />;
+}
+
+function RefundsPage() {
   const router = useRouter();
   const { showToast } = useToast();
 
@@ -46,7 +50,7 @@ export default function RefundsPage() {
     setSearching(true);
     setSearchError(null);
     try {
-      const found = await searchOrderByNumber(branchId, orderNumber);
+      const found = await searchOrderByNumber(orderNumber);
       setOrder(found);
       // The quantity inputs below render with a defaultValue (rejectedQuantity, or 0)
       // rather than a controlled value - React never reports that initial value
@@ -82,9 +86,9 @@ export default function RefundsPage() {
     }
     setSubmitting(true);
     try {
-      const refund = await createRefund(branchId, order.orderId, items);
+      const refund = await createRefund(order.orderId, items);
       showToast(`İade tamamlandı: ${formatPriceMinorUnits(refund.totalAmountMinorUnits)}`, "success");
-      const refreshed = await searchOrderByNumber(branchId, order.orderNumber ?? 0);
+      const refreshed = await searchOrderByNumber(order.orderNumber ?? 0);
       setOrder(refreshed);
       // Reset every input to 0 (not the rejectedQuantity default) - that quantity may
       // already have just been refunded, and re-suggesting it would invite an
@@ -113,7 +117,7 @@ export default function RefundsPage() {
     }
     setCompleting(true);
     try {
-      const updated = await completeOrder(branchId, order.orderId);
+      const updated = await completeOrder(order.orderId);
       setOrder(updated);
       showToast("Sipariş tamamlandı olarak işaretlendi.", "success");
     } catch {
@@ -130,7 +134,7 @@ export default function RefundsPage() {
           title="İade İşlemleri"
           actions={
             <div className={styles.headerActions}>
-              <Link href={`/cashier/${branchId}`} className={styles.backLink}>
+              <Link href="/cashier" className={styles.backLink}>
                 Kasa
               </Link>
             </div>

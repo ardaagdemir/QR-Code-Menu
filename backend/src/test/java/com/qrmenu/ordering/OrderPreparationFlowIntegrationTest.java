@@ -37,8 +37,8 @@ class OrderPreparationFlowIntegrationTest extends AbstractIntegrationTest {
     @Test
     void aPaidOrderReachesTheInProgressQueueWithAnOrderNumberAndItemsAutoAcceptedThroughToReady() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Preparation Business");
-        String staffCookie = bootstrapStaffAdmin(businessId, "prep-admin-1");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
+        String staffCookie = bootstrapStaffAdmin(businessId, branchId, "prep-admin-1");
         String tableId = TenantFixtures.createTable(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, "Masa 1");
         String qrToken = TenantFixtures.createQrToken(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, tableId);
         CheckedInVisit visit = createPaidOrderWithOneItem(businessId, branchId, qrToken, "Çorba", 5000, 2, staffCookie);
@@ -85,8 +85,8 @@ class OrderPreparationFlowIntegrationTest extends AbstractIntegrationTest {
     @Test
     void aReadyOrderAppearsInTheReadyListUntilCompleted() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Ready Business");
-        String staffCookie = bootstrapStaffAdmin(businessId, "prep-admin-5");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
+        String staffCookie = bootstrapStaffAdmin(businessId, branchId, "prep-admin-5");
         String tableId = TenantFixtures.createTable(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, "Masa 1");
         String qrToken = TenantFixtures.createQrToken(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, tableId);
         createPaidOrderWithOneItem(businessId, branchId, qrToken, "Limonata", 2500, 1, staffCookie);
@@ -126,8 +126,8 @@ class OrderPreparationFlowIntegrationTest extends AbstractIntegrationTest {
     @Test
     void orderNumbersAreSequentialPerBranchPerDay() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Sequence Business");
-        String staffCookie = bootstrapStaffAdmin(businessId, "prep-admin-3");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
+        String staffCookie = bootstrapStaffAdmin(businessId, branchId, "prep-admin-3");
         String tableAId = TenantFixtures.createTable(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, "Masa A");
         String tableBId = TenantFixtures.createTable(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, "Masa B");
         String qrTokenA = TenantFixtures.createQrToken(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, tableAId);
@@ -158,8 +158,8 @@ class OrderPreparationFlowIntegrationTest extends AbstractIntegrationTest {
     @Test
     void theOrderTrackingEndpointReflectsPreparationProgressAndRejectsAnUnknownToken() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Tracking Business");
-        String staffCookie = bootstrapStaffAdmin(businessId, "prep-admin-4");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
+        String staffCookie = bootstrapStaffAdmin(businessId, branchId, "prep-admin-4");
         String tableId = TenantFixtures.createTable(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, "Masa 1");
         String qrToken = TenantFixtures.createQrToken(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, tableId);
 
@@ -180,9 +180,9 @@ class OrderPreparationFlowIntegrationTest extends AbstractIntegrationTest {
 
     private CheckedInVisit lastVisit;
 
-    private String bootstrapStaffAdmin(String businessId, String emailLocalPart) throws Exception {
+    private String bootstrapStaffAdmin(String businessId, String branchId, String emailLocalPart) throws Exception {
         return StaffFixtures.bootstrapBusinessAdminAndLogin(
-                mockMvc, TEST_ADMIN_TOKEN, businessId, emailLocalPart + "@example.com");
+                mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, emailLocalPart + "@example.com");
     }
 
     private CheckedInVisit createPaidOrderWithOneItem(

@@ -23,6 +23,7 @@ import com.qrmenu.shared.outbox.OutboxEventWriter;
 import com.qrmenu.tenant.DeliveryModel;
 import com.qrmenu.tenant.RestaurantTable;
 import com.qrmenu.tenant.TenantService;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -546,6 +547,33 @@ public class OrderingService {
         return orders.stream()
                 .map(order -> new ReportOrderView(order, itemsByOrderId.getOrDefault(order.getId(), List.of())))
                 .toList();
+    }
+
+    /** Kasa KPI: orders completed inside the branch-local reporting window. */
+    @Transactional(readOnly = true)
+    public long countCompletedOrdersBetween(UUID branchId, Instant from, Instant to) {
+        return orderRepository.countByBranchIdAndStatusAndCompletedAtGreaterThanEqualAndCompletedAtLessThan(
+                branchId, OrderStatus.COMPLETED, from, to);
+    }
+
+    /**
+     * Kasa KPI: mean ACCEPTED_BY_STORE -> READY duration for orders that became ready
+     * inside the branch-local reporting window. Rows without both real transition
+     * timestamps are excluded instead of estimating a duration.
+     */
+    @Transactional(readOnly = true)
+    public long averagePreparationSecondsBetween(UUID branchId, Instant from, Instant to) {
+        List<Long> preparationSeconds = orderRepository
+                .findAllByBranchIdAndReadyAtGreaterThanEqualAndReadyAtLessThanAndPreparationStartedAtIsNotNull(
+                        branchId, from, to)
+                .stream()
+                .map(order -> Duration.between(order.getPreparationStartedAt(), order.getReadyAt()).getSeconds())
+                .filter(seconds -> seconds >= 0)
+                .toList();
+        if (preparationSeconds.isEmpty()) {
+            return 0L;
+        }
+        return Math.round(preparationSeconds.stream().mapToLong(Long::longValue).average().orElse(0));
     }
 
     private void recalculateOrderTotal(CustomerOrder order) {

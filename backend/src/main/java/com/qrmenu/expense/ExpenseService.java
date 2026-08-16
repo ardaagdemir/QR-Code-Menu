@@ -122,7 +122,7 @@ public class ExpenseService {
         return saved;
     }
 
-    /** Caller must already hold Permission.EXPENSE_APPROVE (BUSINESS_ADMIN-only, so no per-branch check is needed here). */
+    /** Caller must already hold Permission.EXPENSE_APPROVE; expense visibility remains branch-scoped. */
     @Transactional
     public Expense approve(StaffContext context, UUID expenseId) {
         Expense expense = requireSubmittedExpense(context, expenseId);
@@ -213,6 +213,9 @@ public class ExpenseService {
         RecurringExpenseTemplate template = templateRepository
                 .findByIdAndBusinessId(templateId, context.businessId())
                 .orElseThrow(() -> new ResourceNotFoundException("Recurring expense template not found: " + templateId));
+        if (!context.canAccessBranch(template.getBranchId())) {
+            throw new ResourceNotFoundException("Recurring expense template not found: " + templateId);
+        }
         template.deactivate();
         templateRepository.save(template);
         auditService.record(context.businessId(), context.staffUserId(), "RecurringExpenseTemplate", templateId, "DEACTIVATED", Map.of());
@@ -293,9 +296,7 @@ public class ExpenseService {
     }
 
     private Expense requireSubmittedExpense(StaffContext context, UUID expenseId) {
-        Expense expense = expenseRepository
-                .findByIdAndBusinessId(expenseId, context.businessId())
-                .orElseThrow(() -> new ResourceNotFoundException("Expense not found: " + expenseId));
+        Expense expense = requireViewableExpense(context, expenseId);
         if (expense.getStatus() != ExpenseStatus.SUBMITTED) {
             throw new IllegalStateException("Expense is not SUBMITTED (current status: " + expense.getStatus() + ")");
         }

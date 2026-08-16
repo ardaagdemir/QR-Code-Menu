@@ -37,7 +37,7 @@ import org.springframework.web.bind.annotation.RestController;
  * Permission.REFUND_ISSUE, scoped to this branchId, guards access.
  */
 @RestController
-@RequestMapping("/api/staff/branches/{branchId}/orders")
+@RequestMapping({"/api/staff/orders", "/api/staff/branches/{branchId}/orders"})
 public class RefundController {
 
     private final OrderingService orderingService;
@@ -53,21 +53,22 @@ public class RefundController {
     /** Order lookup by its readable order number - what staff would actually have on hand to start a refund. */
     @GetMapping("/search")
     public StaffOrderLookupResponse search(
-            @PathVariable UUID branchId,
+            @PathVariable(required = false) UUID branchId,
             @RequestParam int orderNumber,
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie) {
-        requireRefundAccess(sessionCookie, branchId);
+        branchId = requireRefundAccess(sessionCookie, branchId).activeBranchId();
         OrderTrackingView tracking = orderingService.getOrderByNumber(branchId, orderNumber);
         return toLookupResponse(tracking);
     }
 
     @PostMapping("/{orderId}/refunds")
     public RefundResponse createRefund(
-            @PathVariable UUID branchId,
+            @PathVariable(required = false) UUID branchId,
             @PathVariable UUID orderId,
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
             @Valid @RequestBody CreateRefundRequest request) {
         StaffContext context = requireRefundAccess(sessionCookie, branchId);
+        branchId = context.activeBranchId();
         List<RefundLineRequest> lines =
                 request.items().stream().map(item -> new RefundLineRequest(item.orderItemId(), item.quantity())).toList();
         return toResponse(refundService.requestRefund(branchId, orderId, lines, context.staffUserId()));
@@ -75,10 +76,10 @@ public class RefundController {
 
     @GetMapping("/{orderId}/refunds")
     public List<RefundResponse> listRefunds(
-            @PathVariable UUID branchId,
+            @PathVariable(required = false) UUID branchId,
             @PathVariable UUID orderId,
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie) {
-        requireRefundAccess(sessionCookie, branchId);
+        branchId = requireRefundAccess(sessionCookie, branchId).activeBranchId();
         orderingService.getOrderInBranch(branchId, orderId);
         return refundService.getRefundsForOrder(orderId).stream().map(RefundController::toResponse).toList();
     }
@@ -90,18 +91,23 @@ public class RefundController {
      */
     @PostMapping("/{orderId}/complete")
     public StaffOrderLookupResponse completeOrder(
-            @PathVariable UUID branchId,
+            @PathVariable(required = false) UUID branchId,
             @PathVariable UUID orderId,
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie) {
-        staffAuthService.resolveStaffContextForBranch(
-                StaffCookieSupport.parseSessionId(sessionCookie), Permission.ORDER_COMPLETE, branchId);
+        UUID sessionId = StaffCookieSupport.parseSessionId(sessionCookie);
+        StaffContext context = branchId == null
+                ? staffAuthService.resolveStaffContextForActiveBranch(sessionId, Permission.ORDER_COMPLETE)
+                : staffAuthService.resolveStaffContextForBranch(sessionId, Permission.ORDER_COMPLETE, branchId);
+        branchId = context.activeBranchId();
         orderingService.completeOrder(branchId, orderId);
         return toLookupResponse(orderingService.getOrderTrackingViewInBranch(branchId, orderId));
     }
 
     private StaffContext requireRefundAccess(String sessionCookie, UUID branchId) {
-        return staffAuthService.resolveStaffContextForBranch(
-                StaffCookieSupport.parseSessionId(sessionCookie), Permission.REFUND_ISSUE, branchId);
+        UUID sessionId = StaffCookieSupport.parseSessionId(sessionCookie);
+        return branchId == null
+                ? staffAuthService.resolveStaffContextForActiveBranch(sessionId, Permission.REFUND_ISSUE)
+                : staffAuthService.resolveStaffContextForBranch(sessionId, Permission.REFUND_ISSUE, branchId);
     }
 
     private StaffOrderLookupResponse toLookupResponse(OrderTrackingView tracking) {

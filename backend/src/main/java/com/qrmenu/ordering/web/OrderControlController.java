@@ -51,7 +51,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
  * unchanged).
  */
 @RestController
-@RequestMapping("/api/staff/branches/{branchId}/orders")
+@RequestMapping({"/api/staff/orders", "/api/staff/branches/{branchId}/orders"})
 public class OrderControlController {
 
     private final OrderingService orderingService;
@@ -76,9 +76,9 @@ public class OrderControlController {
     /** Section 10.1: kasa dashboard'un "yeni ödenmiş/onay bekleyen siparişler" listesi. */
     @GetMapping("/pending-acceptance")
     public List<OrderControlOrderResponse> getPendingAcceptance(
-            @PathVariable UUID branchId,
+            @PathVariable(required = false) UUID branchId,
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie) {
-        requireOrderAccess(sessionCookie, branchId, Permission.ORDER_VIEW);
+        branchId = requireOrderAccess(sessionCookie, branchId, Permission.ORDER_VIEW).activeBranchId();
         int timeoutSeconds = tenantService.getStoreAcceptanceTimeoutSeconds(branchId);
         return orderingService.getPendingStoreAcceptanceOrders(branchId).stream()
                 .map(view -> toResponse(view, timeoutSeconds))
@@ -87,21 +87,23 @@ public class OrderControlController {
 
     @PostMapping("/{orderId}/accept")
     public OrderControlOrderResponse accept(
-            @PathVariable UUID branchId,
+            @PathVariable(required = false) UUID branchId,
             @PathVariable UUID orderId,
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie) {
         StaffContext context = requireOrderAccess(sessionCookie, branchId, Permission.ORDER_ACCEPT);
+        branchId = context.activeBranchId();
         CustomerOrder order = orderingService.acceptOrder(branchId, orderId, context.staffUserId());
         return toResponse(order, tenantService.getStoreAcceptanceTimeoutSeconds(branchId));
     }
 
     @PostMapping("/{orderId}/reject")
     public OrderControlOrderResponse reject(
-            @PathVariable UUID branchId,
+            @PathVariable(required = false) UUID branchId,
             @PathVariable UUID orderId,
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
             @Valid @RequestBody RejectOrderRequest request) {
         StaffContext context = requireOrderAccess(sessionCookie, branchId, Permission.ORDER_REJECT);
+        branchId = context.activeBranchId();
         orderingService.rejectOrder(branchId, orderId, request.reasonCode(), request.note(), context.staffUserId());
         refundService.requestFullRefund(branchId, orderId, context.staffUserId());
         CustomerOrder order = orderingService.getOrderInBranch(branchId, orderId);
@@ -111,9 +113,9 @@ public class OrderControlController {
     /** Every ACCEPTed order still being prepared (Section 6/8: PREPARING -> READY). */
     @GetMapping("/in-progress")
     public List<OrderControlOrderResponse> getInProgress(
-            @PathVariable UUID branchId,
+            @PathVariable(required = false) UUID branchId,
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie) {
-        requireOrderAccess(sessionCookie, branchId, Permission.ORDER_VIEW);
+        branchId = requireOrderAccess(sessionCookie, branchId, Permission.ORDER_VIEW).activeBranchId();
         int timeoutSeconds = tenantService.getStoreAcceptanceTimeoutSeconds(branchId);
         return orderingService.getKitchenQueue(branchId).stream().map(view -> toResponse(view, timeoutSeconds)).toList();
     }
@@ -121,9 +123,9 @@ public class OrderControlController {
     /** Every READY order awaiting hand-off/pickup (Section 6/8: "Hazır - Teslim Bekliyor"). */
     @GetMapping("/ready")
     public List<OrderControlOrderResponse> getReady(
-            @PathVariable UUID branchId,
+            @PathVariable(required = false) UUID branchId,
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie) {
-        requireOrderAccess(sessionCookie, branchId, Permission.ORDER_VIEW);
+        branchId = requireOrderAccess(sessionCookie, branchId, Permission.ORDER_VIEW).activeBranchId();
         int timeoutSeconds = tenantService.getStoreAcceptanceTimeoutSeconds(branchId);
         return orderingService.getReadyOrders(branchId).stream().map(view -> toResponse(view, timeoutSeconds)).toList();
     }
@@ -135,23 +137,26 @@ public class OrderControlController {
      */
     @GetMapping("/stream")
     public SseEmitter stream(
-            @PathVariable UUID branchId, @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie) {
-        requireOrderAccess(sessionCookie, branchId, Permission.ORDER_VIEW);
+            @PathVariable(required = false) UUID branchId, @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie) {
+        branchId = requireOrderAccess(sessionCookie, branchId, Permission.ORDER_VIEW).activeBranchId();
         return sseOrderStatusNotifier.subscribeToBranchKitchen(branchId);
     }
 
     /** PREPARING -> READY, the whole order at once (Section 6/8) - no item-level decision step. */
     @PostMapping("/{orderId}/ready")
     public OrderControlOrderResponse markReady(
-            @PathVariable UUID branchId,
+            @PathVariable(required = false) UUID branchId,
             @PathVariable UUID orderId,
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie) {
-        requireOrderAccess(sessionCookie, branchId, Permission.ORDER_PREPARE);
+        branchId = requireOrderAccess(sessionCookie, branchId, Permission.ORDER_PREPARE).activeBranchId();
         return toResponse(orderingService.markOrderReady(branchId, orderId), tenantService.getStoreAcceptanceTimeoutSeconds(branchId));
     }
 
     private StaffContext requireOrderAccess(String sessionCookie, UUID branchId, Permission permission) {
-        return staffAuthService.resolveStaffContextForBranch(StaffCookieSupport.parseSessionId(sessionCookie), permission, branchId);
+        UUID sessionId = StaffCookieSupport.parseSessionId(sessionCookie);
+        return branchId == null
+                ? staffAuthService.resolveStaffContextForActiveBranch(sessionId, permission)
+                : staffAuthService.resolveStaffContextForBranch(sessionId, permission, branchId);
     }
 
     /** Accept/reject responses aren't rendered as cards (the frontend just refetches the list afterward), so tableLabel is skipped here. */

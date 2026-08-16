@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { redirect, useParams } from "next/navigation";
 import {
   ApiError,
   downloadBranchDailyCloseExcel,
@@ -43,10 +43,13 @@ function todayIsoDate(): string {
  * bar'ları, saatlik dağılım ve refund etkisi aynı bilgi hiyerarşisinde. CASHIER/
  * BRANCH_MANAGER/BUSINESS_ADMIN (Permission.REPORT_VIEW) kendi şubeleri için görebilir.
  */
-export default function BranchReportPage() {
-  const params = useParams<{ branchId: string }>();
-  const branchId = params.branchId;
+export default function LegacyBranchReportPage() {
+  const params = useParams<{ branchId?: string }>();
+  if (params.branchId) redirect("/reports");
+  return <BranchReportPage />;
+}
 
+function BranchReportPage() {
   const [range, setRange] = useState<DateRange>(() => presetRange("today"));
   const [report, setReport] = useState<BranchSalesReport | null>(null);
   const [loading, setLoading] = useState(true);
@@ -61,7 +64,7 @@ export default function BranchReportPage() {
   const [operatingResult, setOperatingResult] = useState<OperatingResult | null>(null);
 
   function loadReport(nextRange: DateRange) {
-    getBranchSalesReport(branchId, nextRange.from, nextRange.to)
+    getBranchSalesReport(nextRange.from, nextRange.to)
       .then((data) => {
         setReport(data);
         setError(null);
@@ -71,7 +74,7 @@ export default function BranchReportPage() {
   }
 
   function reloadDailyClose(nextRange: DateRange) {
-    getDailyCloseReports(branchId, nextRange.from, nextRange.to)
+    getDailyCloseReports(nextRange.from, nextRange.to)
       .then((data) => {
         setDailyCloseReports(data);
         void reloadNotifications(data);
@@ -83,7 +86,7 @@ export default function BranchReportPage() {
   async function reloadNotifications(rows: DailyCloseReport[]) {
     const finalRows = rows.filter((row) => row.status === "FINAL");
     const entries = await Promise.all(
-      finalRows.map(async (row) => [row.id, await getOwnerNotifications(branchId, row.id).catch(() => [])] as const),
+      finalRows.map(async (row) => [row.id, await getOwnerNotifications(row.id).catch(() => [])] as const),
     );
     setNotificationsByReport(Object.fromEntries(entries));
   }
@@ -91,14 +94,14 @@ export default function BranchReportPage() {
   function handleResend(reportId: string) {
     setResendingReportId(reportId);
     setDailyCloseError(null);
-    resendOwnerNotifications(branchId, reportId)
+    resendOwnerNotifications(reportId)
       .then((logs) => setNotificationsByReport((prev) => ({ ...prev, [reportId]: logs })))
       .catch(() => setDailyCloseError("Bildirim yeniden gönderilemedi."))
       .finally(() => setResendingReportId(null));
   }
 
   function reloadOperatingResult(nextRange: DateRange) {
-    getOperatingResult(branchId, nextRange.from, nextRange.to)
+    getOperatingResult(nextRange.from, nextRange.to)
       .then((data) => setOperatingResult(data))
       .catch(() => setOperatingResult(null));
   }
@@ -107,9 +110,8 @@ export default function BranchReportPage() {
     loadReport(range);
     reloadDailyClose(range);
     reloadOperatingResult(range);
-    // Only re-fetch automatically when the branch changes - date range changes are applied via handleRangeChange.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [branchId]);
+  }, []);
 
   function handleRangeChange(nextRange: DateRange) {
     setRange(nextRange);
@@ -122,7 +124,7 @@ export default function BranchReportPage() {
   function handleCloseToday() {
     setClosingToday(true);
     setDailyCloseError(null);
-    generateDailyCloseFinal(branchId, todayIsoDate())
+    generateDailyCloseFinal(todayIsoDate())
       .then(() => reloadDailyClose(range))
       .catch(() => setDailyCloseError("Gün sonu kapatılamadı."))
       .finally(() => setClosingToday(false));
@@ -132,7 +134,7 @@ export default function BranchReportPage() {
     if (!report) {
       return;
     }
-    downloadBranchDailyCloseExcel(branchId, report.branchName, range.from, range.to).catch(() =>
+    downloadBranchDailyCloseExcel(report.branchName, range.from, range.to).catch(() =>
       setDailyCloseError("Excel indirilemedi."),
     );
   }

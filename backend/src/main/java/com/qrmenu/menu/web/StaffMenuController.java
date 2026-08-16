@@ -18,10 +18,12 @@ import com.qrmenu.menu.web.dto.OptionGroupAdminResponse;
 import com.qrmenu.menu.web.dto.ProductAdminResponse;
 import com.qrmenu.menu.web.dto.UpdateProductDetailsRequest;
 import com.qrmenu.menu.web.dto.UpsertBranchProductRequest;
+import com.qrmenu.common.web.StaffPermissionDeniedException;
 import com.qrmenu.staffaccess.Permission;
 import com.qrmenu.staffaccess.StaffAuthService;
 import com.qrmenu.staffaccess.StaffContext;
 import com.qrmenu.staffaccess.StaffCookieSupport;
+import com.qrmenu.staffaccess.StaffRole;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
@@ -86,12 +88,12 @@ public class StaffMenuController {
         return menuService.getOptionsForGroup(context.businessId(), optionGroupId).stream().map(this::toResponse).toList();
     }
 
-    @GetMapping("/branches/{branchId}/branch-products")
+    @GetMapping({"/branch-products", "/branches/{branchId}/branch-products"})
     public List<BranchProductAdminResponse> listBranchProducts(
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
-            @PathVariable UUID branchId) {
-        StaffContext context = requireMenuManage(sessionCookie);
-        return menuService.getBranchProductsForBranch(context.businessId(), branchId).stream().map(this::toResponse).toList();
+            @PathVariable(required = false) UUID branchId) {
+        StaffContext context = requireMenuManageForBranch(sessionCookie, branchId);
+        return menuService.getBranchProductsForBranch(context.businessId(), context.activeBranchId()).stream().map(this::toResponse).toList();
     }
 
     @PostMapping("/menu-categories")
@@ -175,16 +177,16 @@ public class StaffMenuController {
         return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(option));
     }
 
-    @PutMapping("/branches/{branchId}/products/{productId}")
+    @PutMapping({"/branch-products/{productId}", "/branches/{branchId}/products/{productId}"})
     public ResponseEntity<BranchProductAdminResponse> upsertBranchProduct(
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
-            @PathVariable UUID branchId,
+            @PathVariable(required = false) UUID branchId,
             @PathVariable UUID productId,
             @Valid @RequestBody UpsertBranchProductRequest request) {
-        StaffContext context = requireMenuManage(sessionCookie);
+        StaffContext context = requireMenuManageForBranch(sessionCookie, branchId);
         BranchProduct branchProduct = menuService.upsertBranchProduct(
                 context.businessId(),
-                branchId,
+                context.activeBranchId(),
                 productId,
                 request.availability(),
                 request.priceOverrideMinorUnits(),
@@ -199,6 +201,12 @@ public class StaffMenuController {
             @PathVariable UUID productId,
             @Valid @RequestBody BulkAssignBranchesRequest request) {
         StaffContext context = requireMenuManage(sessionCookie);
+        if (context.role() != StaffRole.PLATFORM_ADMIN
+                && (request.target() != com.qrmenu.menu.BranchAssignmentTarget.SELECTED_BRANCHES
+                || request.branchIdsOrEmpty().size() != 1
+                || !request.branchIdsOrEmpty().getFirst().equals(context.activeBranchId()))) {
+            throw new StaffPermissionDeniedException("Cross-branch menu assignment is not available");
+        }
         return menuService
                 .bulkAssignProductToBranches(
                         context.businessId(), productId, request.target(), request.branchIdsOrEmpty(), context.staffUserId())
@@ -208,7 +216,15 @@ public class StaffMenuController {
     }
 
     private StaffContext requireMenuManage(String sessionCookie) {
-        return staffAuthService.resolveStaffContext(StaffCookieSupport.parseSessionId(sessionCookie), Permission.MENU_MANAGE);
+        return staffAuthService.resolveStaffContextForActiveBranch(
+                StaffCookieSupport.parseSessionId(sessionCookie), Permission.MENU_MANAGE);
+    }
+
+    private StaffContext requireMenuManageForBranch(String sessionCookie, UUID requestedBranchId) {
+        UUID sessionId = StaffCookieSupport.parseSessionId(sessionCookie);
+        return requestedBranchId == null
+                ? staffAuthService.resolveStaffContextForActiveBranch(sessionId, Permission.MENU_MANAGE)
+                : staffAuthService.resolveStaffContextForBranch(sessionId, Permission.MENU_MANAGE, requestedBranchId);
     }
 
     private MenuCategoryAdminResponse toResponse(MenuCategory category) {

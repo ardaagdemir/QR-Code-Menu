@@ -2628,24 +2628,8 @@ Backend'e dokunulmadı; yalnızca `staff-web` (cashier sayfası + AppShell + sta
 
 ---
 
-## 2026-08-14 Ürün Kararı — Sıkı Şube İzolasyonu + Masalar/QR UX — ⏳ PENDING IMPLEMENTATION
+## 2026-08-14 Gap #16 — Sıkı Şube İzolasyonu + Masalar/QR UX — ✅ COMPLETED
 
-Yeni ürün kararı `product-requirements.md`'ye işlendi; **henüz kodun tamamlandığı anlamına gelmez**.
+`BUSINESS_ADMIN`, `BRANCH_MANAGER` ve `CASHIER` için aktif şube artık staff session/context'ten çözülüyor; schema tek atamayı enforce ediyor ve eski branch-parametreli backend alias'ları başka şubeyi reddediyor. Staff-web'den şube seçimi kaldırıldı; kasa, rapor, gider, personel ve menü doğrudan aktif şubeyi kullanıyor. Duyuru ve audit ekranları korunarak active-branch scope'una alındı; chain karşılaştırma/rapor kodu korunup mevcut user-facing rollerden ve nav'dan kapatıldı. QR üretme/yenileme/revoke/PNG indirme/yazdırma işlemleri `/tables` altındaki masa kartlarına taşındı. Kasa route'u branch parametresiz çalışıyor ve referans tasarım düzenini koruyor.
 
-**Hedef davranış:**
-- `BUSINESS_ADMIN`, `BRANCH_MANAGER`, `CASHIER` kullanıcıya açık mevcut roller olarak **tek şube scope'unda** çalışır.
-- Hiçbir şube kullanıcısı başka şubenin sipariş, ciro, rapor, masa, QR, çalışan, ayar veya diğer verilerini göremez.
-- Staff UI'da branch selector/dropdown veya `Kasa → Şubeler → Kasa` ara akışı yoktur; aktif branch staff session/context'ten gelir.
-- Kasa, raporlar, giderler, personel ve masa yönetimi doğrudan kullanıcının kendi şubesini açar.
-- Sidebar'da ayrı `QR Yönetimi` yoktur; **Masalar** ekranında masa oluşturma/düzenleme ile QR oluşturma, revoke/yenileme ve indirme/yazdırma birlikte bulunur.
-- Cross-branch erişecek özel zincir rolü **şimdilik tanımlanmayacak**; daha sonra ayrıca tasarlanacak.
-
-**Mevcut kodla bilinen conflict noktaları:**
-- `StaffUserBranch` ve `StaffContext` mevcut geçmişte çoklu-şube/business-wide davranışları destekleyecek şekilde kullanıldı.
-- `BUSINESS_ADMIN` için chain/report karşılaştırma ve bazı business-wide navigasyon/endpoint akışları uygulanmış durumda.
-- staff-web'de `/branches`, `[branchId]` route'ları ve `singleBranchHref` benzeri branch seçimine dayanan yönlendirmeler bulunuyor.
-- `chain-comparison`, chain report ve bulk branch işlemleri mevcut branch rollerine açık olmamalı.
-- Table/QR backend özelliği mevcut olsa da yeni hedef UI'da QR işlemleri `Masalar` altında tek branch context'iyle toplanmalı.
-
-Bu değişiklik **Gap-Analysis #16** olarak uygulanmalıdır. Tarihsel tamamlanmış milestone notları geriye dönük olarak silinmez; yeni karar eski business-wide varsayımlarını geçersiz kılar.
-
+Doğrulama: backend `./mvnw test` (**130 test, 0 failure**), staff-web `npm run lint` ve `npm run build` temiz. Aynı işletmedeki başka şubenin sipariş, rapor, masa ve QR kaynaklarına erişim için negatif integration testleri eklendi.

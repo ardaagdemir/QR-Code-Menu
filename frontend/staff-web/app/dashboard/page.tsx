@@ -5,14 +5,12 @@ import Link from "next/link";
 import {
   formatPriceMinorUnits,
   getBranchSalesReport,
-  getChainSalesReport,
   getPendingAcceptanceOrders,
   me,
   type BranchSalesReport,
-  type ChainSalesReport,
   type StaffContext,
 } from "@/lib/api";
-import { NAV_GROUPS, ROLE_LABELS, isBusinessWide } from "@/lib/staffNav";
+import { NAV_GROUPS, ROLE_LABELS } from "@/lib/staffNav";
 import AppShell from "@/components/layout/AppShell";
 import Card from "@/components/ui/Card";
 import KpiCard from "@/components/ui/KpiCard";
@@ -31,14 +29,12 @@ const REPORT_ROLES: StaffContext["role"][] = ["PLATFORM_ADMIN", "BUSINESS_ADMIN"
 /**
  * Bölüm 19.3 "Dashboard": login sonrası rolün kullanım amacına uygun landing page -
  * BUSINESS_ADMIN/BRANCH_MANAGER için bugünkü brüt/net satış, sipariş sayısı, ortalama
- * sepet, refund özeti, en çok satan ürünler, aktif/bekleyen operasyon bilgisi ve şube
- * karşılaştırması. Zincir genelinde rol (BUSINESS_ADMIN/PLATFORM_ADMIN) zincir raporunu,
- * tek şubeye bağlı rol (BRANCH_MANAGER/CASHIER) kendi şubesinin raporunu görür; ilk
- * ekranda yalnızca "bugün" (from=to=today) - tarih aralığı seçimi /reports'ta.
+ * sepet, refund özeti, en çok satan ürünler ve aktif/bekleyen operasyon bilgisi.
+ * Her kullanıcı yalnız session/context'ten çözülen aktif şubesinin raporunu görür;
+ * ilk ekranda yalnızca "bugün" (from=to=today) - tarih aralığı seçimi /reports'ta.
  */
 export default function DashboardPage() {
   const [context, setContext] = useState<StaffContext | null>(null);
-  const [chainReport, setChainReport] = useState<ChainSalesReport | null>(null);
   const [branchReport, setBranchReport] = useState<BranchSalesReport | null>(null);
   const [pendingCount, setPendingCount] = useState<number | null>(null);
   const [reportsLoading, setReportsLoading] = useState(false);
@@ -52,18 +48,12 @@ export default function DashboardPage() {
         }
         setReportsLoading(true);
         const today = todayIsoDate();
-        if (isBusinessWide(staffContext.role)) {
-          getChainSalesReport(today, today)
-            .then(setChainReport)
-            .catch(() => undefined)
-            .finally(() => setReportsLoading(false));
-        } else if (staffContext.branches.length > 0) {
-          const branchId = staffContext.branches[0].id;
-          getBranchSalesReport(branchId, today, today)
+        if (staffContext.activeBranchId) {
+          getBranchSalesReport(today, today)
             .then(setBranchReport)
             .catch(() => undefined)
             .finally(() => setReportsLoading(false));
-          getPendingAcceptanceOrders(branchId)
+          getPendingAcceptanceOrders()
             .then((orders) => setPendingCount(orders.length))
             .catch(() => undefined);
         } else {
@@ -86,7 +76,6 @@ export default function DashboardPage() {
   const topProducts = branchReport
     ? [...branchReport.productBreakdown].sort((a, b) => b.revenueMinorUnits - a.revenueMinorUnits).slice(0, 5)
     : [];
-  const branchesByGross = chainReport ? [...chainReport.branches].sort((a, b) => b.grossSalesMinorUnits - a.grossSalesMinorUnits) : [];
 
   return (
     <AppShell>
@@ -115,35 +104,6 @@ export default function DashboardPage() {
                     <Skeleton height="88px" />
                     <Skeleton height="88px" />
                   </div>
-                ) : chainReport ? (
-                  <>
-                    <div className={styles.kpiGrid}>
-                      <KpiCard label="Toplam brüt satış" value={formatPriceMinorUnits(chainReport.totalGrossSalesMinorUnits)} />
-                      <KpiCard label="Toplam net satış" value={formatPriceMinorUnits(chainReport.totalNetSalesMinorUnits)} />
-                      <KpiCard
-                        label="Toplam refund"
-                        value={formatPriceMinorUnits(chainReport.totalRefundMinorUnits)}
-                        tone={chainReport.totalRefundMinorUnits > 0 ? "danger" : "neutral"}
-                      />
-                      <KpiCard label="Toplam masa siparişi" value={String(chainReport.totalOrderCount)} />
-                    </div>
-                    {branchesByGross.length > 0 ? (
-                      <div className={styles.subsection}>
-                        <h3 className={styles.subsectionTitle}>Şube Sıralaması</h3>
-                        <BarList
-                          items={branchesByGross.map((branch) => ({
-                            key: branch.branchId,
-                            label: branch.branchName,
-                            value: branch.grossSalesMinorUnits,
-                            valueLabel: formatPriceMinorUnits(branch.grossSalesMinorUnits),
-                          }))}
-                        />
-                      </div>
-                    ) : null}
-                    <Link href="/reports" className={styles.moreLink}>
-                      Tüm satış raporlarını gör →
-                    </Link>
-                  </>
                 ) : branchReport ? (
                   <>
                     <div className={styles.kpiGrid}>
@@ -177,7 +137,7 @@ export default function DashboardPage() {
                         />
                       </div>
                     ) : null}
-                    <Link href={`/reports/${context.branches[0]?.id ?? ""}`} className={styles.moreLink}>
+                    <Link href="/reports" className={styles.moreLink}>
                       Şube raporunu gör →
                     </Link>
                   </>

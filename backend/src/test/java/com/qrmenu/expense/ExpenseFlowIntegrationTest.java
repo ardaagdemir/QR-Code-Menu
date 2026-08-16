@@ -39,7 +39,8 @@ class ExpenseFlowIntegrationTest extends AbstractIntegrationTest {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Expense Business 1");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String adminCookie =
-                StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, "expense-admin-1@example.com");
+                StaffFixtures.bootstrapBusinessAdminAndLogin(
+                        mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "expense-admin-1@example.com");
         MockCookie cookie = new MockCookie(StaffCookieSupport.COOKIE_NAME, adminCookie);
 
         String categoryId = createCategory(cookie, "Kira");
@@ -90,12 +91,12 @@ class ExpenseFlowIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void branchManagerCannotApproveOrCreateBusinessLevelExpense() throws Exception {
+    void branchManagerUsesActiveBranchButCannotApproveOrTargetAnotherBranch() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Expense Business 3");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String otherBranchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Diğer Şube");
-        String adminCookie =
-                StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, "expense-admin-3@example.com");
+        String adminCookie = StaffFixtures.bootstrapAndLogin(
+                mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "expense-admin-3@example.com", "BUSINESS_ADMIN");
         MockCookie adminCookieObj = new MockCookie(StaffCookieSupport.COOKIE_NAME, adminCookie);
         String categoryId = createCategory(adminCookieObj, "Malzeme");
 
@@ -108,16 +109,17 @@ class ExpenseFlowIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(status().isCreated());
         MockCookie managerCookie = new MockCookie(StaffCookieSupport.COOKIE_NAME, StaffFixtures.login(mockMvc, managerEmail));
 
-        // Business-level (no branchId) expense creation is BUSINESS_ADMIN-only.
-        mockMvc.perform(post("/api/staff/expenses")
+        // No branchId means the trusted active branch; it is not a business-level expense.
+        MvcResult createResult = mockMvc.perform(post("/api/staff/expenses")
                         .cookie(managerCookie)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"categoryId\":\"" + categoryId + "\",\"amountMinorUnits\":1000,\"incurredAt\":\""
                                 + LocalDate.now(ZoneOffset.UTC) + "\"}"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isCreated())
+                .andReturn();
 
         // Own-branch expense creation and submission are allowed.
-        String expenseId = createExpense(managerCookie, branchId, categoryId, 5000);
+        String expenseId = objectMapper.readTree(createResult.getResponse().getContentAsString()).get("id").asText();
         mockMvc.perform(post("/api/staff/expenses/{expenseId}/submit", expenseId).cookie(managerCookie))
                 .andExpect(status().isOk());
 
@@ -132,6 +134,25 @@ class ExpenseFlowIntegrationTest extends AbstractIntegrationTest {
                         .content("{\"branchId\":\"" + otherBranchId + "\",\"categoryId\":\"" + categoryId
                                 + "\",\"amountMinorUnits\":1000,\"incurredAt\":\"" + LocalDate.now(ZoneOffset.UTC) + "\"}"))
                 .andExpect(status().isForbidden());
+
+        MockCookie otherAdminCookie = new MockCookie(StaffCookieSupport.COOKIE_NAME, StaffFixtures.bootstrapAndLogin(
+                mockMvc, TEST_ADMIN_TOKEN, businessId, otherBranchId, "expense-admin-other-3@example.com", "BUSINESS_ADMIN"));
+        String otherExpenseId = objectMapper.readTree(mockMvc.perform(post("/api/staff/expenses")
+                        .cookie(otherAdminCookie)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"categoryId\":\"" + categoryId + "\",\"amountMinorUnits\":2000,\"incurredAt\":\""
+                                + LocalDate.now(ZoneOffset.UTC) + "\"}"))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString()).get("id").asText();
+        mockMvc.perform(post("/api/staff/expenses/{expenseId}/submit", otherExpenseId).cookie(otherAdminCookie))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/staff/expenses/{expenseId}/approve", otherExpenseId).cookie(adminCookieObj))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/staff/expenses/{expenseId}/reject", otherExpenseId).cookie(adminCookieObj))
+                .andExpect(status().isForbidden());
     }
 
     @Test
@@ -139,7 +160,8 @@ class ExpenseFlowIntegrationTest extends AbstractIntegrationTest {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Expense Business 4");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String adminCookie =
-                StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, "expense-admin-4@example.com");
+                StaffFixtures.bootstrapBusinessAdminAndLogin(
+                        mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "expense-admin-4@example.com");
         MockCookie cookie = new MockCookie(StaffCookieSupport.COOKIE_NAME, adminCookie);
         String categoryId = createCategory(cookie, "Elektrik");
 
@@ -182,7 +204,8 @@ class ExpenseFlowIntegrationTest extends AbstractIntegrationTest {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Expense Business 5");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String adminCookie =
-                StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, "expense-admin-5@example.com");
+                StaffFixtures.bootstrapBusinessAdminAndLogin(
+                        mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "expense-admin-5@example.com");
         MockCookie cookie = new MockCookie(StaffCookieSupport.COOKIE_NAME, adminCookie);
         String categoryId = createCategory(cookie, "Temizlik");
         String expenseId = createExpense(cookie, branchId, categoryId, 4000);
@@ -210,8 +233,8 @@ class ExpenseFlowIntegrationTest extends AbstractIntegrationTest {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Expense Business 6");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String otherBranchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Diğer Şube");
-        String adminCookie =
-                StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, "expense-admin-6@example.com");
+        String adminCookie = StaffFixtures.bootstrapAndLogin(
+                mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "expense-admin-6@example.com", "BUSINESS_ADMIN");
         MockCookie cookie = new MockCookie(StaffCookieSupport.COOKIE_NAME, adminCookie);
         String categoryId = createCategory(cookie, "Kira");
 
@@ -257,8 +280,10 @@ class ExpenseFlowIntegrationTest extends AbstractIntegrationTest {
 
         // A different business/tenant entirely cannot, either (404s rather than 403s to avoid tenant enumeration).
         String otherBusinessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Expense Business 7");
-        String otherAdminCookie = StaffFixtures.bootstrapBusinessAdminAndLogin(
-                mockMvc, TEST_ADMIN_TOKEN, otherBusinessId, "expense-admin-7@example.com");
+        String otherBusinessBranchId = TenantFixtures.createBranch(
+                mockMvc, objectMapper, TEST_ADMIN_TOKEN, otherBusinessId, "Şube");
+        String otherAdminCookie = StaffFixtures.bootstrapAndLogin(
+                mockMvc, TEST_ADMIN_TOKEN, otherBusinessId, otherBusinessBranchId, "expense-admin-7@example.com", "BUSINESS_ADMIN");
         mockMvc.perform(get("/api/staff/expenses/{expenseId}/receipt", expenseId)
                         .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, otherAdminCookie)))
                 .andExpect(status().isNotFound());

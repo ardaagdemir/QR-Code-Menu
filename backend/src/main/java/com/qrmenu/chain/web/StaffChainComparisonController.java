@@ -30,7 +30,7 @@ public class StaffChainComparisonController {
     public List<BranchComparisonResponse> compare(
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie) {
         StaffContext context = staffAuthService.resolveStaffContext(
-                StaffCookieSupport.parseSessionId(sessionCookie), Permission.BRANCH_MANAGE);
+                StaffCookieSupport.parseSessionId(sessionCookie), Permission.REPORT_CHAIN_VIEW);
         return chainComparisonService.compareBranches(context.businessId()).stream()
                 .map(StaffChainComparisonController::toResponse)
                 .toList();

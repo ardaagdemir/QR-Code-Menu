@@ -19,6 +19,8 @@ public record BranchSalesReportResponse(
         long tableVisitCount,
         long guestCountTotal,
         long guestCountRecordedVisitCount,
+        long averagePreparationSeconds,
+        long completedOrderCount,
         List<ProductSalesResponse> productBreakdown,
         List<CategorySalesResponse> categoryBreakdown,
         List<HourlySalesResponse> hourlyDistribution) {

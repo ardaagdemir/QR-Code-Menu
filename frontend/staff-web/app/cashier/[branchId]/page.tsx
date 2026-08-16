@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { redirect, useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   BellRing,
@@ -14,7 +14,6 @@ import {
   RefreshCw,
   Search,
   Send,
-  TrendingUp,
   Undo2,
   UtensilsCrossed,
   Wallet,
@@ -27,6 +26,7 @@ import {
   completeOrder,
   formatPriceMinorUnits,
   getInProgressOrders,
+  getBranchSalesReport,
   getKitchenFinancialSummary,
   getPendingAcceptanceOrders,
   getReadyOrders,
@@ -57,6 +57,20 @@ function formatClockTime(iso: string): string {
   return new Date(iso).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
 }
 
+function formatPreparationDuration(totalSeconds: number): string {
+  if (totalSeconds < 60) {
+    return `${totalSeconds} sn`;
+  }
+  return `${Math.round(totalSeconds / 60)} dk`;
+}
+
+function localIsoDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function matchesSearch(order: OrderControlOrder, query: string): boolean {
   if (!query) {
     return true;
@@ -79,9 +93,13 @@ function matchesSearch(order: OrderControlOrder, query: string): boolean {
  * karşılığı backend'de olmayan alanları eklenmedi - yalnızca gerçek veriyle
  * doldurulabilen alanlar taşındı.
  */
-export default function CashierDashboardPage() {
-  const params = useParams<{ branchId: string }>();
-  const branchId = params.branchId;
+export default function LegacyCashierPage() {
+  const params = useParams<{ branchId?: string }>();
+  if (params.branchId) redirect("/cashier");
+  return <CashierDashboardPage />;
+}
+
+function CashierDashboardPage() {
   const router = useRouter();
 
   const [pendingOrders, setPendingOrders] = useState<OrderControlOrder[]>([]);
@@ -95,6 +113,10 @@ export default function CashierDashboardPage() {
   const [readyingOrderId, setReadyingOrderId] = useState<string | null>(null);
   const [completingOrderId, setCompletingOrderId] = useState<string | null>(null);
   const [financialSummary, setFinancialSummary] = useState<KitchenFinancialSummary | null>(null);
+  const [operationalMetrics, setOperationalMetrics] = useState<{
+    averagePreparationSeconds: number;
+    completedOrderCount: number;
+  } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [now, setNow] = useState(() => Date.now());
   const reasonCodeRef = useRef<Record<string, string>>({});
@@ -137,9 +159,9 @@ export default function CashierDashboardPage() {
     const requestId = ++latestRequestIdRef.current;
     try {
       const [pending, inProgress, ready] = await Promise.all([
-        getPendingAcceptanceOrders(branchId),
-        getInProgressOrders(branchId),
-        getReadyOrders(branchId),
+        getPendingAcceptanceOrders(),
+        getInProgressOrders(),
+        getReadyOrders(),
       ]);
       if (requestId === latestRequestIdRef.current) {
         setPendingOrders(pending);
@@ -159,7 +181,7 @@ export default function CashierDashboardPage() {
       setError("Sipariş listesi yüklenemedi.");
       setLoading(false);
     }
-  }, [branchId, router]);
+  }, [router]);
 
   useEffect(() => {
     let cancelled = false;
@@ -168,9 +190,9 @@ export default function CashierDashboardPage() {
       const requestId = ++latestRequestIdRef.current;
       try {
         const [pending, inProgress, ready] = await Promise.all([
-          getPendingAcceptanceOrders(branchId),
-          getInProgressOrders(branchId),
-          getReadyOrders(branchId),
+          getPendingAcceptanceOrders(),
+          getInProgressOrders(),
+          getReadyOrders(),
         ]);
         if (!cancelled && requestId === latestRequestIdRef.current) {
           setPendingOrders(pending);
@@ -192,7 +214,7 @@ export default function CashierDashboardPage() {
       }
     }
 
-    const eventSource = new EventSource(buildOrderStreamUrl(branchId), { withCredentials: true });
+    const eventSource = new EventSource(buildOrderStreamUrl(), { withCredentials: true });
     eventSource.addEventListener("open", () => setConnectionStatus("live"));
     eventSource.addEventListener("error", () => setConnectionStatus("reconnecting"));
     eventSource.addEventListener("order-status", () => fetchAll());
@@ -202,7 +224,7 @@ export default function CashierDashboardPage() {
       cancelled = true;
       eventSource.close();
     };
-  }, [branchId, router]);
+  }, [router]);
 
   useEffect(() => {
     let cancelled = false;
@@ -210,28 +232,43 @@ export default function CashierDashboardPage() {
     // BUSINESS_ADMIN/BRANCH_MANAGER (see StaffRole) - checking the role here just
     // avoids a call that would 403 for CASHIER; the backend enforces this regardless.
     me()
-      .then((context) => {
-        if (cancelled || (context.role !== "BUSINESS_ADMIN" && context.role !== "BRANCH_MANAGER")) {
+      .then(async (context) => {
+        if (cancelled) {
           return;
         }
-        const today = new Date().toISOString().slice(0, 10);
-        return getKitchenFinancialSummary(branchId, today, today).then((summary) => {
+        const today = localIsoDate(new Date());
+        const operationalRequest = getBranchSalesReport(today, today).then((report) => {
           if (!cancelled) {
-            setFinancialSummary(summary);
+            setOperationalMetrics({
+              averagePreparationSeconds: report.averagePreparationSeconds,
+              completedOrderCount: report.completedOrderCount,
+            });
           }
         });
+        if (context.role !== "BUSINESS_ADMIN" && context.role !== "BRANCH_MANAGER") {
+          await operationalRequest;
+          return;
+        }
+        await Promise.all([
+          operationalRequest,
+          getKitchenFinancialSummary(today, today).then((summary) => {
+            if (!cancelled) {
+              setFinancialSummary(summary);
+            }
+          }),
+        ]);
       })
       .catch(() => undefined);
     return () => {
       cancelled = true;
     };
-  }, [branchId]);
+  }, []);
 
   async function handleAccept(orderId: string) {
     setPendingOrderId(orderId);
     setError(null);
     try {
-      await acceptOrder(branchId, orderId);
+      await acceptOrder(orderId);
       await reloadAll();
     } catch {
       setError("Sipariş kabul edilemedi.");
@@ -246,7 +283,7 @@ export default function CashierDashboardPage() {
     setPendingOrderId(orderId);
     setError(null);
     try {
-      await rejectOrder(branchId, orderId, reasonCode, note);
+      await rejectOrder(orderId, reasonCode, note);
       setRejectingOrderId(null);
       await reloadAll();
     } catch {
@@ -259,7 +296,7 @@ export default function CashierDashboardPage() {
   async function handleMarkReady(orderId: string) {
     setReadyingOrderId(orderId);
     try {
-      await markOrderReady(branchId, orderId);
+      await markOrderReady(orderId);
       await reloadAll();
     } catch {
       setError("Sipariş hazır olarak işaretlenemedi.");
@@ -271,7 +308,7 @@ export default function CashierDashboardPage() {
   async function handleComplete(orderId: string) {
     setCompletingOrderId(orderId);
     try {
-      await completeOrder(branchId, orderId);
+      await completeOrder(orderId);
       await reloadAll();
     } catch {
       setError("Sipariş tamamlanamadı.");
@@ -290,6 +327,10 @@ export default function CashierDashboardPage() {
     <AppShell>
       <main className={styles.page}>
         <div className={styles.toolbar}>
+          <span className={styles.dateChip}>
+            <CalendarDays size={15} aria-hidden="true" />
+            {todayLabel}
+          </span>
           <label className={styles.searchBar}>
             <Search size={16} aria-hidden="true" />
             <input
@@ -301,10 +342,6 @@ export default function CashierDashboardPage() {
               aria-label="Sipariş veya masa ara"
             />
           </label>
-          <span className={styles.dateChip}>
-            <CalendarDays size={15} aria-hidden="true" />
-            {todayLabel}
-          </span>
           <button type="button" className={styles.refreshButton} onClick={() => reloadAll()} disabled={loading}>
             <RefreshCw size={15} aria-hidden="true" />
             Yenile
@@ -314,7 +351,7 @@ export default function CashierDashboardPage() {
         <div className={styles.header}>
           <h1 className={styles.title}>Kasa</h1>
           <div className={styles.headerActions}>
-            <Link href={`/refunds/${branchId}`} className={styles.navLink}>
+            <Link href="/refunds" className={styles.navLink}>
               <Undo2 size={14} aria-hidden="true" />
               İadeler
             </Link>
@@ -327,37 +364,48 @@ export default function CashierDashboardPage() {
 
         {error ? <ErrorState message={error} onRetry={reloadAll} /> : null}
 
-        {financialSummary ? (
-          <div className={styles.kpiGrid}>
-            <div className={styles.kpiCard}>
-              <span className={styles.kpiIcon} aria-hidden="true">
-                <Wallet size={20} />
+        <div className={styles.kpiGrid}>
+          <div className={styles.kpiCard}>
+            <span className={styles.kpiIcon} aria-hidden="true">
+              <Wallet size={22} />
+            </span>
+            <span className={styles.kpiBody}>
+              <span className={styles.kpiLabel}>Günlük Ciro</span>
+              <span className={styles.kpiValue}>
+                {financialSummary ? formatPriceMinorUnits(financialSummary.grossSalesMinorUnits) : "—"}
               </span>
-              <span className={styles.kpiBody}>
-                <span className={styles.kpiLabel}>Günlük Ciro</span>
-                <span className={styles.kpiValue}>{formatPriceMinorUnits(financialSummary.grossSalesMinorUnits)}</span>
-              </span>
-            </div>
-            <div className={styles.kpiCard}>
-              <span className={styles.kpiIcon} aria-hidden="true">
-                <Receipt size={20} />
-              </span>
-              <span className={styles.kpiBody}>
-                <span className={styles.kpiLabel}>Toplam Sipariş</span>
-                <span className={styles.kpiValue}>{financialSummary.orderCount}</span>
-              </span>
-            </div>
-            <div className={styles.kpiCard}>
-              <span className={styles.kpiIcon} aria-hidden="true">
-                <TrendingUp size={20} />
-              </span>
-              <span className={styles.kpiBody}>
-                <span className={styles.kpiLabel}>Net Satış</span>
-                <span className={styles.kpiValue}>{formatPriceMinorUnits(financialSummary.netSalesMinorUnits)}</span>
-              </span>
-            </div>
+            </span>
           </div>
-        ) : null}
+          <div className={styles.kpiCard}>
+            <span className={styles.kpiIcon} aria-hidden="true">
+              <Receipt size={22} />
+            </span>
+            <span className={styles.kpiBody}>
+              <span className={styles.kpiLabel}>Toplam Sipariş</span>
+              <span className={styles.kpiValue}>{financialSummary?.orderCount ?? "—"}</span>
+            </span>
+          </div>
+          <div className={styles.kpiCard}>
+            <span className={styles.kpiIcon} aria-hidden="true">
+              <Clock size={22} />
+            </span>
+            <span className={styles.kpiBody}>
+              <span className={styles.kpiLabel}>Ortalama Hazırlık Süresi</span>
+              <span className={styles.kpiValue}>
+                {operationalMetrics ? formatPreparationDuration(operationalMetrics.averagePreparationSeconds) : "—"}
+              </span>
+            </span>
+          </div>
+          <div className={styles.kpiCard}>
+            <span className={styles.kpiIcon} aria-hidden="true">
+              <Check size={22} />
+            </span>
+            <span className={styles.kpiBody}>
+              <span className={styles.kpiLabel}>Tamamlanan Sipariş</span>
+              <span className={styles.kpiValue}>{operationalMetrics?.completedOrderCount ?? "—"}</span>
+            </span>
+          </div>
+        </div>
 
         {loading ? (
           <p className={styles.loading}>

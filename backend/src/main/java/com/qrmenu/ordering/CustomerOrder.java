@@ -54,6 +54,15 @@ public class CustomerOrder {
     @Column(name = "last_activity_at", nullable = false)
     private Instant lastActivityAt;
 
+    @Column(name = "preparation_started_at")
+    private Instant preparationStartedAt;
+
+    @Column(name = "ready_at")
+    private Instant readyAt;
+
+    @Column(name = "completed_at")
+    private Instant completedAt;
+
     /** Set only on REJECTED_BY_STORE (Section 6: "Red nedeni tutulmalıdır"). */
     @Column(name = "rejection_reason_code")
     private String rejectionReasonCode;
@@ -139,8 +148,10 @@ public class CustomerOrder {
         if (status != OrderStatus.AWAITING_STORE_ACCEPTANCE) {
             throw new IllegalStateException("Cannot move to IN_KITCHEN from status " + status);
         }
+        Instant now = Instant.now();
         this.status = OrderStatus.IN_KITCHEN;
-        this.lastActivityAt = Instant.now();
+        this.preparationStartedAt = now;
+        this.lastActivityAt = now;
     }
 
     /**
@@ -173,8 +184,10 @@ public class CustomerOrder {
         if (status != OrderStatus.IN_KITCHEN) {
             throw new IllegalStateException("Cannot move to READY from status " + status);
         }
+        Instant now = Instant.now();
         this.status = OrderStatus.READY;
-        this.lastActivityAt = Instant.now();
+        this.readyAt = now;
+        this.lastActivityAt = now;
     }
 
     /**
@@ -187,8 +200,10 @@ public class CustomerOrder {
         if (status != OrderStatus.READY) {
             throw new IllegalStateException("Cannot move to COMPLETED from status " + status);
         }
+        Instant now = Instant.now();
         this.status = OrderStatus.COMPLETED;
-        this.lastActivityAt = Instant.now();
+        this.completedAt = now;
+        this.lastActivityAt = now;
     }
 
     public UUID getId() {
@@ -229,6 +244,18 @@ public class CustomerOrder {
 
     public Instant getLastActivityAt() {
         return lastActivityAt;
+    }
+
+    public Instant getPreparationStartedAt() {
+        return preparationStartedAt;
+    }
+
+    public Instant getReadyAt() {
+        return readyAt;
+    }
+
+    public Instant getCompletedAt() {
+        return completedAt;
     }
 
     public String getRejectionReasonCode() {

@@ -31,4 +31,10 @@ public interface OrderRepository extends JpaRepository<CustomerOrder, UUID> {
     /** Gap-analysis #8 reporting: paid orders (successful payment) for a branch within a selectable date range. */
     List<CustomerOrder> findAllByBranchIdAndCreatedAtBetweenAndStatusIn(
             UUID branchId, Instant from, Instant to, List<OrderStatus> statuses);
+
+    long countByBranchIdAndStatusAndCompletedAtGreaterThanEqualAndCompletedAtLessThan(
+            UUID branchId, OrderStatus status, Instant from, Instant to);
+
+    List<CustomerOrder> findAllByBranchIdAndReadyAtGreaterThanEqualAndReadyAtLessThanAndPreparationStartedAtIsNotNull(
+            UUID branchId, Instant from, Instant to);
 }

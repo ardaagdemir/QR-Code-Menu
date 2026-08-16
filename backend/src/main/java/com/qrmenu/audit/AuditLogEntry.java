@@ -30,6 +30,9 @@ public class AuditLogEntry {
     @Column(name = "actor_staff_user_id")
     private UUID actorStaffUserId;
 
+    @Column(name = "branch_id", insertable = false, updatable = false)
+    private UUID branchId;
+
     @Column(name = "entity_type", nullable = false, length = 50)
     private String entityType;
 
@@ -69,6 +72,10 @@ public class AuditLogEntry {
 
     public UUID getActorStaffUserId() {
         return actorStaffUserId;
+    }
+
+    public UUID getBranchId() {
+        return branchId;
     }
 
     public String getEntityType() {

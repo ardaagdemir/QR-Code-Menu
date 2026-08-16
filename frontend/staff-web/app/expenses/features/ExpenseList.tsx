@@ -7,7 +7,7 @@ import {
   listExpenses,
   rejectExpense,
   submitExpense,
-  type Branch,
+  type StaffBranchSummary,
   type Expense,
 } from "@/lib/api";
 import PageHeader from "@/components/ui/PageHeader";
@@ -19,7 +19,6 @@ import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import FormField from "@/components/ui/FormField";
 import Input from "@/components/ui/Input";
-import Select from "@/components/ui/Select";
 import { useToast } from "@/components/ui/ToastProvider";
 import tableStyles from "@/components/ui/Table.module.css";
 import styles from "@/styles/admin.module.css";
@@ -47,7 +46,7 @@ function firstDayOfMonthIsoDate(): string {
 }
 
 type Props = {
-  accessibleBranches: Branch[];
+  accessibleBranches: StaffBranchSummary[];
   isBusinessAdmin: boolean;
   refreshToken: number;
 };
@@ -63,11 +62,10 @@ export default function ExpenseList({ accessibleBranches, isBusinessAdmin, refre
 
   const [from, setFrom] = useState(firstDayOfMonthIsoDate());
   const [to, setTo] = useState(todayIsoDate());
-  const [branchFilter, setBranchFilter] = useState("");
-  const [appliedFilters, setAppliedFilters] = useState({ from: firstDayOfMonthIsoDate(), to: todayIsoDate(), branchFilter: "" });
+  const [appliedFilters, setAppliedFilters] = useState({ from: firstDayOfMonthIsoDate(), to: todayIsoDate() });
 
   function load() {
-    listExpenses(appliedFilters.branchFilter || null, appliedFilters.from, appliedFilters.to)
+    listExpenses(appliedFilters.from, appliedFilters.to)
       .then((data) => {
         setExpenses(data);
         setError(null);
@@ -81,7 +79,7 @@ export default function ExpenseList({ accessibleBranches, isBusinessAdmin, refre
   function handleFilterSubmit(event: React.FormEvent) {
     event.preventDefault();
     setLoading(true);
-    setAppliedFilters({ from, to, branchFilter });
+    setAppliedFilters({ from, to });
   }
 
   async function handleSubmitExpense(expenseId: string) {
@@ -133,18 +131,6 @@ export default function ExpenseList({ accessibleBranches, isBusinessAdmin, refre
       <PageHeader title="Giderler" />
 
       <form className={styles.form} onSubmit={handleFilterSubmit}>
-        <FormField label="Şube">
-          {(controlProps) => (
-            <Select {...controlProps} value={branchFilter} onChange={(event) => setBranchFilter(event.target.value)}>
-              <option value="">Tümü</option>
-              {accessibleBranches.map((branch) => (
-                <option key={branch.id} value={branch.id}>
-                  {branch.name}
-                </option>
-              ))}
-            </Select>
-          )}
-        </FormField>
         <FormField label="Başlangıç">
           {(controlProps) => <Input {...controlProps} type="date" value={from} max={to} onChange={(event) => setFrom(event.target.value)} />}
         </FormField>

@@ -1,7 +1,9 @@
 package com.qrmenu.announcement.web;
 
 import com.qrmenu.announcement.AnnouncementService;
+import com.qrmenu.announcement.AnnouncementTarget;
 import com.qrmenu.announcement.StaffAnnouncement;
+import com.qrmenu.common.web.StaffPermissionDeniedException;
 import com.qrmenu.announcement.web.dto.AnnouncementResponse;
 import com.qrmenu.announcement.web.dto.CreateAnnouncementRequest;
 import com.qrmenu.staffaccess.Permission;
@@ -10,6 +12,7 @@ import com.qrmenu.staffaccess.StaffContext;
 import com.qrmenu.staffaccess.StaffCookieSupport;
 import jakarta.validation.Valid;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -42,7 +45,9 @@ public class StaffAnnouncementController {
     public List<AnnouncementResponse> list(
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie) {
         StaffContext context = requireManage(sessionCookie);
-        return announcementService.listForBusiness(context.businessId()).stream().map(StaffAnnouncementController::toResponse).toList();
+        return announcementService.listForBranch(context.businessId(), context.activeBranchId()).stream()
+                .map(StaffAnnouncementController::toResponse)
+                .toList();
     }
 
     @GetMapping("/active")
@@ -57,12 +62,18 @@ public class StaffAnnouncementController {
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
             @Valid @RequestBody CreateAnnouncementRequest request) {
         StaffContext context = requireManage(sessionCookie);
+        Set<UUID> requestedBranchIds = request.branchIds() == null ? Set.of() : request.branchIds();
+        if (request.target() != null
+                && (request.target() != AnnouncementTarget.SELECTED_BRANCHES
+                        || !requestedBranchIds.equals(Set.of(context.activeBranchId())))) {
+            throw new StaffPermissionDeniedException("Cross-branch announcement management is not available");
+        }
         StaffAnnouncement announcement = announcementService.create(
                 context.businessId(),
                 request.title(),
                 request.message(),
-                request.target(),
-                request.branchIds(),
+                AnnouncementTarget.SELECTED_BRANCHES,
+                Set.of(context.activeBranchId()),
                 request.expiresAt(),
                 context.staffUserId());
         return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(announcement));
@@ -73,11 +84,12 @@ public class StaffAnnouncementController {
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
             @PathVariable UUID announcementId) {
         StaffContext context = requireManage(sessionCookie);
-        return toResponse(announcementService.endNow(context.businessId(), announcementId, context.staffUserId()));
+        return toResponse(announcementService.endNowForBranch(
+                context.businessId(), context.activeBranchId(), announcementId, context.staffUserId()));
     }
 
     private StaffContext requireManage(String sessionCookie) {
-        return staffAuthService.resolveStaffContext(
+        return staffAuthService.resolveStaffContextForActiveBranch(
                 StaffCookieSupport.parseSessionId(sessionCookie), Permission.ANNOUNCEMENT_MANAGE);
     }
 
