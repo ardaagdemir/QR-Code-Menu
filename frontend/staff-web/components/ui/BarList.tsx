@@ -3,6 +3,7 @@ import styles from "./BarList.module.css";
 export type BarListItem = {
   key: string;
   label: string;
+  labelTitle?: string;
   value: number;
   valueLabel: string;
 };
@@ -24,7 +25,7 @@ export default function BarList({ items }: Props) {
     <ul className={styles.list}>
       {items.map((item) => (
         <li key={item.key} className={styles.row}>
-          <span className={styles.label}>{item.label}</span>
+          <span className={styles.label} title={item.labelTitle}>{item.label}</span>
           <span className={styles.track}>
             <span className={styles.bar} style={{ width: `${Math.max(2, (item.value / max) * 100)}%` }} />
           </span>

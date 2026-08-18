@@ -13,13 +13,26 @@
 }
 
 .title {
-  font-size: var(--font-size-2xl);
+  font-size: 2rem;
   font-weight: var(--font-weight-bold);
+  letter-spacing: -0.025em;
 }
 
 .description {
   font-size: var(--font-size-sm);
   color: var(--color-fg-muted);
+  max-width: 68ch;
+}
+
+@media (max-width: 640px) {
+  .title {
+    font-size: 1.65rem;
+  }
+
+  .actions,
+  .actions > * {
+    width: 100%;
+  }
 }
 
 .actions {

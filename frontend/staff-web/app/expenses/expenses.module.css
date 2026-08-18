@@ -1,0 +1,39 @@
+.overviewGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.55fr);
+  gap: var(--space-5);
+  align-items: stretch;
+}
+
+.overviewGrid > * {
+  height: 100%;
+}
+
+.actionPanel {
+  justify-content: center;
+  background:
+    linear-gradient(135deg, var(--color-primary-soft), transparent 72%),
+    var(--color-surface-raised);
+}
+
+.actionPanel button {
+  align-self: flex-start;
+}
+
+.categoryList {
+  align-content: flex-start;
+}
+
+.dangerAction {
+  color: var(--color-danger) !important;
+}
+
+.dangerAction:hover {
+  background: var(--color-danger-bg) !important;
+}
+
+@media (max-width: 900px) {
+  .overviewGrid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -269,7 +269,7 @@
 
 .content {
   flex: 1;
-  background: #fbfaf8;
+  background: var(--color-page);
 }
 
 @media (max-width: 1023px) {

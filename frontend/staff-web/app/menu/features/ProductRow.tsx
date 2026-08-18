@@ -18,6 +18,7 @@ import FileUploadField from "@/components/ui/FileUploadField";
 import { useToast } from "@/components/ui/ToastProvider";
 import tableStyles from "@/components/ui/Table.module.css";
 import styles from "@/styles/admin.module.css";
+import menuStyles from "../menu.module.css";
 
 const ALLERGEN_LABELS: Record<Allergen, string> = {
   GLUTEN: "Gluten",
@@ -145,7 +146,7 @@ export default function ProductRow({ product, branchProduct, onProductUpdated, o
             <Button size="md" variant="secondary" disabled={busy} onClick={handleToggleAvailability}>
               {isAvailable ? "Kaldır" : "Şubeye Ekle"}
             </Button>
-            <Button size="md" variant="secondary" disabled={busy} onClick={handleTogglePassive}>
+            <Button className={product.active ? menuStyles.dangerAction : undefined} size="md" variant={product.active ? "ghost" : "secondary"} disabled={busy} onClick={handleTogglePassive}>
               {product.active ? "Pasif Yap" : "Aktif Yap"}
             </Button>
             <Button size="md" variant="ghost" disabled={busy} onClick={openEdit}>

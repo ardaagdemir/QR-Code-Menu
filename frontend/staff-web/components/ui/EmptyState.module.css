@@ -4,13 +4,24 @@
   align-items: center;
   text-align: center;
   gap: var(--space-2);
-  padding: var(--space-12) var(--space-6);
+  min-height: 180px;
+  padding: var(--space-10) var(--space-6);
   color: var(--color-fg-muted);
+  border: 1px dashed var(--color-panel-border);
+  border-radius: 10px;
+  background: var(--color-surface-soft);
 }
 
 .icon {
   font-size: 2rem;
   line-height: 1;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-full);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
 }
 
 .title {

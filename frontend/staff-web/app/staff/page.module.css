@@ -1,0 +1,51 @@
+.tablePanel {
+  overflow: hidden;
+  padding: 0;
+}
+
+.panelHeader {
+  padding: 20px 22px;
+  border-bottom: 1px solid var(--color-panel-border);
+}
+
+.panelBody {
+  padding: 0;
+}
+
+.panelBody > div:has(> table) {
+  border: none;
+  border-radius: 0;
+}
+
+.identity {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.avatar {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: var(--radius-full);
+  background: var(--color-primary-soft);
+  color: var(--color-primary-strong);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+}
+
+.dangerAction {
+  color: var(--color-danger) !important;
+}
+
+.dangerAction:hover {
+  background: var(--color-danger-bg) !important;
+}
+
+@media (max-width: 640px) {
+  .panelHeader {
+    padding: var(--space-4);
+  }
+}

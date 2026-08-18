@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useState } from "react";
+import { UserPlus, Users } from "lucide-react";
 import { createStaffUser, deactivateStaffUser, listStaffUsers, type StaffRole, type StaffUser } from "@/lib/api";
 import AppShell from "@/components/layout/AppShell";
 import PageHeader from "@/components/ui/PageHeader";
@@ -18,6 +19,7 @@ import Select from "@/components/ui/Select";
 import { useToast } from "@/components/ui/ToastProvider";
 import tableStyles from "@/components/ui/Table.module.css";
 import styles from "@/styles/admin.module.css";
+import pageStyles from "./page.module.css";
 
 const ROLE_LABELS: Record<string, string> = {
   BUSINESS_ADMIN: "İşletme Yöneticisi",
@@ -98,7 +100,8 @@ export default function StaffPage() {
     <AppShell>
       <main className={styles.page}>
         <PageHeader
-          title="Personel & Rol Yönetimi"
+          title="Personel"
+          description="Ekip üyelerini, erişim rollerini ve hesap durumlarını yönetin."
           actions={
             <Button
               onClick={() => {
@@ -106,49 +109,62 @@ export default function StaffPage() {
                 setCreateOpen(true);
               }}
             >
-              + Personel Ekle
+              <UserPlus size={17} aria-hidden="true" /> Personel Ekle
             </Button>
           }
         />
 
-        {loading ? (
-          <TableSkeleton />
-        ) : error ? (
-          <ErrorState message={error} onRetry={load} />
-        ) : staffUsers.length === 0 ? (
-          <EmptyState title="Henüz personel yok" />
-        ) : (
-          <Table>
-            <thead>
-              <tr>
-                <th>E-posta</th>
-                <th>Rol</th>
-                <th>Durum</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {staffUsers.map((user) => (
-                <tr key={user.id}>
-                  <td className={tableStyles.primary}>{user.email}</td>
-                  <td>{ROLE_LABELS[user.role] ?? user.role}</td>
-                  <td>
-                    <Badge tone={user.active ? "neutral" : "danger"}>{user.active ? "Aktif" : "Devre dışı"}</Badge>
-                  </td>
-                  <td>
-                    {user.active ? (
-                      <div className={tableStyles.actions}>
-                        <Button size="md" variant="ghost" onClick={() => setDeactivateTarget(user)}>
-                          Devre Dışı Bırak
-                        </Button>
-                      </div>
-                    ) : null}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
-        )}
+        <section className={`${styles.section} ${styles.panel} ${pageStyles.tablePanel}`}>
+          <div className={pageStyles.panelHeader}>
+            <h2 className={styles.sectionTitle}>Ekip Listesi</h2>
+            <p className={styles.rowMeta}>{staffUsers.length} personel hesabı</p>
+          </div>
+          <div className={pageStyles.panelBody}>
+            {loading ? (
+              <TableSkeleton />
+            ) : error ? (
+              <ErrorState message={error} onRetry={load} />
+            ) : staffUsers.length === 0 ? (
+              <EmptyState icon={<Users size={20} />} title="Henüz personel yok" description="İlk ekip üyesini ekleyin." />
+            ) : (
+              <Table>
+                <thead>
+                  <tr>
+                    <th>E-posta</th>
+                    <th>Rol</th>
+                    <th>Durum</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {staffUsers.map((user) => (
+                    <tr key={user.id}>
+                      <td>
+                        <div className={pageStyles.identity}>
+                          <span className={pageStyles.avatar} aria-hidden="true">{user.email.slice(0, 2).toUpperCase()}</span>
+                          <span className={tableStyles.primary}>{user.email}</span>
+                        </div>
+                      </td>
+                      <td>{ROLE_LABELS[user.role] ?? user.role}</td>
+                      <td>
+                        <Badge tone={user.active ? "success" : "danger"}>{user.active ? "Aktif" : "Devre dışı"}</Badge>
+                      </td>
+                      <td>
+                        {user.active ? (
+                          <div className={tableStyles.actions}>
+                            <Button className={pageStyles.dangerAction} size="md" variant="ghost" onClick={() => setDeactivateTarget(user)}>
+                              Devre Dışı Bırak
+                            </Button>
+                          </div>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            )}
+          </div>
+        </section>
       </main>
 
       {createOpen ? (

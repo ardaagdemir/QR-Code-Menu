@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
+import { Plus } from "lucide-react";
 import { createExpense, uploadReceiptImage, type Expense, type ExpenseCategory } from "@/lib/api";
 import PageHeader from "@/components/ui/PageHeader";
 import Button from "@/components/ui/Button";
@@ -12,6 +13,7 @@ import Select from "@/components/ui/Select";
 import FileUploadField from "@/components/ui/FileUploadField";
 import { useToast } from "@/components/ui/ToastProvider";
 import styles from "@/styles/admin.module.css";
+import expenseStyles from "../expenses.module.css";
 
 function todayIsoDate(): string {
   return new Date().toISOString().slice(0, 10);
@@ -71,8 +73,16 @@ export default function ExpenseForm({ categories, onCreated }: Props) {
   }
 
   return (
-    <section className={styles.section}>
-      <PageHeader title="Yeni Gider" actions={<Button onClick={() => setOpen(true)}>+ Gider Ekle</Button>} />
+    <section className={`${styles.section} ${styles.panel} ${expenseStyles.actionPanel}`}>
+      <PageHeader
+        title="Yeni Gider"
+        description="Fiş veya fatura bilgisiyle yeni bir gider kaydı oluşturun."
+        actions={
+          <Button onClick={() => setOpen(true)}>
+            <Plus size={16} aria-hidden="true" /> Gider Ekle
+          </Button>
+        }
+      />
 
       {open ? (
         <Dialog onClose={() => setOpen(false)} labelledBy={dialogTitleId}>

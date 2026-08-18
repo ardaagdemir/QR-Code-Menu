@@ -22,6 +22,7 @@ import Input from "@/components/ui/Input";
 import { useToast } from "@/components/ui/ToastProvider";
 import tableStyles from "@/components/ui/Table.module.css";
 import styles from "@/styles/admin.module.css";
+import expenseStyles from "../expenses.module.css";
 
 const STATUS_LABELS: Record<string, string> = {
   DRAFT: "Taslak",
@@ -127,10 +128,10 @@ export default function ExpenseList({ accessibleBranches, isBusinessAdmin, refre
   }
 
   return (
-    <section className={styles.section}>
-      <PageHeader title="Giderler" />
+    <section className={`${styles.section} ${styles.panel}`}>
+      <PageHeader title="Gider Listesi" description="Seçili tarih aralığındaki kayıtları ve onay durumlarını izleyin." />
 
-      <form className={styles.form} onSubmit={handleFilterSubmit}>
+      <form className={`${styles.form} ${styles.filterBar}`} onSubmit={handleFilterSubmit}>
         <FormField label="Başlangıç">
           {(controlProps) => <Input {...controlProps} type="date" value={from} max={to} onChange={(event) => setFrom(event.target.value)} />}
         </FormField>
@@ -182,7 +183,7 @@ export default function ExpenseList({ accessibleBranches, isBusinessAdmin, refre
                         <Button size="md" variant="secondary" disabled={busyExpenseId === expense.id} onClick={() => handleApprove(expense.id)}>
                           Onayla
                         </Button>
-                        <Button size="md" variant="ghost" disabled={busyExpenseId === expense.id} onClick={() => handleReject(expense.id)}>
+                        <Button className={expenseStyles.dangerAction} size="md" variant="ghost" disabled={busyExpenseId === expense.id} onClick={() => handleReject(expense.id)}>
                           Reddet
                         </Button>
                       </>

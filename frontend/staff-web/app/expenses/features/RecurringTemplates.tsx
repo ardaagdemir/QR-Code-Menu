@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useState } from "react";
+import { Plus } from "lucide-react";
 import {
   createRecurringExpenseTemplate,
   deactivateRecurringExpenseTemplate,
@@ -24,6 +25,7 @@ import Select from "@/components/ui/Select";
 import { useToast } from "@/components/ui/ToastProvider";
 import tableStyles from "@/components/ui/Table.module.css";
 import styles from "@/styles/admin.module.css";
+import expenseStyles from "../expenses.module.css";
 
 function todayIsoDate(): string {
   return new Date().toISOString().slice(0, 10);
@@ -123,8 +125,16 @@ export default function RecurringTemplates({ categories, accessibleBranches }: P
   const activeTemplates = templates.filter((t) => t.active);
 
   return (
-    <section className={styles.section}>
-      <PageHeader title="Tekrarlayan Gider Şablonları" actions={<Button onClick={() => setCreateOpen(true)}>+ Şablon Ekle</Button>} />
+    <section className={`${styles.section} ${styles.panel}`}>
+      <PageHeader
+        title="Tekrarlayan Giderler"
+        description="Her ay otomatik gider oluşturan aktif şablonları yönetin."
+        actions={
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus size={16} aria-hidden="true" /> Şablon Ekle
+          </Button>
+        }
+      />
 
       {loading ? (
         <TableSkeleton />
@@ -152,7 +162,7 @@ export default function RecurringTemplates({ categories, accessibleBranches }: P
                 <td className={tableStyles.muted}>{branchName(template.branchId)}</td>
                 <td>
                   <div className={tableStyles.actions}>
-                    <Button size="md" variant="ghost" onClick={() => setDeactivateTarget(template)}>
+                    <Button className={expenseStyles.dangerAction} size="md" variant="ghost" onClick={() => setDeactivateTarget(template)}>
                       Devre Dışı Bırak
                     </Button>
                   </div>

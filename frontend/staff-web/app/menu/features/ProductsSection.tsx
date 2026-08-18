@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useState } from "react";
+import { Plus } from "lucide-react";
 import {
   createProduct,
   listBranchProducts,
@@ -22,6 +23,7 @@ import FileUploadField from "@/components/ui/FileUploadField";
 import { useToast } from "@/components/ui/ToastProvider";
 import ProductRow from "./ProductRow";
 import styles from "@/styles/admin.module.css";
+import menuStyles from "../menu.module.css";
 
 type Props = {
   categoryId: string;
@@ -99,8 +101,16 @@ export default function ProductsSection({ categoryId }: Props) {
   }
 
   return (
-    <section className={styles.section}>
-      <PageHeader title="Ürünler" actions={<Button onClick={() => setCreateOpen(true)}>+ Ürün Ekle</Button>} />
+    <section className={`${styles.section} ${styles.panel} ${menuStyles.productPanel}`}>
+      <PageHeader
+        title="Ürünler"
+        description="Seçili kategorideki ürün detaylarını ve şube uygunluğunu yönetin."
+        actions={
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus size={16} aria-hidden="true" /> Ürün Ekle
+          </Button>
+        }
+      />
 
       {loading ? (
         <TableSkeleton />

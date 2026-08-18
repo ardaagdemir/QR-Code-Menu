@@ -1,0 +1,159 @@
+.areaFigure {
+  width: 100%;
+  margin: 0;
+}
+
+.areaChart {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 210px;
+  overflow: visible;
+}
+
+.gridLine {
+  stroke: var(--color-panel-border);
+  stroke-width: 1;
+  stroke-dasharray: 4 5;
+}
+
+.axisLabel,
+.dateLabel {
+  fill: var(--color-fg-muted);
+  font-family: var(--font-family);
+  font-size: var(--font-size-xs);
+}
+
+.areaFill {
+  fill: url(#reportsRevenueArea);
+}
+
+.line {
+  fill: none;
+  stroke: var(--color-primary);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.pointHalo {
+  fill: var(--color-surface-raised);
+  stroke: var(--color-primary-soft-strong);
+  stroke-width: 5;
+}
+
+.point {
+  fill: var(--color-primary);
+  stroke: var(--color-surface-raised);
+  stroke-width: 2;
+}
+
+.donutLayout {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.75fr) minmax(220px, 1.25fr);
+  gap: var(--space-6);
+  align-items: center;
+}
+
+.donutWrap {
+  display: grid;
+  place-items: center;
+}
+
+.donut {
+  position: relative;
+  width: min(100%, 190px);
+  aspect-ratio: 1;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 12%, transparent);
+  border-radius: var(--radius-full);
+}
+
+.donut::after {
+  content: "";
+  position: absolute;
+  inset: 25%;
+  border: 1px solid var(--color-panel-border);
+  border-radius: var(--radius-full);
+  background: var(--color-surface-raised);
+  box-shadow: var(--shadow-md);
+}
+
+.donutCenter {
+  position: absolute;
+  inset: 25%;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 2px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.donutCenter strong {
+  font-family: var(--font-family-display);
+  font-size: var(--font-size-lg);
+}
+
+.donutCenter span {
+  color: var(--color-fg-muted);
+  font-size: var(--font-size-xs);
+}
+
+.categoryList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.categoryRow {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 34px;
+  padding: 0 var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.categoryRow:last-child {
+  border-bottom: none;
+}
+
+.categoryDot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--category-color);
+}
+
+.categoryName {
+  overflow: hidden;
+  color: var(--color-fg-muted);
+  font-size: var(--font-size-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.categoryValue {
+  color: var(--color-fg);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .areaChart {
+    min-height: 180px;
+  }
+
+  .donutLayout {
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+
+  .donut {
+    width: 164px;
+  }
+}

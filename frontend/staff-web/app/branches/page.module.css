@@ -1,0 +1,193 @@
+.page {
+  gap: var(--space-5);
+}
+
+.card {
+  gap: var(--space-5);
+}
+
+.cardHeader {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.cardIcon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+
+.cardDescription {
+  margin-top: 3px;
+  color: var(--color-fg-muted);
+  font-size: var(--font-size-sm);
+}
+
+.sectionForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.operationGrid {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.9fr) minmax(260px, 1.1fr);
+  gap: var(--space-4);
+  align-items: end;
+}
+
+.togglePanel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  min-height: 68px;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-panel-border);
+  border-radius: 10px;
+  background: var(--color-surface-soft);
+}
+
+.toggleLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+}
+
+.toggleHint {
+  color: var(--color-fg-muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-regular);
+}
+
+.switch {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  width: 46px;
+  height: 26px;
+}
+
+.switch input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.switchTrack {
+  width: 100%;
+  height: 100%;
+  padding: 3px;
+  border-radius: var(--radius-full);
+  background: var(--color-border-strong);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.switchTrack::after {
+  content: "";
+  display: block;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(15, 17, 21, 0.2);
+  transition: transform var(--transition-fast);
+}
+
+.switch input:checked + .switchTrack {
+  background: var(--color-primary);
+}
+
+.switch input:checked + .switchTrack::after {
+  transform: translateX(20px);
+}
+
+.switch input:focus-visible + .switchTrack {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.switch input:disabled + .switchTrack {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.infoGrid {
+  display: grid;
+  grid-template-columns: minmax(260px, 2fr) minmax(210px, 1fr) minmax(180px, 0.8fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.cardFooter {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-panel-border);
+}
+
+.hoursWrap > div {
+  border-radius: 10px;
+}
+
+.hoursWrap :global(th),
+.hoursWrap :global(td) {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+.hoursWrap :global(th:nth-child(2)),
+.hoursWrap :global(td:nth-child(2)) {
+  width: 96px;
+  text-align: center;
+}
+
+.closedCheckbox {
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+
+.timeInput {
+  width: min(100%, 150px);
+  min-height: 38px;
+}
+
+@media (max-width: 900px) {
+  .operationGrid,
+  .infoGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .infoGrid > :first-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 640px) {
+  .operationGrid,
+  .infoGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .infoGrid > :first-child {
+    grid-column: auto;
+  }
+
+  .cardFooter,
+  .cardFooter > * {
+    width: 100%;
+  }
+}

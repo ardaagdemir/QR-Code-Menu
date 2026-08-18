@@ -1,5 +1,549 @@
+.devBadge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 28%, var(--color-panel-border));
+  border-radius: var(--radius-full);
+  background: var(--color-primary-soft);
+  color: var(--color-primary-strong);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+}
+
+.filterBar {
+  display: grid;
+  grid-template-areas:
+    "title dates"
+    "presets dates";
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--space-1) var(--space-6);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-panel-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-raised);
+  box-shadow: var(--shadow-panel);
+}
+
+.filterTitle {
+  grid-area: title;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+  color: var(--color-primary-strong);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.filterControls {
+  display: contents;
+}
+
+.filterControls > div {
+  display: contents;
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+.filterControls > div > div:first-child {
+  grid-area: presets;
+  align-items: center;
+  flex-wrap: nowrap;
+}
+
+.filterControls > div > div:last-child {
+  grid-area: dates;
+  align-items: flex-end;
+  flex-wrap: nowrap;
+}
+
+.filterControls > div > div:first-child > * {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap-target-min);
+}
+
+.filterControls > div > div:last-child > div {
+  min-width: 142px;
+}
+
 .kpiGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: var(--space-3);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.heroKpi {
+  position: relative;
+  min-width: 0;
+  min-height: 156px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    "icon label"
+    "value value"
+    "description description";
+  align-content: center;
+  column-gap: var(--space-3);
+  row-gap: var(--space-2);
+  padding: var(--space-5);
+  overflow: hidden;
+  border: 1px solid var(--color-panel-border);
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(circle at 100% 0, var(--color-primary-soft), transparent 48%),
+    var(--color-surface-raised);
+  box-shadow: var(--shadow-panel);
+}
+
+.heroKpi::after {
+  content: "";
+  position: absolute;
+  right: -18px;
+  bottom: -24px;
+  width: 86px;
+  height: 86px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 14%, transparent);
+  border-radius: 50%;
+}
+
+.heroIcon {
+  grid-area: icon;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-md);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+
+.heroLabel {
+  grid-area: label;
+  align-self: center;
+  color: var(--color-fg-muted);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+}
+
+.heroValue {
+  grid-area: value;
+  overflow: hidden;
+  font-family: var(--font-family-display);
+  font-size: var(--font-size-2xl);
+  line-height: var(--line-height-tight);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.025em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.heroDescription {
+  grid-area: description;
+  color: var(--color-fg-muted);
+  font-size: var(--font-size-xs);
+}
+
+.summarySection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.sectionIntro {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.sectionIcon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: var(--radius-md);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+
+.sectionDescription {
+  margin-top: var(--space-1);
+  color: var(--color-fg-muted);
+  font-size: var(--font-size-sm);
+}
+
+.operationGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border: 1px solid var(--color-panel-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.detailMetric {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  grid-template-areas:
+    "icon label"
+    "icon value"
+    "icon hint";
+  column-gap: var(--space-2);
+  row-gap: var(--space-1);
+  align-content: center;
+  padding: var(--space-3) var(--space-4);
+  border-right: 1px solid var(--color-panel-border);
+  background: var(--color-surface-soft);
+}
+
+.detailIcon {
+  grid-area: icon;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  align-self: start;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+  color: var(--color-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.detailMetric:last-child {
+  border-right: none;
+}
+
+.detailMetricAlert {
+  background: color-mix(in srgb, var(--color-danger) 5%, var(--color-surface-raised));
+}
+
+.detailMetricAlert .detailValue {
+  color: var(--color-danger);
+}
+
+.detailLabel,
+.detailHint {
+  color: var(--color-fg-muted);
+  font-size: var(--font-size-xs);
+}
+
+.detailLabel {
+  grid-area: label;
+}
+
+.detailHint {
+  grid-area: hint;
+}
+
+.detailValue {
+  grid-area: value;
+  overflow: hidden;
+  color: var(--color-fg);
+  font-size: var(--font-size-lg);
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.acceptanceTrack {
+  grid-column: 1 / -1;
+  height: 4px;
+  margin-top: var(--space-1);
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: var(--color-panel-border);
+}
+
+.acceptanceTrack > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-primary);
+}
+
+.acceptanceMetric {
+  background: color-mix(in srgb, var(--color-primary) 4%, var(--color-surface-soft));
+}
+
+.chartGrid,
+.breakdownGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-5);
+  align-items: stretch;
+}
+
+.chartPanel,
+.breakdownPanel {
+  position: relative;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.operationPanel,
+.chartPanel,
+.breakdownPanel,
+.dailyClosePanel,
+.financePanel {
+  padding: var(--space-5);
+  border-radius: var(--radius-lg);
+}
+
+.chartPanel {
+  background:
+    linear-gradient(180deg, var(--color-primary-soft) 0, transparent 70px),
+    var(--color-surface-raised);
+}
+
+.chartPanel ul,
+.rankingPanel ul {
+  gap: 14px;
+}
+
+.chartPanel li > span:nth-child(2),
+.rankingPanel li > span:nth-child(2) {
+  height: 10px;
+}
+
+.chartBody {
+  max-height: 260px;
+  padding-right: var(--space-1);
+  overflow-y: auto;
+}
+
+.compactEmpty > div {
+  min-height: 0;
+  padding: var(--space-5);
+}
+
+.dailyClosePanel {
+  border-top: 3px solid var(--color-primary);
+}
+
+.financePanel {
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(135deg, var(--color-primary-soft), transparent 58%),
+    var(--color-surface-raised);
+}
+
+.financePanel::after {
+  content: "";
+  position: absolute;
+  top: -90px;
+  right: -60px;
+  width: 220px;
+  height: 220px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 14%, transparent);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.equationRow {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 1fr 56px 1fr 56px 1fr;
+  align-items: stretch;
+}
+
+.equationMetric {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  grid-template-areas:
+    "icon label"
+    "icon value";
+  align-items: center;
+  align-content: center;
+  gap: var(--space-1) var(--space-3);
+  min-height: 104px;
+  padding: var(--space-4);
+  border: 1px solid var(--color-panel-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-raised);
+  box-shadow: var(--shadow-sm);
+}
+
+.equationResult {
+  border-color: color-mix(in srgb, var(--color-primary) 32%, var(--color-panel-border));
+  background: var(--color-primary-soft);
+}
+
+.equationRowAlert .equationResult {
+  border-color: color-mix(in srgb, var(--color-danger) 35%, var(--color-panel-border));
+}
+
+.equationRowAlert .equationResult .equationValue,
+.equationRowAlert .equationResult .equationIcon {
+  color: var(--color-danger);
+}
+
+.equationIcon {
+  grid-area: icon;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-md);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+
+.equationLabel {
+  grid-area: label;
+  color: var(--color-fg-muted);
+  font-size: var(--font-size-sm);
+}
+
+.equationValue {
+  grid-area: value;
+  overflow: hidden;
+  font-family: var(--font-family-display);
+  font-size: var(--font-size-xl);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.equationOperator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-primary);
+  font-family: var(--font-family-display);
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+}
+
+.dailyCloseHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.dailyCloseActions,
+.notificationCell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.inlineNote {
+  padding: 0;
+}
+
+.dailyCloseTable th {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-xs);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.dailyCloseTable td {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-sm);
+}
+
+.dailyCloseTable .notificationCell {
+  flex-wrap: nowrap;
+}
+
+@media (max-width: 900px) {
+  .filterBar {
+    display: flex;
+    align-items: stretch;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .filterControls {
+    display: block;
+    width: 100%;
+  }
+
+  .filterControls > div {
+    display: flex;
+    align-items: stretch;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .filterControls > div > div:first-child,
+  .filterControls > div > div:last-child {
+    flex-wrap: wrap;
+  }
+
+  .kpiGrid,
+  .operationGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .detailMetric {
+    border-right: 1px solid var(--color-panel-border);
+    border-bottom: 1px solid var(--color-panel-border);
+  }
+
+  .detailMetric:nth-child(2n) {
+    border-right: none;
+  }
+
+  .detailMetric:nth-child(n + 3) {
+    border-bottom: none;
+  }
+
+  .chartGrid,
+  .breakdownGrid {
+    grid-template-columns: 1fr;
+  }
+
+}
+
+@media (max-width: 640px) {
+  .equationRow {
+    grid-template-columns: 1fr;
+  }
+
+  .equationOperator {
+    width: 100%;
+    height: 40px;
+  }
+
+  .kpiGrid,
+  .operationGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .detailMetric,
+  .detailMetric:nth-child(2n),
+  .detailMetric:nth-child(n + 3) {
+    border-right: none;
+    border-bottom: 1px solid var(--color-panel-border);
+  }
+
+  .detailMetric:last-child {
+    border-bottom: none;
+  }
+
+  .dailyCloseActions,
+  .dailyCloseActions > * {
+    width: 100%;
+  }
+
+  .filterControls > div > div:last-child,
+  .filterControls > div > div:last-child > div {
+    width: 100%;
+  }
 }

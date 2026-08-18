@@ -10,11 +10,10 @@ import {
   type BranchSalesReport,
   type StaffContext,
 } from "@/lib/api";
-import { NAV_GROUPS, ROLE_LABELS } from "@/lib/staffNav";
 import AppShell from "@/components/layout/AppShell";
-import Card from "@/components/ui/Card";
 import KpiCard from "@/components/ui/KpiCard";
 import BarList from "@/components/ui/BarList";
+import PageHeader from "@/components/ui/PageHeader";
 import Skeleton from "@/components/ui/Skeleton";
 import adminStyles from "@/styles/admin.module.css";
 import styles from "./page.module.css";
@@ -63,31 +62,26 @@ export default function DashboardPage() {
       .catch(() => undefined);
   }, []);
 
-  const shortcutGroups = context
-    ? NAV_GROUPS.map((group) => ({
-        title: group.title,
-        items: group.items
-          .filter((item) => item.key !== "dashboard" && item.roles.includes(context.role))
-          .map((item) => ({ key: item.key, label: item.label, href: item.href(context) }))
-          .filter((item): item is { key: string; label: string; href: string } => item.href !== null),
-      })).filter((group) => group.items.length > 0)
-    : [];
-
   const topProducts = branchReport
     ? [...branchReport.productBreakdown].sort((a, b) => b.revenueMinorUnits - a.revenueMinorUnits).slice(0, 5)
     : [];
 
   return (
     <AppShell>
-      <main className={adminStyles.page}>
-        <div className={adminStyles.header}>
-          <h1 className={adminStyles.title}>
-            {context ? `Hoş geldin, ${ROLE_LABELS[context.role] ?? context.role}` : "Hoş geldin"}
-          </h1>
+      <main className={`${adminStyles.page} ${styles.page}`}>
+        <div className={styles.pageHeader}>
+          <PageHeader
+            title="Özet"
+            description={
+              context?.activeBranchName
+                ? `${context.activeBranchName} için bugünkü satış ve sipariş durumu.`
+                : "Bugünkü satış ve sipariş durumunu takip edin."
+            }
+          />
         </div>
 
         {!context ? (
-          <div className={styles.grid}>
+          <div className={styles.loadingGrid}>
             <Skeleton height="96px" />
             <Skeleton height="96px" />
             <Skeleton height="96px" />
@@ -95,10 +89,16 @@ export default function DashboardPage() {
         ) : (
           <>
             {REPORT_ROLES.includes(context.role) ? (
-              <section className={adminStyles.section}>
-                <h2 className={adminStyles.sectionTitle}>Bugün</h2>
+              <section className={`${adminStyles.section} ${styles.todaySection}`}>
+                <div className={styles.sectionHeading}>
+                  <div>
+                    <h2 className={adminStyles.sectionTitle}>Bugünün Özeti</h2>
+                    <p className={styles.sectionDescription}>Aktif şubenin anlık satış ve sipariş görünümü</p>
+                  </div>
+                  <span className={styles.liveBadge}>Bugün</span>
+                </div>
                 {reportsLoading ? (
-                  <div className={styles.grid}>
+                  <div className={styles.loadingGrid}>
                     <Skeleton height="88px" />
                     <Skeleton height="88px" />
                     <Skeleton height="88px" />
@@ -120,7 +120,7 @@ export default function DashboardPage() {
                         <KpiCard
                           label="Onay bekleyen sipariş"
                           value={String(pendingCount)}
-                          tone={pendingCount > 0 ? "danger" : "success"}
+                          tone={pendingCount > 0 ? "danger" : "neutral"}
                         />
                       ) : null}
                     </div>
@@ -147,18 +147,6 @@ export default function DashboardPage() {
               </section>
             ) : null}
 
-            {shortcutGroups.map((group) => (
-              <div key={group.title} className={adminStyles.section}>
-                <h2 className={adminStyles.sectionTitle}>{group.title}</h2>
-                <div className={styles.grid}>
-                  {group.items.map((item) => (
-                    <Link key={item.key} href={item.href} className={styles.cardLink}>
-                      <Card className={styles.card}>{item.label}</Card>
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            ))}
           </>
         )}
       </main>

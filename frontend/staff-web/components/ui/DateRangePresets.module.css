@@ -2,6 +2,11 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--color-panel-border);
+  border-radius: 10px;
+  background: var(--color-surface-raised);
+  box-shadow: var(--shadow-panel);
 }
 
 .presets {
@@ -13,7 +18,7 @@
 .presetButton {
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-full);
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-panel-border);
   background: var(--color-surface-raised);
   color: var(--color-fg);
   font-size: var(--font-size-sm);
@@ -27,7 +32,7 @@ button.presetButton {
 
 .active {
   border-color: var(--color-primary);
-  background: linear-gradient(to right, var(--color-primary), var(--color-primary-strong));
+  background: var(--color-primary);
   color: var(--color-primary-fg);
 }
 

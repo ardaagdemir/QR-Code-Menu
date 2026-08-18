@@ -4,7 +4,11 @@
   align-items: center;
   text-align: center;
   gap: var(--space-3);
-  padding: var(--space-12) var(--space-6);
+  min-height: 160px;
+  padding: var(--space-8) var(--space-6);
+  border: 1px solid color-mix(in srgb, var(--color-danger) 22%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-danger) 5%, var(--color-surface-raised));
 }
 
 .title {

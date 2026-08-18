@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
+import { Check, Plus } from "lucide-react";
 import { createMenuCategory, type MenuCategoryAdmin } from "@/lib/api";
 import PageHeader from "@/components/ui/PageHeader";
 import Table from "@/components/ui/Table";
@@ -12,6 +13,7 @@ import Input from "@/components/ui/Input";
 import { useToast } from "@/components/ui/ToastProvider";
 import tableStyles from "@/components/ui/Table.module.css";
 import styles from "@/styles/admin.module.css";
+import menuStyles from "../menu.module.css";
 
 type Props = {
   categories: MenuCategoryAdmin[];
@@ -49,8 +51,16 @@ export default function CategoriesSection({ categories, selectedCategoryId, onSe
   }
 
   return (
-    <section className={styles.section}>
-      <PageHeader title="Kategoriler" actions={<Button onClick={() => setCreateOpen(true)}>+ Kategori Ekle</Button>} />
+    <section className={`${styles.section} ${styles.panel} ${menuStyles.categoryPanel}`}>
+      <PageHeader
+        title="Kategoriler"
+        description="Ürün listesini filtrelemek için bir kategori seçin."
+        actions={
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus size={16} aria-hidden="true" /> Kategori Ekle
+          </Button>
+        }
+      />
 
       {categories.length === 0 ? (
         <EmptyState title="Henüz kategori yok" />
@@ -67,11 +77,14 @@ export default function CategoriesSection({ categories, selectedCategoryId, onSe
                 <td>
                   <button
                     type="button"
-                    className={`${tableStyles.primary} ${styles.linkButton}`}
+                    className={`${tableStyles.primary} ${styles.linkButton} ${menuStyles.categoryButton} ${
+                      selectedCategoryId === category.id ? menuStyles.categoryButtonSelected : ""
+                    }`}
                     onClick={() => onSelectCategory(category.id)}
+                    aria-pressed={selectedCategoryId === category.id}
                   >
                     {category.name}
-                    {selectedCategoryId === category.id ? " (seçili)" : ""}
+                    {selectedCategoryId === category.id ? <Check className={menuStyles.categoryCheck} size={16} aria-hidden="true" /> : null}
                   </button>
                 </td>
               </tr>

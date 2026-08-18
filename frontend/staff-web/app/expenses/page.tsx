@@ -10,6 +10,7 @@ import ExpenseForm from "./features/ExpenseForm";
 import ExpenseList from "./features/ExpenseList";
 import RecurringTemplates from "./features/RecurringTemplates";
 import styles from "@/styles/admin.module.css";
+import expenseStyles from "./expenses.module.css";
 
 /**
  * Gap-analysis #10 (product-requirements.md Section 16): gider kategorileri, giderler,
@@ -44,23 +45,25 @@ export default function ExpensesPage() {
   return (
     <AppShell>
       <main className={styles.page}>
-        <PageHeader title="Gider Yönetimi" />
+        <PageHeader title="Giderler" description="Gider kayıtlarını, onay akışını, kategorileri ve tekrarlayan ödemeleri yönetin." />
 
         {error ? <ErrorState message={error} /> : null}
 
-        <ExpenseCategories
-          categories={categories}
-          isBusinessAdmin={isBusinessAdmin}
-          onCategoryCreated={(category) => setCategories((current) => [...current, category])}
-          onCategoryDeactivated={(categoryId) =>
-            setCategories((current) => current.map((c) => (c.id === categoryId ? { ...c, active: false } : c)))
-          }
-        />
+        <div className={expenseStyles.overviewGrid}>
+          <ExpenseCategories
+            categories={categories}
+            isBusinessAdmin={isBusinessAdmin}
+            onCategoryCreated={(category) => setCategories((current) => [...current, category])}
+            onCategoryDeactivated={(categoryId) =>
+              setCategories((current) => current.map((c) => (c.id === categoryId ? { ...c, active: false } : c)))
+            }
+          />
 
-        <ExpenseForm
-          categories={categories}
-          onCreated={() => setExpenseRefreshToken((current) => current + 1)}
-        />
+          <ExpenseForm
+            categories={categories}
+            onCreated={() => setExpenseRefreshToken((current) => current + 1)}
+          />
+        </div>
 
         <ExpenseList accessibleBranches={accessibleBranches} isBusinessAdmin={isBusinessAdmin} refreshToken={expenseRefreshToken} />
 

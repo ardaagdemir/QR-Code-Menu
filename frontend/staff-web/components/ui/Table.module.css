@@ -1,7 +1,8 @@
 .wrap {
   overflow-x: auto;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border: 1px solid var(--color-panel-border);
+  border-radius: 10px;
+  background: var(--color-surface-raised);
 }
 
 .table {
@@ -12,17 +13,20 @@
 .table th,
 .table td {
   text-align: left;
-  padding: var(--space-3) var(--space-4);
+  padding: 15px var(--space-4);
   font-size: var(--font-size-sm);
   border-bottom: 1px solid var(--color-border);
   vertical-align: middle;
 }
 
 .table th {
-  font-weight: var(--font-weight-semibold);
+  font-size: 0.72rem;
+  font-weight: var(--font-weight-bold);
   color: var(--color-fg-muted);
-  background: var(--color-surface);
+  background: var(--color-surface-soft);
   white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.055em;
 }
 
 .table tbody tr:last-child td {
@@ -35,8 +39,8 @@
 }
 
 .table tbody tr:hover {
-  background: color-mix(in srgb, var(--color-primary) 5%, var(--color-surface-raised));
-  box-shadow: inset 2px 0 0 var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 4%, var(--color-surface-raised));
+  box-shadow: inset 3px 0 0 var(--color-primary);
 }
 
 .primary {
@@ -51,7 +55,7 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: var(--space-3);
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useState } from "react";
+import { ContactRound, Plus } from "lucide-react";
 import {
   createBusinessContact,
   getBusiness,
@@ -25,6 +26,7 @@ import Input from "@/components/ui/Input";
 import { useToast } from "@/components/ui/ToastProvider";
 import tableStyles from "@/components/ui/Table.module.css";
 import styles from "@/styles/admin.module.css";
+import pageStyles from "./page.module.css";
 
 const EMPTY_CONTACT_INPUT: BusinessContactInput = {
   name: "",
@@ -153,12 +155,12 @@ export default function BusinessSettingsPage() {
   return (
     <AppShell>
       <main className={styles.page}>
-        <PageHeader title="İşletme Ayarları" />
+        <PageHeader title="Ayarlar" description="İşletme varsayılanlarını ve rapor bildirimlerini alacak kişileri yönetin." />
 
-        <section className={styles.section}>
+        <section className={`${styles.section} ${styles.panel} ${pageStyles.settingsPanel}`}>
           <h2 className={styles.sectionTitle}>Varsayılan Para Birimi &amp; Saat Dilimi</h2>
           {settingsError ? <ErrorState message={settingsError} /> : null}
-          <form className={styles.form} onSubmit={handleSaveSettings}>
+          <form className={`${styles.form} ${pageStyles.settingsForm}`} onSubmit={handleSaveSettings}>
             <FormField label="Para Birimi (ISO 4217)" required>
               {(controlProps) => (
                 <Input
@@ -186,17 +188,21 @@ export default function BusinessSettingsPage() {
             </Button>
           </form>
           {business ? (
-            <p className={styles.rowMeta}>
+            <p className={`${styles.rowMeta} ${pageStyles.currentSetting}`}>
               {business.name} · şu an {business.defaultCurrency} / {business.defaultTimeZone}
             </p>
           ) : null}
         </section>
 
-        <section className={styles.section}>
+        <section className={`${styles.section} ${styles.panel} ${pageStyles.contactsPanel}`}>
           <PageHeader
             title="Rapor Alıcıları"
             description="İşletme sahipleri/kişiler - günlük/aylık rapor ve WhatsApp bildirimi alır."
-            actions={<Button onClick={() => setCreateOpen(true)}>+ Kişi Ekle</Button>}
+            actions={
+              <Button onClick={() => setCreateOpen(true)}>
+                <Plus size={16} aria-hidden="true" /> Kişi Ekle
+              </Button>
+            }
           />
 
           {loadingContacts ? (
@@ -204,7 +210,7 @@ export default function BusinessSettingsPage() {
           ) : contactsError ? (
             <ErrorState message={contactsError} onRetry={loadContacts} />
           ) : contacts.length === 0 ? (
-            <EmptyState title="Henüz kişi yok" />
+            <EmptyState icon={<ContactRound size={20} />} title="Henüz kişi yok" description="Rapor alacak ilk kişiyi ekleyin." />
           ) : (
             <Table>
               <thead>
@@ -223,11 +229,11 @@ export default function BusinessSettingsPage() {
                     <td className={tableStyles.muted}>{[contact.phone, contact.email].filter(Boolean).join(" · ") || "İletişim bilgisi yok"}</td>
                     <td className={tableStyles.muted}>{reportTags(contact)}</td>
                     <td>
-                      <Badge tone={contact.active ? "neutral" : "danger"}>{contact.active ? "Aktif" : "Devre dışı"}</Badge>
+                      <Badge tone={contact.active ? "success" : "danger"}>{contact.active ? "Aktif" : "Devre dışı"}</Badge>
                     </td>
                     <td>
                       <div className={tableStyles.actions}>
-                        <Button size="md" variant="ghost" disabled={busyContactId === contact.id} onClick={() => handleToggleActive(contact)}>
+                        <Button className={contact.active ? pageStyles.dangerAction : undefined} size="md" variant={contact.active ? "ghost" : "secondary"} disabled={busyContactId === contact.id} onClick={() => handleToggleActive(contact)}>
                           {contact.active ? "Devre Dışı Bırak" : "Aktif Et"}
                         </Button>
                       </div>
@@ -277,7 +283,7 @@ export default function BusinessSettingsPage() {
             </FormField>
 
             <div className={styles.rowActions}>
-              <label style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <label className={styles.checkboxLabel}>
                 <input
                   type="checkbox"
                   checked={newContact.dailyReportRecipient}
@@ -285,7 +291,7 @@ export default function BusinessSettingsPage() {
                 />
                 Günlük rapor alsın
               </label>
-              <label style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <label className={styles.checkboxLabel}>
                 <input
                   type="checkbox"
                   checked={newContact.monthlyReportRecipient}
@@ -293,7 +299,7 @@ export default function BusinessSettingsPage() {
                 />
                 Aylık rapor alsın
               </label>
-              <label style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <label className={styles.checkboxLabel}>
                 <input
                   type="checkbox"
                   checked={newContact.whatsappEnabled}

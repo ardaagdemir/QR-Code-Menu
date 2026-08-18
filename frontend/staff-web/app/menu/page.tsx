@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { listMenuCategories, type MenuCategoryAdmin } from "@/lib/api";
 import AppShell from "@/components/layout/AppShell";
 import PageHeader from "@/components/ui/PageHeader";
 import ErrorState from "@/components/ui/ErrorState";
+import TableSkeleton from "@/components/ui/TableSkeleton";
 import CategoriesSection from "./features/CategoriesSection";
 import ProductsSection from "./features/ProductsSection";
 import styles from "@/styles/admin.module.css";
+import menuStyles from "./menu.module.css";
 
 /**
  * Section 4, staff-web admin screen: menu management (Permission.MENU_MANAGE) plus
@@ -18,39 +20,56 @@ import styles from "@/styles/admin.module.css";
 export default function MenuPage() {
   const [categories, setCategories] = useState<MenuCategoryAdmin[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadCategories = useCallback(() => {
     listMenuCategories()
       .then((categoryList) => {
         setCategories(categoryList);
+        setError(null);
         if (categoryList.length > 0) {
           setSelectedCategoryId(categoryList[0].id);
         }
       })
-      .catch(() => setError("Menü verileri yüklenemedi."));
+      .catch(() => setError("Menü verileri yüklenemedi."))
+      .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    loadCategories();
+  }, [loadCategories]);
 
   return (
     <AppShell>
       <main className={styles.page}>
-        <PageHeader title="Menü Yönetimi" />
+        <PageHeader title="Menü" description="Kategorileri, ürünleri ve aktif şubedeki satış durumlarını yönetin." />
 
-        {error ? <ErrorState message={error} /> : null}
+        {loading ? (
+          <TableSkeleton rows={6} />
+        ) : error ? (
+          <ErrorState
+            message={error}
+            onRetry={() => {
+              setLoading(true);
+              loadCategories();
+            }}
+          />
+        ) : (
+          <div className={menuStyles.menuGrid}>
+            <CategoriesSection
+              categories={categories}
+              selectedCategoryId={selectedCategoryId}
+              onSelectCategory={setSelectedCategoryId}
+              onCategoryCreated={(category) => {
+                setCategories((current) => [...current, category]);
+                setSelectedCategoryId(category.id);
+              }}
+            />
 
-        <CategoriesSection
-          categories={categories}
-          selectedCategoryId={selectedCategoryId}
-          onSelectCategory={setSelectedCategoryId}
-          onCategoryCreated={(category) => {
-            setCategories((current) => [...current, category]);
-            setSelectedCategoryId(category.id);
-          }}
-        />
-
-        {selectedCategoryId ? (
-          <ProductsSection categoryId={selectedCategoryId} />
-        ) : null}
+            {selectedCategoryId ? <ProductsSection categoryId={selectedCategoryId} /> : null}
+          </div>
+        )}
       </main>
     </AppShell>
   );
