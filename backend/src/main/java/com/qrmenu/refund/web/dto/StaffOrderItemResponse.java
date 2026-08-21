@@ -10,5 +10,7 @@ public record StaffOrderItemResponse(
         int rejectedQuantity,
         String status,
         long unitPriceMinorUnits,
-        long lineTotalMinorUnits) {
+        long lineTotalMinorUnits,
+        int refundedQuantity,
+        int remainingRefundableQuantity) {
 }

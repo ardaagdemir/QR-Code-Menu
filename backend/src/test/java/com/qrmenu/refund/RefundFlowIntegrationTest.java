@@ -1,19 +1,36 @@
 package com.qrmenu.refund;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.qrmenu.payment.MockPaymentProviderAdapter;
+import com.qrmenu.payment.PaymentService;
+import com.qrmenu.payment.PaymentSummaryView;
+import com.qrmenu.refund.repository.RefundItemRepository;
+import com.qrmenu.refund.repository.RefundRepository;
 import com.qrmenu.staffaccess.StaffCookieSupport;
 import com.qrmenu.support.AbstractIntegrationTest;
 import com.qrmenu.support.StaffFixtures;
 import com.qrmenu.support.TenantFixtures;
 import com.qrmenu.support.TenantFixtures.CheckedInVisit;
+import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockCookie;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 import static com.qrmenu.support.AbstractIntegrationTest.TEST_ADMIN_TOKEN;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -27,6 +44,18 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * real staff session rather than the Milestone 6 shared-secret guard.
  */
 class RefundFlowIntegrationTest extends AbstractIntegrationTest {
+
+    @MockitoSpyBean
+    private MockPaymentProviderAdapter paymentProvider;
+
+    @Autowired
+    private PaymentService paymentService;
+
+    @Autowired
+    private RefundRepository refundRepository;
+
+    @Autowired
+    private RefundItemRepository refundItemRepository;
 
     @Test
     void staffCanIssueAPartialRefundForARejectedItemFoundByOrderNumber() throws Exception {
@@ -46,6 +75,8 @@ class RefundFlowIntegrationTest extends AbstractIntegrationTest {
         String orderId = order.get("orderId").asText();
         String orderItemId = order.get("items").get(0).get("id").asText();
         assertThat(order.get("totalMinorUnits").asLong()).isEqualTo(30000);
+        assertThat(order.get("items").get(0).get("refundedQuantity").asInt()).isZero();
+        assertThat(order.get("items").get(0).get("remainingRefundableQuantity").asInt()).isEqualTo(3);
 
         // 1 of the 3 turns out to be unavailable after acceptance (e.g. out of stock) - staff manually refunds that unit.
         MvcResult refundResult = mockMvc.perform(staffPost(
@@ -64,10 +95,15 @@ class RefundFlowIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].refundId").value(refundId))
                 .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize(1)));
+
+        mockMvc.perform(staffGet(branchId, "/search?orderNumber=" + order.get("orderNumber").asInt(), staffCookie))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].refundedQuantity").value(1))
+                .andExpect(jsonPath("$.items[0].remainingRefundableQuantity").value(2));
     }
 
     @Test
-    void multiplePartialRefundsAccumulateAndCannotExceedThePaidAmount() throws Exception {
+    void fullRefundPreventsAnyFurtherRefundAndExposesZeroRemainingQuantity() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Over Refund Business");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String staffCookie = bootstrapStaffAdmin(businessId, branchId, "refund-admin-2");
@@ -91,6 +127,11 @@ class RefundFlowIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalAmountMinorUnits").value(10000));
 
+        mockMvc.perform(staffGet(branchId, "/search?orderNumber=" + order.get("orderNumber").asInt(), staffCookie))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].refundedQuantity").value(2))
+                .andExpect(jsonPath("$.items[0].remainingRefundableQuantity").value(2));
+
         // Second partial refund: another 2 units = 10000. Exactly exhausts the remaining balance - must succeed.
         mockMvc.perform(staffPost(
                         branchId, "/" + orderId + "/refunds", "{\"items\":[{\"orderItemId\":\"" + orderItemId + "\",\"quantity\":2}]}",
@@ -102,11 +143,192 @@ class RefundFlowIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize(2)));
 
+        mockMvc.perform(staffGet(branchId, "/search?orderNumber=" + order.get("orderNumber").asInt(), staffCookie))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].refundedQuantity").value(4))
+                .andExpect(jsonPath("$.items[0].remainingRefundableQuantity").value(0));
+
         // A third refund of any positive amount must now be rejected - the full 20000 paid is already refunded.
         mockMvc.perform(staffPost(
                         branchId, "/" + orderId + "/refunds", "{\"items\":[{\"orderItemId\":\"" + orderItemId + "\",\"quantity\":1}]}",
                         staffCookie))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void duplicateItemLinesInOneRefundAreRejectedWithoutConsumingQuantity() throws Exception {
+        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Duplicate Refund Business");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
+        String staffCookie = bootstrapStaffAdmin(businessId, branchId, "refund-duplicate");
+        String tableId = TenantFixtures.createTable(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, "Masa 1");
+        String qrToken = TenantFixtures.createQrToken(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, tableId);
+        createPaidOrderWithOneItem(businessId, branchId, qrToken, "Makarna", 7000, 2, staffCookie);
+
+        int orderNumber = fetchLatestOrderNumber(branchId, staffCookie);
+        JsonNode order = readJson(staffGet(branchId, "/search?orderNumber=" + orderNumber, staffCookie));
+        String orderId = order.get("orderId").asText();
+        String orderItemId = order.get("items").get(0).get("id").asText();
+        String duplicateLines = "{\"items\":["
+                + "{\"orderItemId\":\"" + orderItemId + "\",\"quantity\":1},"
+                + "{\"orderItemId\":\"" + orderItemId + "\",\"quantity\":1}]}";
+
+        mockMvc.perform(staffPost(branchId, "/" + orderId + "/refunds", duplicateLines, staffCookie))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(staffGet(branchId, "/search?orderNumber=" + orderNumber, staffCookie))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].refundedQuantity").value(0))
+                .andExpect(jsonPath("$.items[0].remainingRefundableQuantity").value(2))
+                .andExpect(jsonPath("$.refunds", org.hamcrest.Matchers.hasSize(0)));
+    }
+
+    @Test
+    void processingRefundIsVisibleButDoesNotConsumeRefundableQuantity() throws Exception {
+        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Processing Refund Business");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
+        String staffCookie = bootstrapStaffAdmin(businessId, branchId, "refund-processing");
+        String tableId = TenantFixtures.createTable(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, "Masa 1");
+        String qrToken = TenantFixtures.createQrToken(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, tableId);
+        createPaidOrderWithOneItem(businessId, branchId, qrToken, "Kahve", 6000, 2, staffCookie);
+
+        int orderNumber = fetchLatestOrderNumber(branchId, staffCookie);
+        JsonNode order = readJson(staffGet(branchId, "/search?orderNumber=" + orderNumber, staffCookie));
+        UUID orderId = UUID.fromString(order.get("orderId").asText());
+        UUID orderItemId = UUID.fromString(order.get("items").get(0).get("id").asText());
+        PaymentSummaryView payment = paymentService.getSucceededPaymentSummary(orderId);
+
+        Refund processing = refundRepository.save(
+                new Refund(UUID.fromString(businessId), orderId, payment.paymentId(), 6000));
+        processing.markProcessing();
+        processing = refundRepository.save(processing);
+        refundItemRepository.save(new RefundItem(processing.getId(), orderItemId, 1, 6000));
+
+        mockMvc.perform(staffGet(branchId, "/search?orderNumber=" + orderNumber, staffCookie))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.refunds[0].status").value("PROCESSING"))
+                .andExpect(jsonPath("$.items[0].refundedQuantity").value(0))
+                .andExpect(jsonPath("$.items[0].remainingRefundableQuantity").value(2));
+
+        mockMvc.perform(staffPost(
+                        branchId,
+                        "/" + orderId + "/refunds",
+                        "{\"items\":[{\"orderItemId\":\"" + orderItemId + "\",\"quantity\":2}]}",
+                        staffCookie))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("COMPLETED"));
+
+        mockMvc.perform(staffGet(branchId, "/search?orderNumber=" + orderNumber, staffCookie))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].refundedQuantity").value(2))
+                .andExpect(jsonPath("$.items[0].remainingRefundableQuantity").value(0));
+    }
+
+    @Test
+    void failedRefundIsRecordedButDoesNotConsumeQuantityOrPaymentTotal() throws Exception {
+        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Failed Refund Business");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
+        String staffCookie = bootstrapStaffAdmin(businessId, branchId, "refund-failed");
+        String tableId = TenantFixtures.createTable(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, "Masa 1");
+        String qrToken = TenantFixtures.createQrToken(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, tableId);
+        createPaidOrderWithOneItem(businessId, branchId, qrToken, "Limonata", 6000, 1, staffCookie);
+
+        int orderNumber = fetchLatestOrderNumber(branchId, staffCookie);
+        JsonNode order = readJson(staffGet(branchId, "/search?orderNumber=" + orderNumber, staffCookie));
+        String orderId = order.get("orderId").asText();
+        String orderItemId = order.get("items").get(0).get("id").asText();
+        String body = "{\"items\":[{\"orderItemId\":\"" + orderItemId + "\",\"quantity\":1}]}";
+
+        doThrow(new IllegalStateException("Provider rejected refund"))
+                .doCallRealMethod()
+                .when(paymentProvider)
+                .refund(anyString(), eq(6000L));
+
+        mockMvc.perform(staffPost(branchId, "/" + orderId + "/refunds", body, staffCookie))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("FAILED"));
+
+        mockMvc.perform(staffGet(branchId, "/search?orderNumber=" + orderNumber, staffCookie))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.refunds[0].status").value("FAILED"))
+                .andExpect(jsonPath("$.items[0].refundedQuantity").value(0))
+                .andExpect(jsonPath("$.items[0].remainingRefundableQuantity").value(1));
+        assertThat(paymentService.getSucceededPaymentSummary(UUID.fromString(orderId)).totalRefundedAmountMinorUnits()).isZero();
+
+        // The failed attempt released both item availability and the payment total, so retry can complete.
+        mockMvc.perform(staffPost(branchId, "/" + orderId + "/refunds", body, staffCookie))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("COMPLETED"));
+
+        mockMvc.perform(staffGet(branchId, "/search?orderNumber=" + orderNumber, staffCookie))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.refunds", org.hamcrest.Matchers.hasSize(2)))
+                .andExpect(jsonPath("$.refunds[0].status").value("FAILED"))
+                .andExpect(jsonPath("$.refunds[1].status").value("COMPLETED"))
+                .andExpect(jsonPath("$.items[0].refundedQuantity").value(1))
+                .andExpect(jsonPath("$.items[0].remainingRefundableQuantity").value(0));
+        assertThat(paymentService.getSucceededPaymentSummary(UUID.fromString(orderId)).totalRefundedAmountMinorUnits()).isEqualTo(6000);
+    }
+
+    @Test
+    void concurrentDuplicateRefundsSerializeAndOnlyOneCanConsumeTheLastItemQuantity() throws Exception {
+        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Concurrent Refund Business");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
+        String staffCookie = bootstrapStaffAdmin(businessId, branchId, "refund-concurrent");
+        String tableId = TenantFixtures.createTable(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, "Masa 1");
+        String qrToken = TenantFixtures.createQrToken(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, tableId);
+        String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Kategori");
+        String inexpensiveProductId =
+                TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Su", 1000, 10);
+        String expensiveProductId =
+                TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Ana yemek", 50000, 10);
+        TenantFixtures.upsertBranchProduct(
+                mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, inexpensiveProductId, "AVAILABLE", null);
+        TenantFixtures.upsertBranchProduct(
+                mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, expensiveProductId, "AVAILABLE", null);
+        CheckedInVisit visit = TenantFixtures.checkIn(mockMvc, objectMapper, qrToken);
+        addItem(visit, inexpensiveProductId, 1);
+        addItem(visit, expensiveProductId, 1);
+        payDraftOrder(visit, staffCookie);
+
+        int orderNumber = fetchLatestOrderNumber(branchId, staffCookie);
+        JsonNode order = readJson(staffGet(branchId, "/search?orderNumber=" + orderNumber, staffCookie));
+        String orderId = order.get("orderId").asText();
+        JsonNode inexpensiveItem = null;
+        for (JsonNode item : order.get("items")) {
+            if (item.get("productName").asText().equals("Su")) {
+                inexpensiveItem = item;
+                break;
+            }
+        }
+        assertThat(inexpensiveItem).isNotNull();
+        String orderItemId = inexpensiveItem.get("id").asText();
+        String body = "{\"items\":[{\"orderItemId\":\"" + orderItemId + "\",\"quantity\":1}]}";
+
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<Integer> first = executor.submit(() -> performConcurrentRefund(start, branchId, orderId, body, staffCookie));
+            Future<Integer> second = executor.submit(() -> performConcurrentRefund(start, branchId, orderId, body, staffCookie));
+            start.countDown();
+
+            List<Integer> statuses = List.of(first.get(10, TimeUnit.SECONDS), second.get(10, TimeUnit.SECONDS));
+            assertThat(statuses).containsExactlyInAnyOrder(200, 400);
+        } finally {
+            executor.shutdownNow();
+        }
+
+        JsonNode refreshed = readJson(staffGet(branchId, "/search?orderNumber=" + orderNumber, staffCookie));
+        JsonNode refreshedInexpensiveItem = null;
+        for (JsonNode item : refreshed.get("items")) {
+            if (item.get("id").asText().equals(orderItemId)) {
+                refreshedInexpensiveItem = item;
+                break;
+            }
+        }
+        assertThat(refreshedInexpensiveItem).isNotNull();
+        assertThat(refreshedInexpensiveItem.get("refundedQuantity").asInt()).isEqualTo(1);
+        assertThat(refreshedInexpensiveItem.get("remainingRefundableQuantity").asInt()).isZero();
+        assertThat(refreshed.get("refunds")).hasSize(1);
     }
 
     @Test
@@ -185,12 +407,33 @@ class RefundFlowIntegrationTest extends AbstractIntegrationTest {
                 mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, productName, priceMinorUnits, 10);
         TenantFixtures.upsertBranchProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, productId, "AVAILABLE", null);
         CheckedInVisit visit = TenantFixtures.checkIn(mockMvc, objectMapper, qrToken);
+        addItem(visit, productId, quantity);
+        payDraftOrder(visit, staffCookie);
+        return visit;
+    }
+
+    private void addItem(CheckedInVisit visit, String productId, int quantity) throws Exception {
         mockMvc.perform(withCookie(post("/api/table-visits/{tableVisitId}/cart/items", visit.tableVisitId()), visit)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"productId\":\"" + productId + "\",\"quantity\":" + quantity + "}"))
                 .andExpect(status().isCreated());
-        payDraftOrder(visit, staffCookie);
-        return visit;
+    }
+
+    private JsonNode readJson(MockHttpServletRequestBuilder request) throws Exception {
+        return objectMapper.readTree(mockMvc.perform(request)
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString());
+    }
+
+    private int performConcurrentRefund(
+            CountDownLatch start, String branchId, String orderId, String body, String staffCookie) throws Exception {
+        assertThat(start.await(5, TimeUnit.SECONDS)).isTrue();
+        return mockMvc.perform(staffPost(branchId, "/" + orderId + "/refunds", body, staffCookie))
+                .andReturn()
+                .getResponse()
+                .getStatus();
     }
 
     private void payDraftOrder(CheckedInVisit visit, String staffCookie) throws Exception {

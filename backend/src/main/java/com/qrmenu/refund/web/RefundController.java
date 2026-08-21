@@ -17,6 +17,7 @@ import com.qrmenu.staffaccess.StaffContext;
 import com.qrmenu.staffaccess.StaffCookieSupport;
 import jakarta.validation.Valid;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -111,8 +112,10 @@ public class RefundController {
     }
 
     private StaffOrderLookupResponse toLookupResponse(OrderTrackingView tracking) {
+        Map<UUID, Integer> refundedQuantities =
+                refundService.getCompletedRefundedQuantities(tracking.order().getId());
         List<StaffOrderItemResponse> items =
-                tracking.items().stream().map(RefundController::toItemResponse).toList();
+                tracking.items().stream().map(item -> toItemResponse(item, refundedQuantities)).toList();
         List<RefundResponse> refunds =
                 refundService.getRefundsForOrder(tracking.order().getId()).stream().map(RefundController::toResponse).toList();
         return new StaffOrderLookupResponse(
@@ -124,7 +127,8 @@ public class RefundController {
                 refunds);
     }
 
-    private static StaffOrderItemResponse toItemResponse(OrderItem item) {
+    private static StaffOrderItemResponse toItemResponse(OrderItem item, Map<UUID, Integer> refundedQuantities) {
+        int refundedQuantity = refundedQuantities.getOrDefault(item.getId(), 0);
         return new StaffOrderItemResponse(
                 item.getId(),
                 item.getProductNameSnapshot(),
@@ -133,7 +137,9 @@ public class RefundController {
                 item.getRejectedQuantity(),
                 item.getStatus().name(),
                 item.getUnitPriceMinorUnits(),
-                item.getLineTotalMinorUnits());
+                item.getLineTotalMinorUnits(),
+                refundedQuantity,
+                Math.max(0, item.getOrderedQuantity() - refundedQuantity));
     }
 
     private static RefundResponse toResponse(RefundView view) {

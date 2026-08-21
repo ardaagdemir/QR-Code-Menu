@@ -78,6 +78,14 @@ public class Refund {
         this.updatedAt = Instant.now();
     }
 
+    public void markFailed() {
+        if (status != RefundStatus.PROCESSING) {
+            throw new IllegalStateException("Cannot move to FAILED from status " + status);
+        }
+        this.status = RefundStatus.FAILED;
+        this.updatedAt = Instant.now();
+    }
+
     public UUID getId() {
         return id;
     }

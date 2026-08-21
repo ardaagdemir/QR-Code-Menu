@@ -126,6 +126,15 @@ public class Payment {
         this.updatedAt = Instant.now();
     }
 
+    /** Releases an in-transaction refund reservation when the provider rejects it. */
+    public void releaseRefund(long refundAmountMinorUnits) {
+        if (refundAmountMinorUnits <= 0 || refundAmountMinorUnits > totalRefundedAmountMinorUnits) {
+            throw new IllegalArgumentException("Invalid refund release amount: " + refundAmountMinorUnits);
+        }
+        this.totalRefundedAmountMinorUnits -= refundAmountMinorUnits;
+        this.updatedAt = Instant.now();
+    }
+
     public UUID getId() {
         return id;
     }

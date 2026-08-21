@@ -76,9 +76,20 @@ public class PaymentService {
     @Transactional
     public PaymentSummaryView applyRefund(UUID orderId, long refundAmountMinorUnits) {
         Payment payment = paymentRepository
-                .findByOrderIdAndStatus(orderId, PaymentStatus.SUCCEEDED)
+                .findByOrderIdAndStatusForUpdate(orderId, PaymentStatus.SUCCEEDED)
                 .orElseThrow(() -> new IllegalStateException("No succeeded payment for order: " + orderId));
         payment.applyRefund(refundAmountMinorUnits);
+        payment = paymentRepository.save(payment);
+        return toSummaryView(payment);
+    }
+
+    /** Compensates a reserved refund amount when the provider reports a failed refund. */
+    @Transactional
+    public PaymentSummaryView releaseRefund(UUID orderId, long refundAmountMinorUnits) {
+        Payment payment = paymentRepository
+                .findByOrderIdAndStatusForUpdate(orderId, PaymentStatus.SUCCEEDED)
+                .orElseThrow(() -> new IllegalStateException("No succeeded payment for order: " + orderId));
+        payment.releaseRefund(refundAmountMinorUnits);
         payment = paymentRepository.save(payment);
         return toSummaryView(payment);
     }

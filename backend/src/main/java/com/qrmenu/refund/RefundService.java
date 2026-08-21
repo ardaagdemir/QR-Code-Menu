@@ -11,8 +11,11 @@ import com.qrmenu.payment.PaymentSummaryView;
 import com.qrmenu.refund.repository.RefundItemRepository;
 import com.qrmenu.refund.repository.RefundRepository;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
@@ -66,15 +69,26 @@ public class RefundService {
         if (lines == null || lines.isEmpty()) {
             throw new IllegalArgumentException("Refund must include at least one item");
         }
-        CustomerOrder order = orderingService.getOrderInBranch(branchId, orderId);
+        CustomerOrder order = orderingService.getOrderInBranchForUpdate(branchId, orderId);
+        return executeRefund(order, lines, actorStaffUserId);
+    }
+
+    private RefundView executeRefund(CustomerOrder order, List<RefundLineRequest> lines, UUID actorStaffUserId) {
+        Map<UUID, Integer> refundedQuantities = getCompletedRefundedQuantities(order.getId());
+        Set<UUID> requestedItemIds = new HashSet<>();
 
         record PricedLine(UUID orderItemId, int quantity, long amountMinorUnits) {
         }
         List<PricedLine> pricedLines = new ArrayList<>();
         long totalAmount = 0;
         for (RefundLineRequest line : lines) {
+            if (!requestedItemIds.add(line.orderItemId())) {
+                throw new IllegalArgumentException("Duplicate refund item: " + line.orderItemId());
+            }
             OrderItem item = orderingService.getOrderItem(order.getId(), line.orderItemId());
-            if (line.quantity() <= 0 || line.quantity() > item.getOrderedQuantity()) {
+            int alreadyRefunded = refundedQuantities.getOrDefault(item.getId(), 0);
+            int remainingRefundable = Math.max(0, item.getOrderedQuantity() - alreadyRefunded);
+            if (line.quantity() <= 0 || line.quantity() > remainingRefundable) {
                 throw new IllegalArgumentException("Invalid refund quantity for item: " + line.orderItemId());
             }
             long amount = item.getUnitPriceMinorUnits() * line.quantity();
@@ -91,12 +105,18 @@ public class RefundService {
         }
 
         refund.markProcessing();
-        paymentProvider.refund(paymentSummary.providerPaymentIntentId(), totalAmount);
-        refund.markCompleted();
+        try {
+            paymentProvider.refund(paymentSummary.providerPaymentIntentId(), totalAmount);
+            refund.markCompleted();
+        } catch (RuntimeException providerFailure) {
+            paymentService.releaseRefund(order.getId(), totalAmount);
+            refund.markFailed();
+        }
         refund = refundRepository.save(refund);
 
         auditService.record(
-                order.getBusinessId(), actorStaffUserId, "Refund", refund.getId(), "ISSUED",
+                order.getBusinessId(), actorStaffUserId, "Refund", refund.getId(),
+                refund.getStatus() == RefundStatus.COMPLETED ? "ISSUED" : "FAILED",
                 Map.of("orderId", order.getId().toString(), "totalAmountMinorUnits", totalAmount));
 
         return toView(refund, items);
@@ -112,11 +132,18 @@ public class RefundService {
      */
     @Transactional
     public RefundView requestFullRefund(UUID branchId, UUID orderId, UUID actorStaffUserId) {
+        CustomerOrder order = orderingService.getOrderInBranchForUpdate(branchId, orderId);
         OrderTrackingView tracking = orderingService.getOrderTrackingViewInBranch(branchId, orderId);
+        Map<UUID, Integer> refundedQuantities = getCompletedRefundedQuantities(orderId);
         List<RefundLineRequest> lines = tracking.items().stream()
-                .map(item -> new RefundLineRequest(item.getId(), item.getOrderedQuantity()))
+                .map(item -> new RefundLineRequest(
+                        item.getId(), Math.max(0, item.getOrderedQuantity() - refundedQuantities.getOrDefault(item.getId(), 0))))
+                .filter(line -> line.quantity() > 0)
                 .toList();
-        return requestRefund(branchId, orderId, lines, actorStaffUserId);
+        if (lines.isEmpty()) {
+            throw new IllegalStateException("Order is already fully refunded: " + orderId);
+        }
+        return executeRefund(order, lines, actorStaffUserId);
     }
 
     /** Gap-analysis #8 reporting: total completed refund amount for a set of orders (Section 13.4, refund toplamı). */
@@ -137,6 +164,16 @@ public class RefundService {
         return refunds.stream()
                 .map(refund -> toView(refund, itemsByRefundId.getOrDefault(refund.getId(), List.of())))
                 .toList();
+    }
+
+    /** Completed quantity totals back both API presentation and refund validation. */
+    @Transactional(readOnly = true)
+    public Map<UUID, Integer> getCompletedRefundedQuantities(UUID orderId) {
+        Map<UUID, Integer> quantities = new HashMap<>();
+        for (Object[] row : refundItemRepository.sumCompletedRefundedQuantityByOrderItem(orderId)) {
+            quantities.put((UUID) row[0], ((Number) row[1]).intValue());
+        }
+        return Map.copyOf(quantities);
     }
 
     private RefundView toView(Refund refund, List<RefundItem> items) {
