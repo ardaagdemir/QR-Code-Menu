@@ -26,8 +26,10 @@ import com.qrmenu.tenant.TenantService;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -407,14 +409,43 @@ public class OrderingService {
      * Milestone 7: staff-facing order lookup by its readable order number (Section 4,
      * screen #6 - "tam/kısmi iade başlatma" needs a human-usable way to find the order
      * to refund; the order number, already shown on the KDS and the customer's
-     * tracking page/receipt, is what staff would actually have on hand).
+     * tracking page/receipt, is what staff would actually have on hand). orderNumber
+     * resets daily per branch (OrderNumberGenerator), so more than one order can share
+     * the same number once a branch has been open more than a day - staff searching by
+     * number are almost always after the most recent one, so ambiguity resolves to the
+     * most recently created match rather than erroring.
      */
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public OrderTrackingView getOrderByNumber(UUID branchId, int orderNumber) {
         CustomerOrder order = orderRepository
-                .findByBranchIdAndOrderNumber(branchId, orderNumber)
+                .findAllByBranchIdAndOrderNumberOrderByCreatedAtDesc(branchId, orderNumber)
+                .stream()
+                .findFirst()
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found for number: " + orderNumber));
         return new OrderTrackingView(order, orderItemRepository.findAllByOrderId(order.getId()));
+    }
+
+    /**
+     * Siparişler (order history) screen: completed/rejected orders for a branch, newest
+     * first, within a branch-local calendar date range - same LocalDate-in/Instant-out
+     * timezone handling as ReportingService.buildReport, so "today" means the branch's
+     * own local day rather than UTC (see docs/development-progress.md's earlier UTC
+     * date-boundary bugfix for why that distinction matters).
+     */
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public List<KitchenQueueOrderView> getOrderHistory(
+            UUID branchId, List<OrderStatus> statuses, LocalDate from, LocalDate to) {
+        UUID businessId = tenantService.requireBusinessIdForBranch(branchId);
+        ZoneId zone = resolveZone(tenantService.getBranch(businessId, branchId));
+        Instant fromInstant = from.atStartOfDay(zone).toInstant();
+        Instant toInstant = to.plusDays(1).atStartOfDay(zone).toInstant();
+        List<CustomerOrder> orders = orderRepository.findAllByBranchIdAndStatusInAndCreatedAtBetweenOrderByLastActivityAtDesc(
+                branchId, statuses, fromInstant, toInstant);
+        return buildKitchenQueueViews(orders);
+    }
+
+    private static ZoneId resolveZone(com.qrmenu.tenant.Branch branch) {
+        return branch.getTimezone() != null ? ZoneId.of(branch.getTimezone()) : ZoneOffset.UTC;
     }
 
     /**
@@ -434,6 +465,22 @@ public class OrderingService {
     @Transactional(readOnly = true)
     public CustomerOrder getOrderInBranch(UUID branchId, UUID orderId) {
         return requireOrderInBranch(branchId, orderId);
+    }
+
+    /**
+     * Refund coordination lock. All refund attempts for an order acquire this row lock
+     * before reading completed RefundItem totals, so two concurrent requests cannot
+     * both validate against the same remaining quantity.
+     */
+    @Transactional
+    public CustomerOrder getOrderInBranchForUpdate(UUID branchId, UUID orderId) {
+        CustomerOrder order = orderRepository
+                .findByIdForUpdate(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found: " + orderId));
+        if (!order.getBranchId().equals(branchId)) {
+            throw new ResourceNotFoundException("Order not found: " + orderId);
+        }
+        return order;
     }
 
     /** Same as getOrderByNumber, but looked up by id - used to re-render the staff order view after an action (e.g. completeOrder). */
@@ -546,6 +593,33 @@ public class OrderingService {
                 .collect(Collectors.groupingBy(OrderItem::getOrderId));
         return orders.stream()
                 .map(order -> new ReportOrderView(order, itemsByOrderId.getOrDefault(order.getId(), List.of())))
+                .toList();
+    }
+
+    /**
+     * Customer-web "most popular" widget: product ids ranked by accepted quantity sold
+     * over the trailing window, most-sold first. Real paid-order data only - no fake or
+     * heuristic ranking. Callers must cross-reference against the current live menu
+     * themselves (this method has no opinion on whether a product is still on sale).
+     */
+    @Transactional(readOnly = true)
+    public List<UUID> findTopSellingProductIds(UUID branchId, int trailingDays, int limit) {
+        Instant to = Instant.now();
+        Instant from = to.minus(Duration.ofDays(trailingDays));
+        List<ReportOrderView> orders = findOrdersForReport(branchId, from, to);
+        Map<UUID, Integer> quantityByProductId = new LinkedHashMap<>();
+        for (ReportOrderView view : orders) {
+            for (OrderItem item : view.items()) {
+                if (item.getAcceptedQuantity() <= 0) {
+                    continue;
+                }
+                quantityByProductId.merge(item.getProductId(), item.getAcceptedQuantity(), Integer::sum);
+            }
+        }
+        return quantityByProductId.entrySet().stream()
+                .sorted(Map.Entry.<UUID, Integer>comparingByValue().reversed())
+                .limit(limit)
+                .map(Map.Entry::getKey)
                 .toList();
     }
 

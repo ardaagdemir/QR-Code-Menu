@@ -5,18 +5,22 @@ import com.qrmenu.ordering.CustomerOrder;
 import com.qrmenu.ordering.KitchenQueueOrderView;
 import com.qrmenu.ordering.OrderItem;
 import com.qrmenu.ordering.OrderItemOption;
+import com.qrmenu.ordering.OrderStatus;
 import com.qrmenu.ordering.OrderingService;
 import com.qrmenu.ordering.web.dto.OrderControlOrderItemOptionResponse;
 import com.qrmenu.ordering.web.dto.OrderControlOrderItemResponse;
 import com.qrmenu.ordering.web.dto.OrderControlOrderResponse;
+import com.qrmenu.ordering.web.dto.OrderHistoryResponse;
 import com.qrmenu.ordering.web.dto.RejectOrderRequest;
 import com.qrmenu.refund.RefundService;
+import com.qrmenu.refund.RefundView;
 import com.qrmenu.staffaccess.Permission;
 import com.qrmenu.staffaccess.StaffAuthService;
 import com.qrmenu.staffaccess.StaffContext;
 import com.qrmenu.staffaccess.StaffCookieSupport;
 import com.qrmenu.tenant.TenantService;
 import jakarta.validation.Valid;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.web.bind.annotation.CookieValue;
@@ -25,6 +29,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -131,6 +136,27 @@ public class OrderControlController {
     }
 
     /**
+     * Siparişler (order history) screen: completed/rejected orders stay reachable after
+     * they drop off the Kasa board (which only ever shows AWAITING_STORE_ACCEPTANCE/
+     * IN_KITCHEN/READY - see the class javadoc). Defaults to COMPLETED+REJECTED_BY_STORE
+     * when no status filter is given; from/to are branch-local calendar dates, same
+     * convention as StaffReportingController.
+     */
+    @GetMapping("/history")
+    public List<OrderHistoryResponse> getHistory(
+            @PathVariable(required = false) UUID branchId,
+            @RequestParam(required = false) List<String> status,
+            @RequestParam LocalDate from,
+            @RequestParam LocalDate to,
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie) {
+        branchId = requireOrderAccess(sessionCookie, branchId, Permission.ORDER_VIEW).activeBranchId();
+        List<OrderStatus> statuses = (status == null || status.isEmpty())
+                ? List.of(OrderStatus.COMPLETED, OrderStatus.REJECTED_BY_STORE)
+                : status.stream().map(OrderStatus::valueOf).toList();
+        return orderingService.getOrderHistory(branchId, statuses, from, to).stream().map(this::toHistoryResponse).toList();
+    }
+
+    /**
      * Initial connect delivers no backlog - the caller already loaded pending/in-progress
      * orders via the GET endpoints above; this is purely a "something changed, refetch"
      * signal (staff-web's Kasa page uses it for both lists).
@@ -180,6 +206,27 @@ public class OrderControlController {
                 view.tableLabel(),
                 view.order().getLastActivityAt(),
                 timeoutSeconds,
+                items);
+    }
+
+    /** Most recently created refund's status, if the order has any - same "latest" convention as OrderTrackingController. */
+    private OrderHistoryResponse toHistoryResponse(KitchenQueueOrderView view) {
+        List<RefundView> refunds = refundService.getRefundsForOrder(view.order().getId());
+        String latestRefundStatus = refunds.isEmpty() ? null : refunds.get(refunds.size() - 1).status();
+        List<OrderControlOrderItemResponse> items = view.items().stream()
+                .map(item -> toItemResponse(item, view.optionsByItemId().getOrDefault(item.getId(), List.of())))
+                .toList();
+        return new OrderHistoryResponse(
+                view.order().getId(),
+                view.order().getOrderNumber(),
+                view.order().getStatus().name(),
+                view.order().getTotalMinorUnits(),
+                view.order().getRejectionReasonCode(),
+                view.order().getRejectionNote(),
+                view.tableLabel(),
+                view.order().getCreatedAt(),
+                view.order().getCompletedAt(),
+                latestRefundStatus,
                 items);
     }
 

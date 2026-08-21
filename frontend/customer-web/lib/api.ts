@@ -143,6 +143,20 @@ export async function getMenu(branchId: string): Promise<Menu> {
   return response.json();
 }
 
+/** Gerçek son 30 günlük satış verisinden, hâlâ menüde görünen ürünlere daraltılmış
+ * popülerlik sıralaması (backend PublicMenuController#getPopularProducts). Satış
+ * geçmişi yoksa boş dizi döner - sahte/heuristic bir sıralama yok. */
+export async function getPopularProductIds(branchId: string): Promise<string[]> {
+  const response = await fetch(`${getApiBaseUrl()}/api/branches/${encodeURIComponent(branchId)}/menu/popular-products`, {
+    credentials: "include",
+  });
+  if (!response.ok) {
+    await parseErrorOrThrow(response);
+  }
+  const data: { productIds: string[] } = await response.json();
+  return data.productIds;
+}
+
 export async function getCart(tableVisitId: string): Promise<Cart> {
   const response = await fetch(`${getApiBaseUrl()}/api/table-visits/${encodeURIComponent(tableVisitId)}/cart`, {
     credentials: "include",

@@ -11,9 +11,12 @@ import com.qrmenu.menu.web.dto.MenuOptionGroupResponse;
 import com.qrmenu.menu.web.dto.MenuOptionResponse;
 import com.qrmenu.menu.web.dto.MenuProductResponse;
 import com.qrmenu.menu.web.dto.MenuResponse;
+import com.qrmenu.menu.web.dto.PopularProductsResponse;
+import com.qrmenu.ordering.OrderingService;
 import com.qrmenu.tenant.TenantService;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -35,10 +38,12 @@ public class PublicMenuController {
 
     private final TenantService tenantService;
     private final MenuService menuService;
+    private final OrderingService orderingService;
 
-    public PublicMenuController(TenantService tenantService, MenuService menuService) {
+    public PublicMenuController(TenantService tenantService, MenuService menuService, OrderingService orderingService) {
         this.tenantService = tenantService;
         this.menuService = menuService;
+        this.orderingService = orderingService;
     }
 
     @GetMapping("/{branchId}/menu")
@@ -81,6 +86,27 @@ public class PublicMenuController {
                 .toList();
 
         return new MenuResponse(branchId, categoryResponses);
+    }
+
+    /**
+     * Customer-web "En Çok Tercih Edilenler" widget: real accepted-order sales from the
+     * trailing 30 days, ranked by quantity, filtered down to products still visible on
+     * this branch's live menu (a since-discontinued or opted-out product is dropped
+     * rather than shown with stale data). Empty when there's no sales history yet - no
+     * fake/heuristic fallback ranking.
+     */
+    @GetMapping("/{branchId}/menu/popular-products")
+    public PopularProductsResponse getPopularProducts(@PathVariable UUID branchId) {
+        MenuResponse menu = getMenu(branchId);
+        Set<UUID> visibleProductIds = menu.categories().stream()
+                .flatMap(category -> category.products().stream())
+                .map(MenuProductResponse::id)
+                .collect(Collectors.toSet());
+
+        List<UUID> productIds = orderingService.findTopSellingProductIds(branchId, 30, 6).stream()
+                .filter(visibleProductIds::contains)
+                .toList();
+        return new PopularProductsResponse(branchId, productIds);
     }
 
     private MenuCategoryResponse toCategoryResponse(
