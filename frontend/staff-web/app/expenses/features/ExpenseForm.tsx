@@ -3,6 +3,7 @@
 import { useId, useState } from "react";
 import { Plus } from "lucide-react";
 import { createExpense, uploadReceiptImage, type Expense, type ExpenseCategory } from "@/lib/api";
+import { localIsoDate as todayIsoDate } from "@/lib/time";
 import PageHeader from "@/components/ui/PageHeader";
 import Button from "@/components/ui/Button";
 import Dialog from "@/components/ui/Dialog";
@@ -12,12 +13,9 @@ import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import FileUploadField from "@/components/ui/FileUploadField";
 import { useToast } from "@/components/ui/ToastProvider";
+import { formatAmountInput, parseAmountInputToMinorUnits } from "./expenseAmount";
 import styles from "@/styles/admin.module.css";
 import expenseStyles from "../expenses.module.css";
-
-function todayIsoDate(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 type Props = {
   categories: ExpenseCategory[];
@@ -40,10 +38,16 @@ export default function ExpenseForm({ categories, onCreated }: Props) {
 
   const activeCategories = categories.filter((category) => category.active);
 
+  function closeDialog() {
+    if (!creating) {
+      setOpen(false);
+    }
+  }
+
   async function handleCreate(event: React.FormEvent) {
     event.preventDefault();
-    const amountMinorUnits = Math.round(Number(amount.replace(",", ".")) * 100);
-    if (!categoryId || !Number.isFinite(amountMinorUnits) || amountMinorUnits <= 0) {
+    const amountMinorUnits = parseAmountInputToMinorUnits(amount);
+    if (!categoryId || amountMinorUnits === null || amountMinorUnits <= 0) {
       setFormError("Kategori seçin ve geçerli bir tutar girin.");
       return;
     }
@@ -78,18 +82,23 @@ export default function ExpenseForm({ categories, onCreated }: Props) {
         title="Yeni Gider"
         description="Fiş veya fatura bilgisiyle yeni bir gider kaydı oluşturun."
         actions={
-          <Button onClick={() => setOpen(true)}>
+          <Button
+            onClick={() => {
+              setFormError(null);
+              setOpen(true);
+            }}
+          >
             <Plus size={16} aria-hidden="true" /> Gider Ekle
           </Button>
         }
       />
 
       {open ? (
-        <Dialog onClose={() => setOpen(false)} labelledBy={dialogTitleId}>
+        <Dialog onClose={closeDialog} labelledBy={dialogTitleId}>
           <h2 id={dialogTitleId} className={styles.sectionTitle}>
             Yeni Gider
           </h2>
-          <form className={styles.section} onSubmit={handleCreate}>
+          <form className={`${styles.section} ${expenseStyles.templateForm}`} onSubmit={handleCreate}>
             <FormField label="Kategori" required>
               {(controlProps) => (
                 <Select {...controlProps} value={categoryId} onChange={(event) => setCategoryId(event.target.value)} required>
@@ -103,12 +112,22 @@ export default function ExpenseForm({ categories, onCreated }: Props) {
               )}
             </FormField>
             <FormField label="Tutar (₺)" required>
-              {(controlProps) => <Input {...controlProps} value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0,00" required />}
+              {(controlProps) => (
+                <Input
+                  {...controlProps}
+                  inputMode="decimal"
+                  value={amount}
+                  onChange={(event) => setAmount(event.target.value)}
+                  onBlur={() => setAmount((current) => formatAmountInput(current))}
+                  placeholder="0,00"
+                  required
+                />
+              )}
             </FormField>
             <FormField label="Tarih">
               {(controlProps) => <Input {...controlProps} type="date" value={date} onChange={(event) => setDate(event.target.value)} />}
             </FormField>
-            <FormField label="Satıcı (opsiyonel)">
+            <FormField label="Satıcı / Firma (opsiyonel)">
               {(controlProps) => <Input {...controlProps} value={vendor} onChange={(event) => setVendor(event.target.value)} />}
             </FormField>
             <FileUploadField
@@ -123,9 +142,14 @@ export default function ExpenseForm({ categories, onCreated }: Props) {
 
             {formError ? <ErrorState message={formError} /> : null}
 
-            <Button type="submit" disabled={creating}>
-              {creating ? "Oluşturuluyor…" : "Gider Ekle"}
-            </Button>
+            <div className={expenseStyles.formActions}>
+              <Button variant="secondary" onClick={closeDialog} disabled={creating}>
+                Vazgeç
+              </Button>
+              <Button type="submit" disabled={creating}>
+                {creating ? "Oluşturuluyor…" : "Gider Ekle"}
+              </Button>
+            </div>
           </form>
         </Dialog>
       ) : null}

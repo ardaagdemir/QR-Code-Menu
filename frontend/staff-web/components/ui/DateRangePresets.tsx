@@ -1,14 +1,13 @@
 "use client";
 
+import { localIsoDate } from "@/lib/time";
 import FormField from "./FormField";
 import Input from "./Input";
 import styles from "./DateRangePresets.module.css";
 
 export type DateRange = { from: string; to: string };
 
-function toIsoDate(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
+const toIsoDate = localIsoDate;
 
 function startOfWeek(today: Date): Date {
   const day = today.getDay();

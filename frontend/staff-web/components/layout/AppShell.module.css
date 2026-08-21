@@ -122,13 +122,12 @@
   color: var(--sidebar-fg);
 }
 
-/* Aktif sayfanın imzası: dolgun tint zemin + accent metin + sol accent bar - "neredesin"i
- * yalnızca renkle değil üç katmanla (zemin/metin/kenar) birlikte işaretliyor. */
+/* Aktif sayfayı tek bir tint katmanıyla belirtir; klavye odağında global focus
+ * halkasının yanında ikinci bir outline oluşmaz. */
 .active {
   color: var(--sidebar-accent);
   font-weight: var(--font-weight-semibold);
   background: var(--sidebar-accent-tint);
-  box-shadow: inset 0 0 0 1px #f7d6c8;
 }
 
 .active::before {

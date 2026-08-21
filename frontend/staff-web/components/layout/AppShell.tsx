@@ -8,7 +8,6 @@ import { CircleHelp, LogOut } from "lucide-react";
 import { logout, me, type StaffContext } from "@/lib/api";
 import { NAV_GROUPS, ROLE_LABELS } from "@/lib/staffNav";
 import IconButton from "@/components/ui/IconButton";
-import AnnouncementBanner from "./AnnouncementBanner";
 import ThemeToggle from "./ThemeToggle";
 import styles from "./AppShell.module.css";
 
@@ -149,7 +148,6 @@ export default function AppShell({ children }: Props) {
             <ThemeToggle />
           </div>
         </header>
-        {context ? <AnnouncementBanner /> : null}
         <div className={styles.content}>{children}</div>
       </div>
     </div>

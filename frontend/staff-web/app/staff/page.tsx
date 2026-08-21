@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useState } from "react";
-import { UserPlus, Users } from "lucide-react";
+import { Eye, EyeOff, UserPlus, Users } from "lucide-react";
 import { createStaffUser, deactivateStaffUser, listStaffUsers, type StaffRole, type StaffUser } from "@/lib/api";
 import AppShell from "@/components/layout/AppShell";
 import PageHeader from "@/components/ui/PageHeader";
@@ -24,7 +24,7 @@ import pageStyles from "./page.module.css";
 const ROLE_LABELS: Record<string, string> = {
   BUSINESS_ADMIN: "İşletme Yöneticisi",
   BRANCH_MANAGER: "Şube Sorumlusu",
-  CASHIER: "Kasa",
+  CASHIER: "Kasa Personeli",
 };
 
 /** Section 4, staff-web admin screen #4: Personel/Rol yönetimi (Permission.STAFF_MANAGE). */
@@ -39,6 +39,7 @@ export default function StaffPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordVisible, setPasswordVisible] = useState(false);
   const [role, setRole] = useState<StaffRole>("CASHIER");
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -69,6 +70,7 @@ export default function StaffPage() {
       await createStaffUser(email.trim(), password, role);
       setEmail("");
       setPassword("");
+      setPasswordVisible(false);
       setCreateOpen(false);
       load();
       showToast("Personel oluşturuldu.", "success");
@@ -106,6 +108,7 @@ export default function StaffPage() {
             <Button
               onClick={() => {
                 setFormError(null);
+                setPasswordVisible(false);
                 setCreateOpen(true);
               }}
             >
@@ -133,7 +136,7 @@ export default function StaffPage() {
                     <th>E-posta</th>
                     <th>Rol</th>
                     <th>Durum</th>
-                    <th></th>
+                    <th className={pageStyles.actionsHeader}>İşlemler</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -149,14 +152,16 @@ export default function StaffPage() {
                       <td>
                         <Badge tone={user.active ? "success" : "danger"}>{user.active ? "Aktif" : "Devre dışı"}</Badge>
                       </td>
-                      <td>
-                        {user.active ? (
-                          <div className={tableStyles.actions}>
+                      <td className={pageStyles.actionsCell}>
+                        <div className={`${tableStyles.actions} ${pageStyles.staffActions}`}>
+                          {user.active ? (
                             <Button className={pageStyles.dangerAction} size="md" variant="ghost" onClick={() => setDeactivateTarget(user)}>
-                              Devre Dışı Bırak
+                              Hesabı Devre Dışı Bırak
                             </Button>
-                          </div>
-                        ) : null}
+                          ) : (
+                            <span className={tableStyles.muted}>—</span>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -178,7 +183,27 @@ export default function StaffPage() {
             </FormField>
             <FormField label="Şifre" hint="En az 8 karakter" required>
               {(controlProps) => (
-                <Input {...controlProps} type="password" value={password} onChange={(event) => setPassword(event.target.value)} required />
+                <div className={pageStyles.passwordField}>
+                  <Input
+                    {...controlProps}
+                    type={passwordVisible ? "text" : "password"}
+                    className={pageStyles.passwordInput}
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    autoComplete="new-password"
+                    required
+                  />
+                  <button
+                    type="button"
+                    className={pageStyles.passwordToggle}
+                    onClick={() => setPasswordVisible((visible) => !visible)}
+                    aria-label={passwordVisible ? "Şifreyi gizle" : "Şifreyi göster"}
+                    aria-pressed={passwordVisible}
+                    disabled={creating}
+                  >
+                    {passwordVisible ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
+                  </button>
+                </div>
               )}
             </FormField>
             <FormField label="Rol">
@@ -186,7 +211,7 @@ export default function StaffPage() {
                 <Select {...controlProps} value={role} onChange={(event) => setRole(event.target.value as StaffRole)}>
                   <option value="BUSINESS_ADMIN">İşletme Yöneticisi</option>
                   <option value="BRANCH_MANAGER">Şube Sorumlusu</option>
-                  <option value="CASHIER">Kasa</option>
+                  <option value="CASHIER">Kasa Personeli</option>
                 </Select>
               )}
             </FormField>
@@ -202,9 +227,9 @@ export default function StaffPage() {
 
       {deactivateTarget ? (
         <ConfirmDialog
-          title="Personeli Devre Dışı Bırak"
+          title="Hesabı Devre Dışı Bırak"
           message={`"${deactivateTarget.email}" devre dışı bırakılacak ve artık giriş yapamayacak. Bu işlem geri alınamaz.`}
-          confirmLabel="Devre Dışı Bırak"
+          confirmLabel="Hesabı Devre Dışı Bırak"
           tone="danger"
           confirmLoading={deactivating}
           onConfirm={handleConfirmDeactivate}

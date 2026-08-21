@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, type ChangeEvent } from "react";
+import { useRef, useState, type ChangeEvent } from "react";
+import { Upload } from "lucide-react";
 import FormField from "./FormField";
 import Button from "./Button";
 import styles from "./FileUploadField.module.css";
@@ -28,7 +29,9 @@ type Props = {
  * shown here, not a clickable preview.
  */
 export default function FileUploadField({ label, value, onChange, upload, accept, hint, previewAsImage = true }: Props) {
+  const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
@@ -41,12 +44,19 @@ export default function FileUploadField({ label, value, onChange, upload, accept
     setError(null);
     try {
       const url = await upload(file);
+      setSelectedFileName(file.name);
       onChange(url);
     } catch {
+      setSelectedFileName(null);
       setError("Dosya yüklenemedi. Dosya türünü ve boyutunu kontrol edin.");
     } finally {
       setUploading(false);
     }
+  }
+
+  function handleRemove() {
+    setSelectedFileName(null);
+    onChange(null);
   }
 
   return (
@@ -61,20 +71,36 @@ export default function FileUploadField({ label, value, onChange, upload, accept
               ) : (
                 <span className={styles.fileLink}>Dosya yüklendi</span>
               )}
-              <Button type="button" variant="ghost" size="md" onClick={() => onChange(null)} disabled={uploading}>
+              <Button type="button" variant="ghost" size="md" onClick={handleRemove} disabled={uploading}>
                 Kaldır
               </Button>
             </div>
           ) : null}
+          <div className={styles.picker}>
+            <Button
+              type="button"
+              variant="secondary"
+              size="md"
+              disabled={uploading}
+              onClick={() => inputRef.current?.click()}
+            >
+              <Upload size={16} aria-hidden="true" />
+              {uploading ? "Yükleniyor…" : value ? "Dosyayı Değiştir" : "Dosya Yükle"}
+            </Button>
+            <span className={styles.fileName} title={selectedFileName ?? undefined}>
+              {selectedFileName ?? (value ? "Dosya hazır" : "Henüz dosya eklenmedi")}
+            </span>
+          </div>
           <input
             {...controlProps}
+            ref={inputRef}
             type="file"
+            tabIndex={-1}
             accept={accept}
             onChange={handleFileChange}
             disabled={uploading}
             className={styles.fileInput}
           />
-          {uploading ? <p className={styles.status}>Yükleniyor…</p> : null}
         </div>
       )}
     </FormField>

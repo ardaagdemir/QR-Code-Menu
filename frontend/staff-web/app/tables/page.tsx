@@ -46,6 +46,7 @@ export default function TablesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyTableId, setBusyTableId] = useState<string | null>(null);
+  const [refreshTarget, setRefreshTarget] = useState<{ tableId: string; label: string } | null>(null);
   const [revokeTarget, setRevokeTarget] = useState<{ tableId: string; qrTokenId: string; label: string } | null>(null);
   const [createTableOpen, setCreateTableOpen] = useState(false);
   const [label, setLabel] = useState("");
@@ -100,6 +101,14 @@ export default function TablesPage() {
     } finally {
       setBusyTableId(null);
     }
+  }
+
+  async function handleConfirmRefresh() {
+    if (!refreshTarget) {
+      return;
+    }
+    await handleRegenerate(refreshTarget.tableId);
+    setRefreshTarget(null);
   }
 
   async function handleConfirmRevoke() {
@@ -202,8 +211,7 @@ export default function TablesPage() {
                   <tr>
                     <th>Masa</th>
                     <th>QR Durumu</th>
-                    <th>QR Token</th>
-                    <th>İşlemler</th>
+                    <th aria-label="QR işlemleri" />
                   </tr>
                 </thead>
                 <tbody>
@@ -225,7 +233,6 @@ export default function TablesPage() {
                             {token ? "Aktif" : "QR yok"}
                           </span>
                         </td>
-                        <td className={`${tableStyles.muted} ${pageStyles.qrToken}`}>{token ? token.token : "—"}</td>
                         <td>
                           <div className={tableStyles.actions}>
                             <Button
@@ -233,10 +240,14 @@ export default function TablesPage() {
                               size="md"
                               variant={token ? "secondary" : "primary"}
                               disabled={busyTableId === table.id}
-                              onClick={() => handleRegenerate(table.id)}
+                              onClick={() =>
+                                token
+                                  ? setRefreshTarget({ tableId: table.id, label: table.label })
+                                  : void handleRegenerate(table.id)
+                              }
                             >
                               {token ? <RefreshCw size={15} aria-hidden="true" /> : <QrCode size={15} aria-hidden="true" />}
-                              {token ? "Yenile" : "QR Oluştur"}
+                              {token ? "QR’ı Yenile" : "QR Oluştur"}
                             </Button>
                             {token ? (
                               <>
@@ -256,7 +267,7 @@ export default function TablesPage() {
                                   onClick={() => setRevokeTarget({ tableId: table.id, qrTokenId: token.id, label: table.label })}
                                 >
                                   <Ban size={15} aria-hidden="true" />
-                                  Revoke
+                                  QR’ı İptal Et
                                 </Button>
                               </>
                             ) : null}
@@ -281,18 +292,30 @@ export default function TablesPage() {
             <FormField label="Masa adı" required>
               {(controlProps) => <Input {...controlProps} value={label} onChange={(event) => setLabel(event.target.value)} required />}
             </FormField>
-            <Button className={pageStyles.primaryButton} type="submit" disabled={creating}>
-              {creating ? "Oluşturuluyor…" : "Masa Ekle"}
+            <Button className={pageStyles.createSubmit} type="submit" disabled={creating}>
+              <span>{creating ? "Masa ekleniyor…" : "Masa Ekle"}</span>
             </Button>
           </form>
         </Dialog>
       ) : null}
 
+      {refreshTarget ? (
+        <ConfirmDialog
+          title="QR Kodunu Yenile"
+          message={`"${refreshTarget.label}" masasının mevcut QR kodu iptal edilip yenisi oluşturulacak. Eski fiziksel QR etiketi artık çalışmayacak.`}
+          confirmLabel="QR’ı Yenile"
+          tone="danger"
+          confirmLoading={busyTableId === refreshTarget.tableId}
+          onConfirm={handleConfirmRefresh}
+          onCancel={() => setRefreshTarget(null)}
+        />
+      ) : null}
+
       {revokeTarget ? (
         <ConfirmDialog
-          title="QR Kodu Revoke Et"
+          title="QR Kodunu İptal Et"
           message={`"${revokeTarget.label}" masasının QR kodu iptal edilecek. Bu masadaki fiziksel QR etiketi artık çalışmayacak.`}
-          confirmLabel="Revoke Et"
+          confirmLabel="QR’ı İptal Et"
           tone="danger"
           confirmLoading={busyTableId === revokeTarget.tableId}
           onConfirm={handleConfirmRevoke}

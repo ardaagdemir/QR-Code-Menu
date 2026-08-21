@@ -1,3 +1,18 @@
+/**
+ * Calendar date (YYYY-MM-DD) in the browser's local timezone - never
+ * `date.toISOString().slice(0, 10)`, which reads the UTC calendar date instead. For a
+ * positive-offset branch timezone (e.g. Europe/Istanbul, UTC+3) that silently shifts
+ * "today" back by one day for the first hours after local midnight (and, for any
+ * date built from local y/m/d components, unconditionally - `toISOString` still
+ * re-expresses it in UTC).
+ */
+export function localIsoDate(date: Date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 /** Bölüm 19.3 kasa/KDS kartlarındaki "ne kadar süredir bekliyor" göstergesi. */
 export type WaitingUrgency = "normal" | "warning" | "danger";
 

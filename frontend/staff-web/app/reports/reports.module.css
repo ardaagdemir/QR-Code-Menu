@@ -1,16 +1,3 @@
-.devBadge {
-  display: inline-flex;
-  align-items: center;
-  min-height: 32px;
-  padding: 0 var(--space-3);
-  border: 1px solid color-mix(in srgb, var(--color-primary) 28%, var(--color-panel-border));
-  border-radius: var(--radius-full);
-  background: var(--color-primary-soft);
-  color: var(--color-primary-strong);
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
-}
-
 .filterBar {
   display: grid;
   grid-template-areas:
@@ -371,6 +358,43 @@
   border-radius: var(--radius-lg);
   background: var(--color-surface-raised);
   box-shadow: var(--shadow-sm);
+}
+
+.equationMetricWithDetails {
+  grid-template-areas:
+    "icon label"
+    "icon value"
+    "details details";
+}
+
+.expenseBreakdown {
+  grid-area: details;
+  display: grid;
+  gap: var(--space-1);
+  margin: var(--space-2) 0 0;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-panel-border);
+}
+
+.expenseBreakdown > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  color: var(--color-fg-muted);
+  font-size: var(--font-size-xs);
+}
+
+.expenseBreakdown dt,
+.expenseBreakdown dd {
+  margin: 0;
+}
+
+.expenseBreakdown dd {
+  color: var(--color-fg);
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .equationResult {

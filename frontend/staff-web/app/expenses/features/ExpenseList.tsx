@@ -1,65 +1,48 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  approveExpense,
-  formatPriceMinorUnits,
-  listExpenses,
-  rejectExpense,
-  submitExpense,
-  type StaffBranchSummary,
-  type Expense,
-} from "@/lib/api";
+import { formatPriceMinorUnits, listExpenses, type Expense } from "@/lib/api";
+import { localIsoDate } from "@/lib/time";
 import PageHeader from "@/components/ui/PageHeader";
 import Table from "@/components/ui/Table";
 import EmptyState from "@/components/ui/EmptyState";
 import ErrorState from "@/components/ui/ErrorState";
 import TableSkeleton from "@/components/ui/TableSkeleton";
 import Button from "@/components/ui/Button";
-import Badge from "@/components/ui/Badge";
 import FormField from "@/components/ui/FormField";
 import Input from "@/components/ui/Input";
-import { useToast } from "@/components/ui/ToastProvider";
 import tableStyles from "@/components/ui/Table.module.css";
 import styles from "@/styles/admin.module.css";
 import expenseStyles from "../expenses.module.css";
 
-const STATUS_LABELS: Record<string, string> = {
-  DRAFT: "Taslak",
-  SUBMITTED: "Onay Bekliyor",
-  APPROVED: "Onaylandı",
-  REJECTED: "Reddedildi",
-};
-
-function statusTone(status: string): "neutral" | "danger" | "success" {
-  if (status === "APPROVED") return "success";
-  if (status === "REJECTED") return "danger";
-  return "neutral";
-}
-
 function todayIsoDate(): string {
-  return new Date().toISOString().slice(0, 10);
+  return localIsoDate();
 }
 
 function firstDayOfMonthIsoDate(): string {
   const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+  return localIsoDate(new Date(now.getFullYear(), now.getMonth(), 1));
+}
+
+function formatExpenseDate(isoDate: string): string {
+  return new Intl.DateTimeFormat("tr-TR", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  })
+    .format(new Date(`${isoDate.slice(0, 10)}T12:00:00`))
+    .replaceAll(".", "");
 }
 
 type Props = {
-  accessibleBranches: StaffBranchSummary[];
-  isBusinessAdmin: boolean;
   refreshToken: number;
 };
 
-/** Gider Yönetimi'nin gider listesi + onay akışı paneli (product-requirements.md Section 16). */
-export default function ExpenseList({ accessibleBranches, isBusinessAdmin, refreshToken }: Props) {
-  const { showToast } = useToast();
-
+/** Gider Yönetimi'nin manuel gider listesi (product-requirements.md Section 16). */
+export default function ExpenseList({ refreshToken }: Props) {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [busyExpenseId, setBusyExpenseId] = useState<string | null>(null);
 
   const [from, setFrom] = useState(firstDayOfMonthIsoDate());
   const [to, setTo] = useState(todayIsoDate());
@@ -83,55 +66,11 @@ export default function ExpenseList({ accessibleBranches, isBusinessAdmin, refre
     setAppliedFilters({ from, to });
   }
 
-  async function handleSubmitExpense(expenseId: string) {
-    setBusyExpenseId(expenseId);
-    try {
-      await submitExpense(expenseId);
-      load();
-      showToast("Gider gönderildi.", "success");
-    } catch {
-      showToast("Gider gönderilemedi.", "error");
-    } finally {
-      setBusyExpenseId(null);
-    }
-  }
-
-  async function handleApprove(expenseId: string) {
-    setBusyExpenseId(expenseId);
-    try {
-      await approveExpense(expenseId);
-      load();
-      showToast("Gider onaylandı.", "success");
-    } catch {
-      showToast("Gider onaylanamadı.", "error");
-    } finally {
-      setBusyExpenseId(null);
-    }
-  }
-
-  async function handleReject(expenseId: string) {
-    setBusyExpenseId(expenseId);
-    try {
-      await rejectExpense(expenseId);
-      load();
-      showToast("Gider reddedildi.", "success");
-    } catch {
-      showToast("Gider reddedilemedi.", "error");
-    } finally {
-      setBusyExpenseId(null);
-    }
-  }
-
-  function branchName(branchId: string | null): string {
-    if (!branchId) return "İşletme geneli";
-    return accessibleBranches.find((b) => b.id === branchId)?.name ?? branchId;
-  }
-
   return (
     <section className={`${styles.section} ${styles.panel}`}>
-      <PageHeader title="Gider Listesi" description="Seçili tarih aralığındaki kayıtları ve onay durumlarını izleyin." />
+      <PageHeader title="Gider Listesi" description="Seçili tarih aralığındaki manuel gider kayıtlarını izleyin." />
 
-      <form className={`${styles.form} ${styles.filterBar}`} onSubmit={handleFilterSubmit}>
+      <form className={expenseStyles.filterToolbar} onSubmit={handleFilterSubmit}>
         <FormField label="Başlangıç">
           {(controlProps) => <Input {...controlProps} type="date" value={from} max={to} onChange={(event) => setFrom(event.target.value)} />}
         </FormField>
@@ -148,52 +87,32 @@ export default function ExpenseList({ accessibleBranches, isBusinessAdmin, refre
       ) : expenses.length === 0 ? (
         <EmptyState title="Bu aralıkta gider yok" />
       ) : (
-        <Table>
-          <thead>
-            <tr>
-              <th>Kategori / Tutar</th>
-              <th>Tarih</th>
-              <th>Şube</th>
-              <th>Satıcı</th>
-              <th>Durum</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {expenses.map((expense) => (
-              <tr key={expense.id}>
-                <td className={tableStyles.primary}>
-                  {expense.categoryName ?? "—"} · {formatPriceMinorUnits(expense.amountMinorUnits)}
-                </td>
-                <td className={tableStyles.muted}>{expense.incurredAt}</td>
-                <td className={tableStyles.muted}>{branchName(expense.branchId)}</td>
-                <td className={tableStyles.muted}>{expense.vendor ?? "—"}</td>
-                <td>
-                  <Badge tone={statusTone(expense.status)}>{STATUS_LABELS[expense.status] ?? expense.status}</Badge>
-                </td>
-                <td>
-                  <div className={tableStyles.actions}>
-                    {expense.status === "DRAFT" ? (
-                      <Button size="md" variant="ghost" disabled={busyExpenseId === expense.id} onClick={() => handleSubmitExpense(expense.id)}>
-                        Gönder
-                      </Button>
-                    ) : null}
-                    {expense.status === "SUBMITTED" && isBusinessAdmin ? (
-                      <>
-                        <Button size="md" variant="secondary" disabled={busyExpenseId === expense.id} onClick={() => handleApprove(expense.id)}>
-                          Onayla
-                        </Button>
-                        <Button className={expenseStyles.dangerAction} size="md" variant="ghost" disabled={busyExpenseId === expense.id} onClick={() => handleReject(expense.id)}>
-                          Reddet
-                        </Button>
-                      </>
-                    ) : null}
-                  </div>
-                </td>
+        <div className={expenseStyles.expenseTable}>
+          <Table>
+            <thead>
+              <tr>
+                <th>Kategori</th>
+                <th>Tutar</th>
+                <th>Tarih</th>
+                <th>Satıcı</th>
+                <th className={expenseStyles.actionsHeader}>İşlemler</th>
               </tr>
-            ))}
-          </tbody>
-        </Table>
+            </thead>
+            <tbody>
+              {expenses.map((expense) => {
+                return (
+                  <tr key={expense.id}>
+                    <td className={tableStyles.muted}>{expense.categoryName ?? "—"}</td>
+                    <td className={expenseStyles.templateAmount}>{formatPriceMinorUnits(expense.amountMinorUnits)}</td>
+                    <td className={tableStyles.muted}>{formatExpenseDate(expense.incurredAt)}</td>
+                    <td className={tableStyles.muted}>{expense.vendor?.trim() || "—"}</td>
+                    <td className={`${expenseStyles.actionsCell} ${tableStyles.muted}`}>—</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </Table>
+        </div>
       )}
     </section>
   );

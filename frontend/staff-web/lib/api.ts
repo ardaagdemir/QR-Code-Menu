@@ -79,6 +79,8 @@ export type StaffOrderItem = {
   status: string;
   unitPriceMinorUnits: number;
   lineTotalMinorUnits: number;
+  refundedQuantity: number;
+  remainingRefundableQuantity: number;
 };
 
 export type RefundItem = {
@@ -90,7 +92,7 @@ export type RefundItem = {
 export type Refund = {
   refundId: string;
   orderId: string;
-  status: string;
+  status: "REQUESTED" | "PROCESSING" | "COMPLETED" | "FAILED";
   totalAmountMinorUnits: number;
   createdAt: string;
   items: RefundItem[];
@@ -204,6 +206,34 @@ export async function markOrderReady(orderId: string): Promise<OrderControlOrder
 /** EventSource must be opened with { withCredentials: true } so the qrmenu_staff_session cookie rides along cross-origin. */
 export function buildOrderStreamUrl(): string {
   return `${getApiBaseUrl()}/api/staff/orders/stream`;
+}
+
+// ---------------------------------------------------------------------------
+// Siparişler (order history) - completed/rejected orders stay reachable after they
+// drop off the Kasa board, which only ever shows active (AWAITING_STORE_ACCEPTANCE/
+// IN_KITCHEN/READY) orders.
+// ---------------------------------------------------------------------------
+
+export type OrderHistoryOrder = {
+  orderId: string;
+  orderNumber: number | null;
+  status: string;
+  totalMinorUnits: number;
+  rejectionReasonCode: string | null;
+  rejectionNote: string | null;
+  tableLabel: string | null;
+  createdAt: string;
+  completedAt: string | null;
+  latestRefundStatus: "REQUESTED" | "PROCESSING" | "COMPLETED" | "FAILED" | null;
+  items: OrderControlItem[];
+};
+
+/** Defaults to COMPLETED+REJECTED_BY_STORE when statuses is omitted - from/to are calendar dates (YYYY-MM-DD). */
+export async function getOrderHistory(statuses: string[] | undefined, from: string, to: string): Promise<OrderHistoryOrder[]> {
+  const statusParams = (statuses ?? []).map((status) => `status=${encodeURIComponent(status)}`).join("&");
+  return apiFetch(
+    `/api/staff/orders/history?${statusParams ? `${statusParams}&` : ""}from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+  );
 }
 
 export function formatPriceMinorUnits(priceMinorUnits: number): string {
@@ -394,16 +424,21 @@ export async function listProductsForCategory(categoryId: string): Promise<Produ
   return apiFetch(`/api/staff/menu-categories/${encodeURIComponent(categoryId)}/products`);
 }
 
-export async function createProduct(
-  categoryId: string,
-  name: string,
-  basePriceMinorUnits: number,
-  taxRatePercent: number,
-  imageUrl: string | null = null,
-): Promise<ProductAdmin> {
+export type CreateProductInput = {
+  categoryId: string;
+  name: string;
+  description: string | null;
+  basePriceMinorUnits: number;
+  taxRatePercent: number;
+  imageUrl: string | null;
+  estimatedPreparationMinutes: number | null;
+  allergens: Allergen[];
+};
+
+export async function createProduct(input: CreateProductInput): Promise<ProductAdmin> {
   return apiFetch("/api/staff/products", {
     method: "POST",
-    body: JSON.stringify({ categoryId, name, basePriceMinorUnits, taxRatePercent, imageUrl }),
+    body: JSON.stringify(input),
   });
 }
 
@@ -590,7 +625,7 @@ export async function updateBusinessContact(
 }
 
 // ---------------------------------------------------------------------------
-// Gap-analysis #7: bulk menu assignment, staff announcements, chain comparison
+// Gap-analysis #7: bulk menu assignment and chain comparison
 // ---------------------------------------------------------------------------
 
 export type BranchAssignmentTarget = "ALL_BRANCHES" | "SELECTED_BRANCHES";
@@ -604,41 +639,6 @@ export async function bulkAssignProductToBranches(
     method: "POST",
     body: JSON.stringify({ target, branchIds }),
   });
-}
-
-export type StaffAnnouncement = {
-  id: string;
-  businessId: string;
-  title: string;
-  message: string;
-  target: BranchAssignmentTarget;
-  branchIds: string[];
-  createdBy: string;
-  createdAt: string;
-  expiresAt: string | null;
-};
-
-export async function listAnnouncements(): Promise<StaffAnnouncement[]> {
-  return apiFetch("/api/staff/announcements");
-}
-
-export async function listActiveAnnouncements(): Promise<StaffAnnouncement[]> {
-  return apiFetch("/api/staff/announcements/active");
-}
-
-export async function createAnnouncement(
-  title: string,
-  message: string,
-  expiresAt: string | null,
-): Promise<StaffAnnouncement> {
-  return apiFetch("/api/staff/announcements", {
-    method: "POST",
-    body: JSON.stringify({ title, message, expiresAt }),
-  });
-}
-
-export async function endAnnouncement(announcementId: string): Promise<StaffAnnouncement> {
-  return apiFetch(`/api/staff/announcements/${encodeURIComponent(announcementId)}/end`, { method: "POST" });
 }
 
 export type BranchComparisonRow = {
@@ -841,8 +841,6 @@ export async function deactivateExpenseCategory(categoryId: string): Promise<voi
   await apiFetch(`/api/staff/expense-categories/${encodeURIComponent(categoryId)}/deactivate`, { method: "POST" });
 }
 
-export type ExpenseStatus = "DRAFT" | "SUBMITTED" | "APPROVED" | "REJECTED";
-
 export type Expense = {
   id: string;
   branchId: string | null;
@@ -853,10 +851,6 @@ export type Expense = {
   vendor: string | null;
   description: string | null;
   receiptImageUrl: string | null;
-  status: ExpenseStatus;
-  approvedByStaffUserId: string | null;
-  approvedAt: string | null;
-  sourceTemplateId: string | null;
   createdAt: string;
 };
 
@@ -883,20 +877,8 @@ export async function uploadReceiptImage(file: File): Promise<string> {
   return uploadMedia("/api/staff/media/receipts", file);
 }
 
-export async function updateExpenseDraft(expenseId: string, input: Omit<ExpenseInput, "branchId">): Promise<Expense> {
+export async function updateExpense(expenseId: string, input: Omit<ExpenseInput, "branchId">): Promise<Expense> {
   return apiFetch(`/api/staff/expenses/${encodeURIComponent(expenseId)}`, { method: "POST", body: JSON.stringify(input) });
-}
-
-export async function submitExpense(expenseId: string): Promise<Expense> {
-  return apiFetch(`/api/staff/expenses/${encodeURIComponent(expenseId)}/submit`, { method: "POST" });
-}
-
-export async function approveExpense(expenseId: string): Promise<Expense> {
-  return apiFetch(`/api/staff/expenses/${encodeURIComponent(expenseId)}/approve`, { method: "POST" });
-}
-
-export async function rejectExpense(expenseId: string): Promise<Expense> {
-  return apiFetch(`/api/staff/expenses/${encodeURIComponent(expenseId)}/reject`, { method: "POST" });
 }
 
 export type RecurringExpenseTemplate = {
@@ -924,6 +906,8 @@ export type RecurringExpenseTemplateInput = {
   endDate: string | null;
 };
 
+export type RecurringExpenseTemplateUpdateInput = Omit<RecurringExpenseTemplateInput, "branchId">;
+
 export async function listRecurringExpenseTemplates(): Promise<RecurringExpenseTemplate[]> {
   return apiFetch("/api/staff/recurring-expense-templates");
 }
@@ -932,8 +916,26 @@ export async function createRecurringExpenseTemplate(input: RecurringExpenseTemp
   return apiFetch("/api/staff/recurring-expense-templates", { method: "POST", body: JSON.stringify(input) });
 }
 
+export async function updateRecurringExpenseTemplate(
+  templateId: string,
+  input: RecurringExpenseTemplateUpdateInput,
+): Promise<RecurringExpenseTemplate> {
+  return apiFetch(`/api/staff/recurring-expense-templates/${encodeURIComponent(templateId)}`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteRecurringExpenseTemplate(templateId: string): Promise<void> {
+  await apiFetch(`/api/staff/recurring-expense-templates/${encodeURIComponent(templateId)}`, { method: "DELETE" });
+}
+
 export async function deactivateRecurringExpenseTemplate(templateId: string): Promise<void> {
   await apiFetch(`/api/staff/recurring-expense-templates/${encodeURIComponent(templateId)}/deactivate`, { method: "POST" });
+}
+
+export async function activateRecurringExpenseTemplate(templateId: string): Promise<void> {
+  await apiFetch(`/api/staff/recurring-expense-templates/${encodeURIComponent(templateId)}/activate`, { method: "POST" });
 }
 
 /** Section 17: kâr olarak sunulmaz - UI etiketi her zaman "Yönetimsel Net Sonuç" olmalı. */
@@ -945,7 +947,9 @@ export type OperatingResult = {
   grossSalesMinorUnits: number;
   refundTotalMinorUnits: number;
   netSalesMinorUnits: number;
-  approvedExpensesMinorUnits: number;
+  manualExpensesMinorUnits: number;
+  recurringExpensesMinorUnits: number;
+  totalExpensesMinorUnits: number;
   netOperatingResultMinorUnits: number;
 };
 

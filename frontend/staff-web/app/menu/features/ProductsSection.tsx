@@ -6,7 +6,6 @@ import {
   createProduct,
   listBranchProducts,
   listProductsForCategory,
-  uploadProductImage,
   type BranchProductAdmin,
   type ProductAdmin,
 } from "@/lib/api";
@@ -17,11 +16,9 @@ import ErrorState from "@/components/ui/ErrorState";
 import TableSkeleton from "@/components/ui/TableSkeleton";
 import Button from "@/components/ui/Button";
 import Dialog from "@/components/ui/Dialog";
-import FormField from "@/components/ui/FormField";
-import Input from "@/components/ui/Input";
-import FileUploadField from "@/components/ui/FileUploadField";
 import { useToast } from "@/components/ui/ToastProvider";
 import ProductRow from "./ProductRow";
+import ProductFormFields, { emptyProductFormValues, type ProductFormValues } from "./ProductFormFields";
 import styles from "@/styles/admin.module.css";
 import menuStyles from "../menu.module.css";
 
@@ -41,10 +38,7 @@ export default function ProductsSection({ categoryId }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   const [createOpen, setCreateOpen] = useState(false);
-  const [productName, setProductName] = useState("");
-  const [productPrice, setProductPrice] = useState("");
-  const [productTax, setProductTax] = useState("10");
-  const [productImageUrl, setProductImageUrl] = useState<string | null>(null);
+  const [formValues, setFormValues] = useState<ProductFormValues>(emptyProductFormValues);
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -66,22 +60,40 @@ export default function ProductsSection({ categoryId }: Props) {
 
   async function handleCreateProduct(event: React.FormEvent) {
     event.preventDefault();
-    if (!productName.trim()) {
+    if (!formValues.name.trim()) {
       return;
     }
-    const priceMinorUnits = Math.round(Number(productPrice.replace(",", ".")) * 100);
-    const taxRatePercent = Number(productTax);
-    if (!Number.isFinite(priceMinorUnits) || priceMinorUnits < 0 || !Number.isInteger(taxRatePercent)) {
+    const priceMinorUnits = Math.round(Number(formValues.price.replace(",", ".")) * 100);
+    const taxRatePercent = Number(formValues.taxRate);
+    const preparationMinutes = formValues.preparationMinutes.trim() === "" ? null : Number(formValues.preparationMinutes);
+    if (
+      formValues.price.trim() === "" ||
+      !Number.isFinite(priceMinorUnits) ||
+      priceMinorUnits < 0 ||
+      !Number.isInteger(taxRatePercent) ||
+      taxRatePercent < 0
+    ) {
       setFormError("Geçerli bir fiyat ve KDV oranı girin.");
+      return;
+    }
+    if (preparationMinutes !== null && (!Number.isInteger(preparationMinutes) || preparationMinutes < 0)) {
+      setFormError("Hazırlık süresi sıfır veya pozitif bir tam sayı olmalı.");
       return;
     }
     setCreating(true);
     setFormError(null);
     try {
-      const product = await createProduct(categoryId, productName.trim(), priceMinorUnits, taxRatePercent, productImageUrl);
-      setProductName("");
-      setProductPrice("");
-      setProductImageUrl(null);
+      const product = await createProduct({
+        categoryId,
+        name: formValues.name.trim(),
+        description: formValues.description.trim() || null,
+        basePriceMinorUnits: priceMinorUnits,
+        taxRatePercent,
+        imageUrl: formValues.imageUrl,
+        estimatedPreparationMinutes: preparationMinutes,
+        allergens: formValues.allergens,
+      });
+      setFormValues(emptyProductFormValues());
       setProducts((current) => [...current, product]);
       setCreateOpen(false);
       showToast("Ürün oluşturuldu.", "success");
@@ -106,7 +118,13 @@ export default function ProductsSection({ categoryId }: Props) {
         title="Ürünler"
         description="Seçili kategorideki ürün detaylarını ve şube uygunluğunu yönetin."
         actions={
-          <Button onClick={() => setCreateOpen(true)}>
+          <Button
+            onClick={() => {
+              setFormValues(emptyProductFormValues());
+              setFormError(null);
+              setCreateOpen(true);
+            }}
+          >
             <Plus size={16} aria-hidden="true" /> Ürün Ekle
           </Button>
         }
@@ -144,36 +162,21 @@ export default function ProductsSection({ categoryId }: Props) {
       )}
 
       {createOpen ? (
-        <Dialog onClose={() => setCreateOpen(false)} labelledBy={dialogTitleId}>
+        <Dialog onClose={() => setCreateOpen(false)} labelledBy={dialogTitleId} size="lg">
           <h2 id={dialogTitleId} className={styles.sectionTitle}>
             Yeni Ürün
           </h2>
-          <form className={styles.section} onSubmit={handleCreateProduct}>
-            <FormField label="Ürün adı" required>
-              {(controlProps) => <Input {...controlProps} value={productName} onChange={(event) => setProductName(event.target.value)} required />}
-            </FormField>
-            <FormField label="Fiyat (₺)" required>
-              {(controlProps) => (
-                <Input {...controlProps} inputMode="decimal" value={productPrice} onChange={(event) => setProductPrice(event.target.value)} required />
-              )}
-            </FormField>
-            <FormField label="KDV %" required>
-              {(controlProps) => (
-                <Input {...controlProps} inputMode="numeric" value={productTax} onChange={(event) => setProductTax(event.target.value)} required />
-              )}
-            </FormField>
-            <FileUploadField
-              label="Ürün görseli"
-              hint="JPEG, PNG veya WEBP - en fazla 5MB."
-              accept="image/jpeg,image/png,image/webp"
-              value={productImageUrl}
-              onChange={setProductImageUrl}
-              upload={uploadProductImage}
-            />
+          <form className={`${styles.section} ${menuStyles.productDialogForm}`} onSubmit={handleCreateProduct}>
+            <ProductFormFields values={formValues} onChange={setFormValues} mode="create" />
             {formError ? <ErrorState message={formError} /> : null}
-            <Button type="submit" disabled={creating}>
-              {creating ? "Oluşturuluyor…" : "Ürün Ekle"}
-            </Button>
+            <div className={menuStyles.productFormActions}>
+              <Button type="button" variant="secondary" disabled={creating} onClick={() => setCreateOpen(false)}>
+                Vazgeç
+              </Button>
+              <Button type="submit" disabled={creating}>
+                {creating ? "Oluşturuluyor…" : "Ürün Ekle"}
+              </Button>
+            </div>
           </form>
         </Dialog>
       ) : null}

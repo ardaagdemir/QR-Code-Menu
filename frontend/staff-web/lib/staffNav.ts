@@ -1,9 +1,9 @@
 import {
   BarChart3,
   BookOpen,
+  ClipboardList,
   History,
   LayoutDashboard,
-  Megaphone,
   Scale,
   Settings,
   ShoppingBag,
@@ -65,6 +65,14 @@ export const NAV_GROUPS: NavGroup[] = [
         roles: ["PLATFORM_ADMIN", "BUSINESS_ADMIN", "BRANCH_MANAGER", "CASHIER"],
         href: (context) => (context.activeBranchId ? "/cashier" : null),
         icon: ShoppingBag,
+      },
+      {
+        key: "orders",
+        label: "Siparişler",
+        matchPrefix: "/orders",
+        roles: ["PLATFORM_ADMIN", "BUSINESS_ADMIN", "BRANCH_MANAGER", "CASHIER"],
+        href: (context) => (context.activeBranchId ? "/orders" : null),
+        icon: ClipboardList,
       },
     ],
   },
@@ -153,14 +161,6 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     title: "Sistem",
     items: [
-      {
-        key: "announcements",
-        label: "Duyurular",
-        matchPrefix: "/announcements",
-        roles: ["PLATFORM_ADMIN", "BUSINESS_ADMIN"],
-        href: () => "/announcements",
-        icon: Megaphone,
-      },
       {
         key: "audit",
         label: "Denetim Kaydı",

@@ -136,15 +136,6 @@
   background: currentColor;
 }
 
-.qrToken {
-  max-width: 230px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: var(--font-size-xs);
-}
-
 .secondaryButton,
 .actionButton,
 .revokeButton {
@@ -175,12 +166,12 @@
   background: #fff0ef !important;
 }
 
+.createSubmit {
+  width: 100%;
+}
+
 @media (max-width: 760px) {
   .panelHeader {
     padding: var(--space-4);
-  }
-
-  .qrToken {
-    max-width: 150px;
   }
 }

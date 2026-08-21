@@ -10,6 +10,7 @@ import {
   type BranchSalesReport,
   type StaffContext,
 } from "@/lib/api";
+import { localIsoDate } from "@/lib/time";
 import AppShell from "@/components/layout/AppShell";
 import KpiCard from "@/components/ui/KpiCard";
 import BarList from "@/components/ui/BarList";
@@ -17,10 +18,6 @@ import PageHeader from "@/components/ui/PageHeader";
 import Skeleton from "@/components/ui/Skeleton";
 import adminStyles from "@/styles/admin.module.css";
 import styles from "./page.module.css";
-
-function todayIsoDate(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 /** Permission.REPORT_VIEW (StaffRole.java) - every business role has report visibility. */
 const REPORT_ROLES: StaffContext["role"][] = ["PLATFORM_ADMIN", "BUSINESS_ADMIN", "BRANCH_MANAGER", "CASHIER"];
@@ -46,7 +43,7 @@ export default function DashboardPage() {
           return;
         }
         setReportsLoading(true);
-        const today = todayIsoDate();
+        const today = localIsoDate();
         if (staffContext.activeBranchId) {
           getBranchSalesReport(today, today)
             .then(setBranchReport)

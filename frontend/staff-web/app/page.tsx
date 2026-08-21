@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { CircleAlert, Eye, EyeOff, LoaderCircle } from "lucide-react";
 import { login } from "@/lib/api";
 import Button from "@/components/ui/Button";
+import Input from "@/components/ui/Input";
 import styles from "./page.module.css";
 
 /**
@@ -17,6 +19,7 @@ export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordVisible, setPasswordVisible] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -36,44 +39,84 @@ export default function LoginPage() {
 
   return (
     <main className={styles.page}>
-      <form className={styles.card} onSubmit={handleSubmit}>
-        <h1 className={styles.title}>Personel Girişi</h1>
-        <p className={styles.subtitle}>QR Menü yönetim ve kasa ekranlarına erişmek için giriş yapın.</p>
-
-        <div className={styles.field}>
-          <label className={styles.label} htmlFor="email">
-            E-posta
-          </label>
-          <input
-            id="email"
-            type="email"
-            className={styles.input}
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            required
-          />
+      <section className={styles.card} aria-labelledby="login-title">
+        <div className={styles.brand} aria-label="QR Menü">
+          <span className={styles.brandMark} aria-hidden="true">
+            Q
+          </span>
+          <span className={styles.brandWordmark}>QR Menü</span>
         </div>
 
-        <div className={styles.field}>
-          <label className={styles.label} htmlFor="password">
-            Şifre
-          </label>
-          <input
-            id="password"
-            type="password"
-            className={styles.input}
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            required
-          />
+        <div className={styles.heading}>
+          <h1 id="login-title" className={styles.title}>
+            Personel Girişi
+          </h1>
+          <p className={styles.subtitle}>QR Menü yönetim ve kasa ekranlarına erişmek için giriş yapın.</p>
         </div>
 
-        {error ? <p className={styles.error}>{error}</p> : null}
+        <form className={styles.form} onSubmit={handleSubmit} aria-busy={submitting}>
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor="email">
+              E-posta
+            </label>
+            <Input
+              id="email"
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              autoComplete="email"
+              disabled={submitting}
+              required
+            />
+          </div>
 
-        <Button type="submit" size="lg" className={styles.submit} disabled={submitting}>
-          {submitting ? "Giriş yapılıyor…" : "Giriş Yap"}
-        </Button>
-      </form>
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor="password">
+              Şifre
+            </label>
+            <div className={styles.passwordField}>
+              <Input
+                id="password"
+                type={passwordVisible ? "text" : "password"}
+                className={styles.passwordInput}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                autoComplete="current-password"
+                disabled={submitting}
+                required
+              />
+              <button
+                type="button"
+                className={styles.passwordToggle}
+                onClick={() => setPasswordVisible((visible) => !visible)}
+                aria-label={passwordVisible ? "Şifreyi gizle" : "Şifreyi göster"}
+                aria-pressed={passwordVisible}
+                disabled={submitting}
+              >
+                {passwordVisible ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
+              </button>
+            </div>
+          </div>
+
+          {error ? (
+            <div className={styles.error} role="alert">
+              <CircleAlert aria-hidden="true" />
+              <span>{error}</span>
+            </div>
+          ) : null}
+
+          <Button type="submit" size="lg" className={styles.submit} disabled={submitting}>
+            {submitting ? (
+              <>
+                <LoaderCircle className={styles.spinner} aria-hidden="true" />
+                Giriş yapılıyor…
+              </>
+            ) : (
+              "Giriş Yap"
+            )}
+          </Button>
+        </form>
+      </section>
     </main>
   );
 }

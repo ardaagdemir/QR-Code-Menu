@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
-import { Plus, Tags } from "lucide-react";
+import { Plus, Tags, X } from "lucide-react";
 import { createExpenseCategory, deactivateExpenseCategory, type ExpenseCategory } from "@/lib/api";
 import PageHeader from "@/components/ui/PageHeader";
 import Badge from "@/components/ui/Badge";
@@ -76,7 +76,7 @@ export default function ExpenseCategories({ categories, isBusinessAdmin, onCateg
         title="Gider Kategorileri"
         description="Kayıtlarda kullanılabilecek aktif kategoriler."
         actions={
-          <Button onClick={() => setCreateOpen(true)}>
+          <Button variant="secondary" onClick={() => setCreateOpen(true)}>
             <Plus size={16} aria-hidden="true" /> Kategori Ekle
           </Button>
         }
@@ -92,11 +92,15 @@ export default function ExpenseCategories({ categories, isBusinessAdmin, onCateg
               {isBusinessAdmin ? (
                 <button
                   type="button"
-                  onClick={() => setDeactivateTarget(category)}
-                  className={styles.tagRemove}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setDeactivateTarget(category);
+                  }}
+                  className={`${styles.tagRemove} ${expenseStyles.categoryRemove}`}
                   aria-label={`${category.name} kategorisini devre dışı bırak`}
+                  title={`${category.name} kategorisini devre dışı bırak`}
                 >
-                  ×
+                  <X size={13} aria-hidden="true" />
                 </button>
               ) : null}
             </Badge>

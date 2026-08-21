@@ -17,6 +17,16 @@
   border-radius: 0;
 }
 
+.panelBody :global(th) {
+  padding-top: 14px;
+  padding-bottom: 14px;
+}
+
+.panelBody :global(td) {
+  padding-top: 16px;
+  padding-bottom: 16px;
+}
+
 .identity {
   display: flex;
   align-items: center;
@@ -42,6 +52,67 @@
 
 .dangerAction:hover {
   background: var(--color-danger-bg) !important;
+}
+
+.actionsHeader,
+.actionsCell {
+  text-align: right !important;
+}
+
+.actionsCell {
+  width: 224px;
+  min-width: 224px;
+  white-space: nowrap;
+}
+
+.staffActions {
+  min-height: var(--tap-target-min);
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+}
+
+.passwordField {
+  position: relative;
+}
+
+.passwordInput {
+  padding-right: 52px;
+}
+
+.passwordToggle {
+  position: absolute;
+  top: 50%;
+  right: var(--space-1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-fg-muted);
+  cursor: pointer;
+  transform: translateY(-50%);
+  transition:
+    color var(--transition-fast),
+    background var(--transition-fast);
+}
+
+.passwordToggle svg {
+  width: 18px;
+  height: 18px;
+}
+
+.passwordToggle:hover:not(:disabled) {
+  background: var(--color-surface-soft);
+  color: var(--color-fg);
+}
+
+.passwordToggle:disabled {
+  cursor: default;
+  opacity: 0.45;
 }
 
 @media (max-width: 640px) {

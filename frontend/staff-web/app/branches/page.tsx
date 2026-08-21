@@ -42,6 +42,34 @@ const DAY_LABELS: Record<DayOfWeek, string> = {
 
 const DAYS_OF_WEEK: DayOfWeek[] = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
 
+const IANA_TIMEZONE_OPTIONS = [
+  "UTC",
+  "Europe/Istanbul",
+  "Europe/Athens",
+  "Europe/Berlin",
+  "Europe/Brussels",
+  "Europe/Bucharest",
+  "Europe/Helsinki",
+  "Europe/London",
+  "Europe/Madrid",
+  "Europe/Moscow",
+  "Europe/Paris",
+  "Europe/Rome",
+  "Europe/Vienna",
+  "Europe/Warsaw",
+  "Asia/Baku",
+  "Asia/Dubai",
+  "Asia/Jerusalem",
+  "Asia/Qatar",
+  "Asia/Riyadh",
+  "Asia/Tbilisi",
+  "Asia/Tehran",
+  "America/New_York",
+  "America/Chicago",
+  "America/Denver",
+  "America/Los_Angeles",
+];
+
 function defaultHoursForDay(dayOfWeek: DayOfWeek): BranchBusinessHoursEntry {
   return { dayOfWeek, openingTime: null, closingTime: null, closed: false };
 }
@@ -216,14 +244,37 @@ export default function BranchSettingsPage() {
                   <FormField label="Adres">
                     {(controlProps) => <Input {...controlProps} value={addressInput} onChange={(event) => setAddressInput(event.target.value)} />}
                   </FormField>
-                  <FormField label="Saat dilimi" hint="Boşsa işletme varsayılanı kullanılır.">
+                  <FormField label="Saat dilimi" hint="Yazarak arayın veya listeden seçin. Boşsa işletme varsayılanı kullanılır.">
                     {(controlProps) => (
-                      <Input {...controlProps} placeholder="Europe/Istanbul" value={timezoneInput} onChange={(event) => setTimezoneInput(event.target.value)} />
+                      <>
+                        <Input
+                          {...controlProps}
+                          list={`${controlProps.id}-timezones`}
+                          autoComplete="off"
+                          placeholder="Europe/Istanbul"
+                          value={timezoneInput}
+                          onChange={(event) => setTimezoneInput(event.target.value)}
+                        />
+                        <datalist id={`${controlProps.id}-timezones`}>
+                          {IANA_TIMEZONE_OPTIONS.map((timezone) => <option key={timezone} value={timezone} />)}
+                        </datalist>
+                      </>
                     )}
                   </FormField>
-                  <FormField label="Kasa kabul süresi" hint="Dakika">
+                  <FormField label="Kasa kabul süresi">
                     {(controlProps) => (
-                      <Input {...controlProps} type="number" min={1} step={1} value={timeoutMinutesInput} onChange={(event) => setTimeoutMinutesInput(event.target.value)} />
+                      <div className={pageStyles.suffixInputWrap}>
+                        <Input
+                          {...controlProps}
+                          className={pageStyles.suffixInput}
+                          type="number"
+                          min={1}
+                          step={1}
+                          value={timeoutMinutesInput}
+                          onChange={(event) => setTimeoutMinutesInput(event.target.value)}
+                        />
+                        <span className={pageStyles.inputSuffix} aria-hidden="true">dk</span>
+                      </div>
                     )}
                   </FormField>
                 </div>
@@ -245,12 +296,34 @@ export default function BranchSettingsPage() {
               </div>
               <div className={pageStyles.hoursWrap}>
                 <Table>
-                  <thead><tr><th>Gün</th><th>Kapalı</th><th>Açılış</th><th>Kapanış</th></tr></thead>
+                  <colgroup>
+                    <col className={pageStyles.dayColumn} />
+                    <col className={pageStyles.statusColumn} />
+                    <col className={pageStyles.timeColumn} />
+                    <col className={pageStyles.timeColumn} />
+                  </colgroup>
+                  <thead><tr><th>Gün</th><th className={pageStyles.statusCell}>Durum</th><th>Açılış</th><th>Kapanış</th></tr></thead>
                   <tbody>
                     {hours.map((entry) => (
                       <tr key={entry.dayOfWeek}>
                         <td className={tableStyles.primary}>{DAY_LABELS[entry.dayOfWeek]}</td>
-                        <td><input className={pageStyles.closedCheckbox} aria-label={`${DAY_LABELS[entry.dayOfWeek]} kapalı`} type="checkbox" checked={entry.closed} onChange={(event) => updateDay(entry.dayOfWeek, { closed: event.target.checked })} /></td>
+                        <td className={pageStyles.statusCell}>
+                          <div className={pageStyles.hoursStatusControl}>
+                            <span className={entry.closed ? pageStyles.hoursStatusClosed : pageStyles.hoursStatusOpen}>
+                              {entry.closed ? "Kapalı" : "Açık"}
+                            </span>
+                            <label className={pageStyles.switch}>
+                              <input
+                                type="checkbox"
+                                role="switch"
+                                aria-label={`${DAY_LABELS[entry.dayOfWeek]} çalışma durumu`}
+                                checked={!entry.closed}
+                                onChange={(event) => updateDay(entry.dayOfWeek, { closed: !event.target.checked })}
+                              />
+                              <span className={pageStyles.switchTrack} aria-hidden="true" />
+                            </label>
+                          </div>
+                        </td>
                         <td><Input aria-label={`${DAY_LABELS[entry.dayOfWeek]} açılış saati`} type="time" className={pageStyles.timeInput} disabled={entry.closed} value={entry.openingTime?.slice(0, 5) ?? ""} onChange={(event) => updateDay(entry.dayOfWeek, { openingTime: event.target.value || null })} /></td>
                         <td><Input aria-label={`${DAY_LABELS[entry.dayOfWeek]} kapanış saati`} type="time" className={pageStyles.timeInput} disabled={entry.closed} value={entry.closingTime?.slice(0, 5) ?? ""} onChange={(event) => updateDay(entry.dayOfWeek, { closingTime: event.target.value || null })} /></td>
                       </tr>

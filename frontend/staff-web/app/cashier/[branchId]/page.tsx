@@ -36,7 +36,7 @@ import {
   type KitchenFinancialSummary,
   type OrderControlOrder,
 } from "@/lib/api";
-import { formatElapsedMinutes, waitingUrgency } from "@/lib/time";
+import { formatElapsedMinutes, localIsoDate, waitingUrgency } from "@/lib/time";
 import { playCriticalOrderAlert } from "@/lib/alertSound";
 import AppShell from "@/components/layout/AppShell";
 import Button from "@/components/ui/Button";
@@ -62,13 +62,6 @@ function formatPreparationDuration(totalSeconds: number): string {
     return `${totalSeconds} sn`;
   }
   return `${Math.round(totalSeconds / 60)} dk`;
-}
-
-function localIsoDate(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
 }
 
 function matchesSearch(order: OrderControlOrder, query: string): boolean {

@@ -1,6 +1,6 @@
 .overviewGrid {
   display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.55fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-5);
   align-items: stretch;
 }
@@ -10,7 +10,6 @@
 }
 
 .actionPanel {
-  justify-content: center;
   background:
     linear-gradient(135deg, var(--color-primary-soft), transparent 72%),
     var(--color-surface-raised);
@@ -24,6 +23,47 @@
   align-content: flex-start;
 }
 
+.categoryRemove {
+  width: 26px;
+  height: 26px;
+  margin-left: var(--space-2);
+  border: 1px solid transparent;
+}
+
+.categoryRemove:hover,
+.categoryRemove:focus-visible {
+  border-color: color-mix(in srgb, var(--color-danger) 25%, transparent);
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+}
+
+.filterToolbar {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-panel-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-soft);
+}
+
+.filterToolbar > div {
+  flex: 0 1 180px;
+}
+
+.filterToolbar > button {
+  flex: 0 0 auto;
+}
+
+.actionsHeader,
+.actionsCell {
+  text-align: right !important;
+}
+
+.actionsCell > div {
+  flex-wrap: nowrap;
+}
+
 .dangerAction {
   color: var(--color-danger) !important;
 }
@@ -32,8 +72,82 @@
   background: var(--color-danger-bg) !important;
 }
 
+.recurringTable > div > table {
+  min-width: 1120px;
+}
+
+.expenseTable > div > table {
+  min-width: 720px;
+}
+
+.templateAmount {
+  color: var(--color-fg);
+  font-weight: var(--font-weight-bold);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.templateName {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recurrenceInfo {
+  color: var(--color-fg);
+  white-space: nowrap;
+}
+
+.recurrenceInfo span {
+  margin: 0 var(--space-1);
+  color: var(--color-primary);
+}
+
+.templateForm {
+  margin-top: var(--space-4);
+}
+
+.templateFormGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.formActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+
 @media (max-width: 900px) {
   .overviewGrid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .filterToolbar {
+    flex-wrap: wrap;
+  }
+
+  .filterToolbar > div {
+    flex: 1 1 140px;
+  }
+
+  .filterToolbar > button {
+    width: 100%;
+  }
+
+  .templateFormGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .formActions {
+    flex-direction: column-reverse;
+  }
+
+  .formActions button {
+    width: 100%;
   }
 }

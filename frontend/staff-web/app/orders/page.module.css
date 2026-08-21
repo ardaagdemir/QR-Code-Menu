@@ -1,0 +1,177 @@
+.page {
+  width: 100%;
+  max-width: var(--container-width-desktop);
+  min-height: 100%;
+  margin: 0 auto;
+  padding: 26px 30px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.searchCard {
+  border: 1px solid var(--color-panel-border);
+  border-radius: 12px;
+  background: var(--color-surface-raised);
+  box-shadow: var(--shadow-panel);
+  padding: 18px 20px;
+}
+
+.searchRow {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.searchField {
+  flex: 1;
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.searchLabel {
+  color: var(--color-fg);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+}
+
+.searchInputWrap {
+  position: relative;
+}
+
+.searchInputWrap > svg {
+  position: absolute;
+  left: var(--space-3);
+  top: 50%;
+  z-index: 1;
+  color: var(--color-fg-muted);
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.searchInput {
+  padding-left: 40px;
+}
+
+.searchError {
+  margin-top: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--color-danger) 20%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-danger) 5%, var(--color-surface-raised));
+  color: var(--color-danger);
+  font-size: var(--font-size-sm);
+}
+
+.numericCell {
+  text-align: right !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.orderNumberCell {
+  font-weight: var(--font-weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+
+.clickableRow {
+  cursor: pointer;
+}
+
+.clickableRow:hover {
+  background: var(--color-surface-soft);
+}
+
+.detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5);
+}
+
+.detailHeader {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.detailIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 9px;
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+
+.detailTitle {
+  color: var(--color-fg);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+}
+
+.detailBadges {
+  margin-top: var(--space-2);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.detailMeta {
+  color: var(--color-fg-muted);
+  font-size: var(--font-size-sm);
+}
+
+.detailItems {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--color-panel-border);
+  border-bottom: 1px solid var(--color-panel-border);
+}
+
+.detailItemRow {
+  color: var(--color-fg);
+  font-size: var(--font-size-sm);
+}
+
+.detailTotal {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.detailTotal span {
+  color: var(--color-fg-muted);
+  font-size: var(--font-size-sm);
+}
+
+.detailTotal strong {
+  color: var(--color-fg);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 640px) {
+  .page {
+    padding: var(--space-4);
+    gap: var(--space-4);
+  }
+
+  .searchCard {
+    padding: var(--space-4);
+  }
+
+  .searchRow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

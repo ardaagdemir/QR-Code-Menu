@@ -1,56 +1,189 @@
 .page {
-  min-height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  min-height: 100svh;
+  display: grid;
+  place-items: center;
   padding: var(--space-6);
+  background: var(--color-page);
+  color: var(--color-fg);
 }
 
 .card {
   width: 100%;
-  max-width: 360px;
+  max-width: 420px;
+  padding: var(--space-8);
+  border: 1px solid var(--color-panel-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-raised);
+  box-shadow: var(--shadow-panel);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-6);
+}
+
+.brandMark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: var(--radius-md);
+  background: var(--color-primary);
+  color: var(--color-primary-fg);
+  font-family: var(--font-family-display);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-bold);
+}
+
+.brandWordmark {
+  font-family: var(--font-family-display);
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: -0.01em;
+}
+
+.heading {
+  text-align: center;
 }
 
 .title {
-  font-size: var(--font-size-xl);
+  font-family: var(--font-family-display);
+  font-size: var(--font-size-2xl);
   font-weight: var(--font-weight-bold);
+  line-height: var(--line-height-tight);
+  letter-spacing: -0.02em;
 }
 
 .subtitle {
   margin-top: var(--space-2);
   font-size: var(--font-size-sm);
+  line-height: var(--line-height-base);
   color: var(--color-fg-muted);
 }
 
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  margin-top: var(--space-6);
+}
+
 .field {
-  margin-top: var(--space-5);
+  min-width: 0;
 }
 
 .label {
   display: block;
+  margin-bottom: var(--space-2);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
-  margin-bottom: var(--space-2);
 }
 
-.input {
-  width: 100%;
-  min-height: var(--tap-target-min);
-  padding: 0 var(--space-4);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--color-border-strong);
-  background: var(--color-surface);
+.passwordField {
+  position: relative;
+}
+
+.passwordInput {
+  padding-right: 52px;
+}
+
+.passwordToggle {
+  position: absolute;
+  top: 50%;
+  right: var(--space-1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-fg-muted);
+  cursor: pointer;
+  transform: translateY(-50%);
+  transition:
+    color var(--transition-fast),
+    background var(--transition-fast);
+}
+
+.passwordToggle svg {
+  width: 18px;
+  height: 18px;
+}
+
+.passwordToggle:hover:not(:disabled) {
+  background: var(--color-surface-soft);
   color: var(--color-fg);
-  font-size: var(--font-size-base);
+}
+
+.passwordToggle:disabled {
+  cursor: default;
+  opacity: 0.45;
 }
 
 .submit {
   width: 100%;
-  margin-top: var(--space-6);
+  margin-top: var(--space-1);
 }
 
 .error {
-  margin-top: var(--space-4);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--color-danger) 22%, transparent);
+  border-radius: var(--radius-md);
+  background: var(--color-danger-bg);
   font-size: var(--font-size-sm);
+  line-height: var(--line-height-base);
   color: var(--color-danger);
+}
+
+.error svg {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+}
+
+.spinner {
+  width: 18px;
+  height: 18px;
+  animation: spin 800ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 480px) {
+  .page {
+    padding: var(--space-4);
+  }
+
+  .card {
+    padding: var(--space-6);
+  }
+
+  .brand {
+    margin-bottom: var(--space-5);
+  }
+
+  .title {
+    font-size: var(--font-size-xl);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 1.6s;
+  }
 }

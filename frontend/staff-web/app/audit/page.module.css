@@ -1,0 +1,40 @@
+.auditTable :global(th),
+.auditTable :global(td) {
+  padding-top: 14px;
+  padding-bottom: 14px;
+}
+
+.auditTable :global(th:first-child) {
+  width: 190px;
+}
+
+.auditTable :global(th:nth-child(2)) {
+  width: 230px;
+}
+
+.auditTable :global(th:nth-child(3)) {
+  width: 250px;
+}
+
+.dateCell {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.operationCell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.entityLabel {
+  color: var(--color-fg);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+}
+
+.descriptionCell {
+  min-width: 280px;
+  line-height: var(--line-height-base);
+}

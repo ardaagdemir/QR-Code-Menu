@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { redirect, useParams } from "next/navigation";
 import {
   Banknote,
@@ -41,6 +41,7 @@ import {
   type OperatingResult,
   type OwnerNotificationLog,
 } from "@/lib/api";
+import { localIsoDate as todayIsoDate } from "@/lib/time";
 import AppShell from "@/components/layout/AppShell";
 import PageHeader from "@/components/ui/PageHeader";
 import BarList from "@/components/ui/BarList";
@@ -53,18 +54,8 @@ import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import tableStyles from "@/components/ui/Table.module.css";
 import adminStyles from "@/styles/admin.module.css";
-import {
-  createReportsDevMock,
-  hasMeaningfulOperatingResult,
-  hasMeaningfulReportData,
-  isReportsDevPreviewEnabled,
-} from "../devMockData";
 import { CategoryDonutChart, RevenueAreaChart } from "../ReportCharts";
 import styles from "../reports.module.css";
-
-function todayIsoDate(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 function formatReportDate(isoDate: string): string {
   return new Intl.DateTimeFormat("tr-TR", {
@@ -116,26 +107,6 @@ function completeHourlyDistribution(
   });
 }
 
-function downloadDemoDailyCloseExcel(branchName: string, rows: DailyCloseReport[]): void {
-  const header = ["Tarih", "Durum", "Brüt satış", "Net satış", "Sipariş"];
-  const body = rows.map((row) => [
-    formatReportDate(row.businessDate),
-    row.status === "FINAL" ? "Final" : "Ön izleme",
-    formatPriceMinorUnits(row.grossSalesMinorUnits),
-    formatPriceMinorUnits(row.netSalesMinorUnits),
-    String(row.orderCount),
-  ]);
-  const content = `\uFEFF${[header, ...body].map((cells) => cells.join("\t")).join("\n")}`;
-  const url = URL.createObjectURL(new Blob([content], { type: "application/vnd.ms-excel;charset=utf-8" }));
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = `${branchName.toLocaleLowerCase("tr-TR").replaceAll(/[^a-z0-9çğıöşü]+/g, "-")}-gun-sonu-demo.xls`;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 0);
-}
-
 /**
  * Gap-analysis #8 (product-requirements.md Section 13.1) + UI/UX Productization Gate
  * Adım 6 (Bölüm 19.3 "Raporlama"): KPI cards, hızlı tarih presetleri, gelir trendi
@@ -163,7 +134,6 @@ function BranchReportPage() {
 
   const [operatingResult, setOperatingResult] = useState<OperatingResult | null>(null);
   const [businessHours, setBusinessHours] = useState<BranchBusinessHoursEntry[] | null>(null);
-  const [demoTodayFinal, setDemoTodayFinal] = useState(false);
 
   function loadReport(nextRange: DateRange) {
     getBranchSalesReport(nextRange.from, nextRange.to)
@@ -218,7 +188,6 @@ function BranchReportPage() {
 
   function handleRangeChange(nextRange: DateRange) {
     setRange(nextRange);
-    setDemoTodayFinal(false);
     setLoading(true);
     loadReport(nextRange);
     reloadDailyClose(nextRange);
@@ -226,11 +195,6 @@ function BranchReportPage() {
   }
 
   function handleCloseToday() {
-    if (usingDevDailyClose) {
-      setDailyCloseError(null);
-      setDemoTodayFinal(true);
-      return;
-    }
     setClosingToday(true);
     setDailyCloseError(null);
     generateDailyCloseFinal(todayIsoDate())
@@ -243,56 +207,32 @@ function BranchReportPage() {
     if (!report) {
       return;
     }
-    if (usingDevDailyClose) {
-      downloadDemoDailyCloseExcel(report.branchName, visibleDailyCloseReports);
-      return;
-    }
     downloadBranchDailyCloseExcel(report.branchName, range.from, range.to).catch(() =>
       setDailyCloseError("Excel indirilemedi."),
     );
   }
 
-  const devMock = useMemo(() => (report ? createReportsDevMock(report) : null), [report]);
-  const usingDevMock = Boolean(report && devMock && isReportsDevPreviewEnabled() && !hasMeaningfulReportData(report));
-  const visibleReport = usingDevMock && devMock ? devMock.report : report;
-  const usingDevDailyClose = Boolean(usingDevMock && devMock && dailyCloseReports.length === 0);
-  const mockDailyCloseReports = usingDevDailyClose && devMock ? devMock.dailyCloseReports : dailyCloseReports;
-  const visibleDailyCloseReports = demoTodayFinal
-    ? mockDailyCloseReports.map((row) => row.businessDate === todayIsoDate() ? { ...row, status: "FINAL" as const } : row)
-    : mockDailyCloseReports;
-  const visibleNotifications = usingDevDailyClose && devMock
-    ? {
-        ...devMock.notificationsByReport,
-        ...(demoTodayFinal
-          ? Object.fromEntries(visibleDailyCloseReports.filter((row) => row.businessDate === todayIsoDate()).map((row) => [row.id, []]))
-          : {}),
-      }
-    : notificationsByReport;
-  const visibleOperatingResult = usingDevMock && devMock && !hasMeaningfulOperatingResult(operatingResult)
-    ? devMock.operatingResult
-    : operatingResult;
-
-  const todayAlreadyFinal = visibleDailyCloseReports.some(
+  const todayAlreadyFinal = dailyCloseReports.some(
     (row) => row.businessDate === todayIsoDate() && row.status === "FINAL",
   );
 
-  const revenueTrend = [...visibleDailyCloseReports].sort((a, b) => a.businessDate.localeCompare(b.businessDate));
+  const revenueTrend = [...dailyCloseReports].sort((a, b) => a.businessDate.localeCompare(b.businessDate));
 
-  const topProducts = visibleReport
-    ? [...visibleReport.productBreakdown].sort((a, b) => b.revenueMinorUnits - a.revenueMinorUnits).slice(0, 8)
+  const topProducts = report
+    ? [...report.productBreakdown].sort((a, b) => b.revenueMinorUnits - a.revenueMinorUnits).slice(0, 8)
     : [];
-  const topCategories = visibleReport
-    ? [...visibleReport.categoryBreakdown].sort((a, b) => b.revenueMinorUnits - a.revenueMinorUnits)
+  const topCategories = report
+    ? [...report.categoryBreakdown].sort((a, b) => b.revenueMinorUnits - a.revenueMinorUnits)
     : [];
-  const decidedOrderCount = visibleReport
-    ? visibleReport.acceptedOrderCount + visibleReport.rejectedOrderCount
+  const decidedOrderCount = report
+    ? report.acceptedOrderCount + report.rejectedOrderCount
     : 0;
-  const acceptanceRate = decidedOrderCount > 0 && visibleReport
-    ? (visibleReport.acceptedOrderCount / decidedOrderCount) * 100
+  const acceptanceRate = decidedOrderCount > 0 && report
+    ? (report.acceptedOrderCount / decidedOrderCount) * 100
     : 0;
   const acceptanceRateLabel = new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 1 }).format(acceptanceRate);
-  const visibleHourlyDistribution = visibleReport
-    ? completeHourlyDistribution(visibleReport.hourlyDistribution, businessHours)
+  const visibleHourlyDistribution = report
+    ? completeHourlyDistribution(report.hourlyDistribution, businessHours)
     : [];
 
   return (
@@ -300,8 +240,7 @@ function BranchReportPage() {
       <main className={adminStyles.page}>
         <PageHeader
           title="Raporlar"
-          description={visibleReport ? `${visibleReport.branchName} · satış, sipariş ve operasyon performansı` : "Satış ve operasyon performansını inceleyin."}
-          actions={usingDevMock ? <span className={styles.devBadge}>Yerel demo verisi</span> : undefined}
+          description={report ? `${report.branchName} · satış, sipariş ve operasyon performansı` : "Satış ve operasyon performansını inceleyin."}
         />
 
         <section className={styles.filterBar} aria-label="Tarih filtresi">
@@ -318,31 +257,31 @@ function BranchReportPage() {
           <TableSkeleton />
         ) : error ? (
           <ErrorState message={error} onRetry={() => loadReport(range)} />
-        ) : !visibleReport ? null : (
+        ) : !report ? null : (
           <>
             <section className={styles.summarySection} aria-label="Dönem özeti">
               <ReportSectionHeading icon={Sparkles} title="Dönem Özeti" description="Seçili tarih aralığının temel satış performansı" />
               <div className={styles.kpiGrid}>
-                <HeroKpi icon={Banknote} label="Brüt Satış" value={formatPriceMinorUnits(visibleReport.grossSalesMinorUnits)} description="İade öncesi toplam satış" />
-                <HeroKpi icon={TrendingUp} label="Net Satış" value={formatPriceMinorUnits(visibleReport.netSalesMinorUnits)} description="İade sonrası satış" />
-                <HeroKpi icon={ShoppingBag} label="Sipariş Sayısı" value={String(visibleReport.orderCount)} description="Seçili dönemde alınan sipariş" />
-                <HeroKpi icon={ReceiptText} label="Ortalama Sepet" value={formatPriceMinorUnits(visibleReport.averageOrderValueMinorUnits)} description="Sipariş başına ortalama" />
+                <HeroKpi icon={Banknote} label="Brüt Satış" value={formatPriceMinorUnits(report.grossSalesMinorUnits)} description="İade öncesi toplam satış" />
+                <HeroKpi icon={TrendingUp} label="Net Satış" value={formatPriceMinorUnits(report.netSalesMinorUnits)} description="İade sonrası satış" />
+                <HeroKpi icon={ShoppingBag} label="Sipariş Sayısı" value={String(report.orderCount)} description="Seçili dönemde alınan sipariş" />
+                <HeroKpi icon={ReceiptText} label="Ortalama Sepet" value={formatPriceMinorUnits(report.averageOrderValueMinorUnits)} description="Sipariş başına ortalama" />
               </div>
             </section>
 
             <section className={`${adminStyles.section} ${adminStyles.panel} ${styles.operationPanel}`}>
               <ReportSectionHeading icon={Scale} title="Operasyon Detayları" description="Sipariş kabulü, ziyaret ve iade metrikleri" />
               <div className={styles.operationGrid}>
-                <div className={visibleReport.refundTotalMinorUnits > 0 ? `${styles.detailMetric} ${styles.detailMetricAlert}` : styles.detailMetric}>
+                <div className={report.refundTotalMinorUnits > 0 ? `${styles.detailMetric} ${styles.detailMetricAlert}` : styles.detailMetric}>
                   <span className={styles.detailIcon} aria-hidden="true"><RotateCcw size={15} /></span>
                   <span className={styles.detailLabel}>İade Toplamı</span>
-                  <strong className={styles.detailValue}>{formatPriceMinorUnits(visibleReport.refundTotalMinorUnits)}</strong>
+                  <strong className={styles.detailValue}>{formatPriceMinorUnits(report.refundTotalMinorUnits)}</strong>
                 </div>
                 <div className={`${styles.detailMetric} ${styles.acceptanceMetric}`}>
                   <span className={styles.detailIcon} aria-hidden="true"><CheckCircle2 size={15} /></span>
                   <span className={styles.detailLabel}>Kabul Oranı</span>
                   <strong className={styles.detailValue}>{acceptanceRateLabel}%</strong>
-                  <span className={styles.detailHint}>{visibleReport.acceptedOrderCount} kabul / {visibleReport.rejectedOrderCount} red</span>
+                  <span className={styles.detailHint}>{report.acceptedOrderCount} kabul / {report.rejectedOrderCount} red</span>
                   <span className={styles.acceptanceTrack} aria-hidden="true">
                     <span style={{ width: `${Math.min(100, Math.max(0, acceptanceRate))}%` }} />
                   </span>
@@ -350,15 +289,15 @@ function BranchReportPage() {
                 <div className={styles.detailMetric}>
                   <span className={styles.detailIcon} aria-hidden="true"><Table2 size={15} /></span>
                   <span className={styles.detailLabel}>Masa Ziyareti</span>
-                  <strong className={styles.detailValue}>{visibleReport.tableVisitCount}</strong>
+                  <strong className={styles.detailValue}>{report.tableVisitCount}</strong>
                 </div>
                 <div className={styles.detailMetric}>
                   <span className={styles.detailIcon} aria-hidden="true"><Users size={15} /></span>
                   <span className={styles.detailLabel}>Misafir Sayısı</span>
-                  <strong className={styles.detailValue}>{visibleReport.guestCountRecordedVisitCount > 0 ? visibleReport.guestCountTotal : "—"}</strong>
+                  <strong className={styles.detailValue}>{report.guestCountRecordedVisitCount > 0 ? report.guestCountTotal : "—"}</strong>
                   <span className={styles.detailHint}>
-                    {visibleReport.guestCountRecordedVisitCount > 0
-                      ? `${visibleReport.guestCountRecordedVisitCount} masa ziyaretinde kaydedildi`
+                    {report.guestCountRecordedVisitCount > 0
+                      ? `${report.guestCountRecordedVisitCount} masa ziyaretinde kaydedildi`
                       : "Henüz girilmedi"}
                   </span>
                 </div>
@@ -381,7 +320,7 @@ function BranchReportPage() {
 
               <section className={`${adminStyles.section} ${adminStyles.panel} ${styles.chartPanel}`}>
                 <ReportSectionHeading icon={Clock3} title="Saatlik Dağılım" description="Sipariş adedi ve saatlik ciro" />
-                {visibleReport.hourlyDistribution.every((row) => row.orderCount === 0) ? (
+                {report.hourlyDistribution.every((row) => row.orderCount === 0) ? (
                   <div className={styles.compactEmpty}>
                     <EmptyState icon={<Clock3 size={18} />} title="Bu aralıkta satış yok" />
                   </div>
@@ -443,7 +382,7 @@ function BranchReportPage() {
                 </div>
               </div>
               {dailyCloseError ? <ErrorState message={dailyCloseError} /> : null}
-              {visibleDailyCloseReports.length === 0 ? (
+              {dailyCloseReports.length === 0 ? (
                 <div className={styles.compactEmpty}><EmptyState icon={<CalendarDays size={18} />} title="Bu aralıkta gün sonu kapanışı yok" /></div>
               ) : (
                 <div className={styles.dailyCloseTable}>
@@ -459,7 +398,7 @@ function BranchReportPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {visibleDailyCloseReports.map((row) => (
+                      {dailyCloseReports.map((row) => (
                         <tr key={row.businessDate}>
                           <td className={tableStyles.primary}>{formatReportDate(row.businessDate)}</td>
                           <td>
@@ -473,9 +412,8 @@ function BranchReportPage() {
                           <td>
                             {row.status === "FINAL" ? (
                               <NotificationCell
-                                logs={visibleNotifications[row.id]}
+                                logs={notificationsByReport[row.id]}
                                 resending={resendingReportId === row.id}
-                                disabled={usingDevDailyClose}
                                 onResend={() => handleResend(row.id)}
                               />
                             ) : (
@@ -490,21 +428,29 @@ function BranchReportPage() {
               )}
             </section>
 
-            {visibleOperatingResult ? (
+            {operatingResult ? (
               <section className={`${adminStyles.section} ${adminStyles.panel} ${styles.financePanel}`}>
-                <ReportSectionHeading icon={WalletCards} title="Yönetimsel Net Sonuç" description="Satış ve onaylı giderlerden oluşan finans özeti" />
+                <ReportSectionHeading icon={WalletCards} title="Yönetimsel Net Sonuç" description="Net satış ve gerçekleşmiş giderlerden oluşan finans özeti" />
                 <p className={`${adminStyles.empty} ${styles.inlineNote}`}>
                   Vergi, stok maliyeti ve personel tahakkuku gibi kalemler dahil değildir - yasal net kâr değildir.
                 </p>
                 <div
-                  className={`${styles.equationRow} ${visibleOperatingResult.netOperatingResultMinorUnits < 0 ? styles.equationRowAlert : ""}`}
-                  aria-label="Net satış eksi onaylı giderler eşittir yönetimsel net sonuç"
+                  className={`${styles.equationRow} ${operatingResult.netOperatingResultMinorUnits < 0 ? styles.equationRowAlert : ""}`}
+                  aria-label="Net satış eksi toplam giderler eşittir yönetimsel net sonuç"
                 >
-                  <EquationMetric icon={TrendingUp} label="Net Satış" value={formatPriceMinorUnits(visibleOperatingResult.netSalesMinorUnits)} />
+                  <EquationMetric icon={TrendingUp} label="Net Satış" value={formatPriceMinorUnits(operatingResult.netSalesMinorUnits)} />
                   <span className={styles.equationOperator} aria-hidden="true">−</span>
-                  <EquationMetric icon={ReceiptText} label="Onaylı Giderler" value={formatPriceMinorUnits(visibleOperatingResult.approvedExpensesMinorUnits)} />
+                  <EquationMetric
+                    icon={ReceiptText}
+                    label="Toplam Giderler"
+                    value={formatPriceMinorUnits(operatingResult.totalExpensesMinorUnits)}
+                    details={[
+                      { label: "Manuel Giderler", value: formatPriceMinorUnits(operatingResult.manualExpensesMinorUnits) },
+                      { label: "Tekrarlayan Giderler", value: formatPriceMinorUnits(operatingResult.recurringExpensesMinorUnits) },
+                    ]}
+                  />
                   <span className={styles.equationOperator} aria-hidden="true">=</span>
-                  <EquationMetric icon={Scale} label="Yönetimsel Net Sonuç" value={formatPriceMinorUnits(visibleOperatingResult.netOperatingResultMinorUnits)} result />
+                  <EquationMetric icon={Scale} label="Yönetimsel Net Sonuç" value={formatPriceMinorUnits(operatingResult.netOperatingResultMinorUnits)} result />
                 </div>
               </section>
             ) : null}
@@ -538,12 +484,34 @@ function HeroKpi({ icon: Icon, label, value, description }: { icon: LucideIcon; 
   );
 }
 
-function EquationMetric({ icon: Icon, label, value, result = false }: { icon: LucideIcon; label: string; value: string; result?: boolean }) {
+function EquationMetric({
+  icon: Icon,
+  label,
+  value,
+  details,
+  result = false,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+  details?: { label: string; value: string }[];
+  result?: boolean;
+}) {
   return (
-    <div className={`${styles.equationMetric} ${result ? styles.equationResult : ""}`}>
+    <div className={`${styles.equationMetric} ${details ? styles.equationMetricWithDetails : ""} ${result ? styles.equationResult : ""}`}>
       <span className={styles.equationIcon} aria-hidden="true"><Icon size={18} /></span>
       <span className={styles.equationLabel}>{label}</span>
       <strong className={styles.equationValue}>{value}</strong>
+      {details ? (
+        <dl className={styles.expenseBreakdown}>
+          {details.map((detail) => (
+            <div key={detail.label}>
+              <dt>{detail.label}</dt>
+              <dd>{detail.value}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
     </div>
   );
 }
@@ -551,12 +519,10 @@ function EquationMetric({ icon: Icon, label, value, result = false }: { icon: Lu
 function NotificationCell({
   logs,
   resending,
-  disabled = false,
   onResend,
 }: {
   logs: OwnerNotificationLog[] | undefined;
   resending: boolean;
-  disabled?: boolean;
   onResend: () => void;
 }) {
   if (logs === undefined) {
@@ -575,7 +541,7 @@ function NotificationCell({
           {failed > 0 ? <Badge tone="danger">{failed} başarısız</Badge> : null}
         </>
       )}
-      <Button type="button" variant="secondary" onClick={onResend} disabled={resending || disabled}>
+      <Button type="button" variant="secondary" onClick={onResend} disabled={resending}>
         {resending ? "Gönderiliyor…" : "Tekrar gönder"}
       </Button>
     </div>
