@@ -9,9 +9,16 @@
 # Usage (from the infra/ directory - see .env.prod.example for the required values):
 #   cp .env.prod.example .env.prod   # fill in real values, never commit
 #   docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   postgres:
     image: postgres:16-alpine
+    logging: *default-logging
     environment:
       POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in infra/.env.prod}
       POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in infra/.env.prod}
@@ -34,6 +41,7 @@ services:
     build:
       context: ./docker/postgres-backup
     restart: unless-stopped
+    logging: *default-logging
     depends_on:
       postgres:
         condition: service_healthy
@@ -52,6 +60,7 @@ services:
     build:
       context: ../backend
     restart: unless-stopped
+    logging: *default-logging
     depends_on:
       postgres:
         condition: service_healthy
@@ -86,6 +95,7 @@ services:
       args:
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:?set NEXT_PUBLIC_API_BASE_URL in infra/.env.prod}
     restart: unless-stopped
+    logging: *default-logging
     depends_on:
       backend:
         condition: service_healthy
@@ -105,6 +115,7 @@ services:
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:?set NEXT_PUBLIC_API_BASE_URL in infra/.env.prod}
         NEXT_PUBLIC_CUSTOMER_WEB_URL: https://${CUSTOMER_WEB_DOMAIN:?set CUSTOMER_WEB_DOMAIN in infra/.env.prod}
     restart: unless-stopped
+    logging: *default-logging
     depends_on:
       backend:
         condition: service_healthy
@@ -118,6 +129,7 @@ services:
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    logging: *default-logging
     depends_on:
       backend:
         condition: service_healthy

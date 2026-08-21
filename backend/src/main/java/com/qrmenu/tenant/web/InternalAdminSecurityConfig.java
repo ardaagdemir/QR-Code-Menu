@@ -15,7 +15,9 @@ class InternalAdminSecurityConfig {
         FilterRegistrationBean<InternalAdminAuthFilter> registration =
                 new FilterRegistrationBean<>(new InternalAdminAuthFilter(internalAdminToken));
         registration.addUrlPatterns("/internal/*");
-        registration.setOrder(Ordered.HIGHEST_PRECEDENCE);
+        // CorrelationIdFilter runs first so rejected internal requests receive the same
+        // response header and MDC context as every other request.
+        registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 1);
         return registration;
     }
 }

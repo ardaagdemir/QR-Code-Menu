@@ -86,3 +86,8 @@ management:
     # for restart policy + depends_on readiness gating) to unhealthy.
     mail:
       enabled: false
+
+logging:
+  pattern:
+    # Key/value console format stays dependency-free and retains full exception traces.
+    console: "timestamp=%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} level=%-5level logger=%logger{36} correlationId=%X{correlationId:-} message=%msg%n%wEx"
