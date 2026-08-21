@@ -73,25 +73,32 @@ class OutboxPollerSchedulerIntegrationTest extends AbstractIntegrationTest {
      */
     @Test
     void oneListenerFailureDoesNotBlockOrRollbackOtherPendingEvents() {
-        UUID goodAggregateId = UUID.randomUUID();
+        UUID goodBeforeAggregateId = UUID.randomUUID();
         UUID failingAggregateId = UUID.randomUUID();
-        writer.write("TestAggregate", goodAggregateId, "TestEvent", new TestPayload("good"));
+        UUID goodAfterAggregateId = UUID.randomUUID();
+        writer.write("TestAggregate", goodBeforeAggregateId, "TestEvent", new TestPayload("good-before"));
         writer.write("FailingAggregate", failingAggregateId, "TestEvent", new TestPayload("bad"));
+        writer.write("TestAggregate", goodAfterAggregateId, "TestEvent", new TestPayload("good-after"));
 
         scheduler.publishPendingEvents();
 
-        assertThat(recordingListener.countFor(goodAggregateId)).isEqualTo(1);
-        List<OutboxEvent> goodStored = repository.findAll().stream()
-                .filter(event -> event.getAggregateId().equals(goodAggregateId))
-                .toList();
-        assertThat(goodStored).hasSize(1);
-        assertThat(goodStored.get(0).getPublishedAt()).isNotNull();
+        assertPublishedExactlyOnce(goodBeforeAggregateId);
+        assertPublishedExactlyOnce(goodAfterAggregateId);
 
         List<OutboxEvent> failingStored = repository.findAll().stream()
                 .filter(event -> event.getAggregateId().equals(failingAggregateId))
                 .toList();
         assertThat(failingStored).hasSize(1);
         assertThat(failingStored.get(0).getPublishedAt()).isNull();
+    }
+
+    private void assertPublishedExactlyOnce(UUID aggregateId) {
+        assertThat(recordingListener.countFor(aggregateId)).isEqualTo(1);
+        List<OutboxEvent> stored = repository.findAll().stream()
+                .filter(event -> event.getAggregateId().equals(aggregateId))
+                .toList();
+        assertThat(stored).hasSize(1);
+        assertThat(stored.get(0).getPublishedAt()).isNotNull();
     }
 
     private record TestPayload(String value) {

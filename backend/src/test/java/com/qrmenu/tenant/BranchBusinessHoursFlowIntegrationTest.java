@@ -87,12 +87,12 @@ class BranchBusinessHoursFlowIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void staffCanReadBackTheHoursTheyJustSet() throws Exception {
+    void staffCanSaveAndReadBackAnOvernightHoursWindow() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Readback Business");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String staffCookie = StaffFixtures.bootstrapBusinessAdminAndLogin(
                 mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "hours-admin-4@example.com");
-        setTodayHours(branchId, staffCookie, LocalTime.of(9, 0), LocalTime.of(22, 0), false);
+        setTodayHours(branchId, staffCookie, LocalTime.of(18, 0), LocalTime.of(2, 0), false);
 
         JsonNode hours = objectMapper.readTree(mockMvc.perform(get("/api/staff/branches/{branchId}/business-hours", branchId)
                         .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, staffCookie)))
@@ -103,6 +103,8 @@ class BranchBusinessHoursFlowIntegrationTest extends AbstractIntegrationTest {
         assertThat(hours).hasSize(1);
         assertThat(hours.get(0).get("dayOfWeek").asText()).isEqualTo(LocalDate.now().getDayOfWeek().name());
         assertThat(hours.get(0).get("closed").asBoolean()).isFalse();
+        assertThat(hours.get(0).get("openingTime").asText()).startsWith("18:00");
+        assertThat(hours.get(0).get("closingTime").asText()).startsWith("02:00");
     }
 
     private void setTodayHours(String branchId, String staffCookie, LocalTime opening, LocalTime closing, boolean closed) throws Exception {
