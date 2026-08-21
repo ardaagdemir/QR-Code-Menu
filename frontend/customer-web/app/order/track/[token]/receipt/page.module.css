@@ -12,6 +12,21 @@
   justify-content: center;
 }
 
+.backLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap-target-min);
+  margin-bottom: var(--space-2);
+  padding: 0 var(--space-2);
+  margin-left: calc(var(--space-2) * -1);
+  background: none;
+  border: none;
+  color: var(--color-fg);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+}
+
 .notLegalNotice {
   text-align: center;
   font-size: var(--font-size-xs);
@@ -112,13 +127,14 @@
   padding: var(--space-1) 0;
 }
 
-.printButton {
+.downloadButton {
   width: 100%;
   margin-top: var(--space-6);
 }
 
 @media print {
-  .printButton {
+  .downloadButton,
+  .backLink {
     display: none;
   }
   .notLegalNotice {
