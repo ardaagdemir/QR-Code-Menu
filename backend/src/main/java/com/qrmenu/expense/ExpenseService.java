@@ -10,9 +10,9 @@ import com.qrmenu.shared.media.LoadedMedia;
 import com.qrmenu.shared.media.MediaStoragePort;
 import com.qrmenu.staffaccess.StaffContext;
 import com.qrmenu.staffaccess.StaffRole;
-import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -22,8 +22,8 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Public facade for the expense module (gap-analysis #10, product-requirements.md Section
  * 16). Controllers resolve the caller's Permission before calling in here (same convention
- * as every other module); this service additionally enforces per-branch access and the
- * DRAFT/SUBMITTED-editable vs APPROVED/REJECTED-immutable state machine (Section 16.1).
+ * as every other module); this service additionally enforces per-branch access and keeps
+ * scheduler-generated recurring period snapshots immutable.
  */
 @Service
 public class ExpenseService {
@@ -98,7 +98,7 @@ public class ExpenseService {
     }
 
     @Transactional
-    public Expense updateDraft(
+    public Expense updateManualExpense(
             StaffContext context,
             UUID expenseId,
             UUID categoryId,
@@ -107,38 +107,10 @@ public class ExpenseService {
             String vendor,
             String description,
             String receiptImageUrl) {
-        Expense expense = requireEditableExpense(context, expenseId);
+        Expense expense = requireManualExpense(context, expenseId);
         requireCategory(context.businessId(), categoryId);
-        expense.applyDraftEdit(categoryId, amountMinorUnits, incurredAt, vendor, description, receiptImageUrl);
+        expense.applyManualEdit(categoryId, amountMinorUnits, incurredAt, vendor, description, receiptImageUrl);
         return expenseRepository.save(expense);
-    }
-
-    @Transactional
-    public Expense submit(StaffContext context, UUID expenseId) {
-        Expense expense = requireEditableExpense(context, expenseId);
-        expense.submit();
-        Expense saved = expenseRepository.save(expense);
-        auditService.record(context.businessId(), context.staffUserId(), "Expense", expenseId, "SUBMITTED", Map.of());
-        return saved;
-    }
-
-    /** Caller must already hold Permission.EXPENSE_APPROVE; expense visibility remains branch-scoped. */
-    @Transactional
-    public Expense approve(StaffContext context, UUID expenseId) {
-        Expense expense = requireSubmittedExpense(context, expenseId);
-        expense.approve(context.staffUserId(), Instant.now());
-        Expense saved = expenseRepository.save(expense);
-        auditService.record(context.businessId(), context.staffUserId(), "Expense", expenseId, "APPROVED", Map.of());
-        return saved;
-    }
-
-    @Transactional
-    public Expense reject(StaffContext context, UUID expenseId) {
-        Expense expense = requireSubmittedExpense(context, expenseId);
-        expense.reject(context.staffUserId(), Instant.now());
-        Expense saved = expenseRepository.save(expense);
-        auditService.record(context.businessId(), context.staffUserId(), "Expense", expenseId, "REJECTED", Map.of());
-        return saved;
     }
 
     @Transactional(readOnly = true)
@@ -147,23 +119,23 @@ public class ExpenseService {
             if (!context.canAccessBranch(branchId)) {
                 throw new StaffPermissionDeniedException("Not authorized for branch: " + branchId);
             }
-            return expenseRepository.findAllByBusinessIdAndBranchIdAndIncurredAtBetweenOrderByIncurredAtDesc(
+            return expenseRepository.findAllByBusinessIdAndBranchIdAndSourceTemplateIdIsNullAndIncurredAtBetweenOrderByIncurredAtDesc(
                     context.businessId(), branchId, from, to);
         }
         if (context.role() == StaffRole.BUSINESS_ADMIN || context.role() == StaffRole.PLATFORM_ADMIN) {
-            return expenseRepository.findAllByBusinessIdAndIncurredAtBetweenOrderByIncurredAtDesc(context.businessId(), from, to);
+            return expenseRepository.findAllByBusinessIdAndSourceTemplateIdIsNullAndIncurredAtBetweenOrderByIncurredAtDesc(
+                    context.businessId(), from, to);
         }
         if (context.branchIds().isEmpty()) {
             return List.of();
         }
-        return expenseRepository.findAllByBranchIdInAndIncurredAtBetweenOrderByIncurredAtDesc(
+        return expenseRepository.findAllByBranchIdInAndSourceTemplateIdIsNullAndIncurredAtBetweenOrderByIncurredAtDesc(
                 List.copyOf(context.branchIds()), from, to);
     }
 
     /**
      * Backs StaffExpenseController#getReceipt: same tenant/branch scoping as every other
-     * per-id lookup in here, but without the editable-state restriction (an APPROVED/
-     * REJECTED expense's receipt must still be viewable, just not editable).
+     * per-id lookup in here, but without the manual-edit restriction.
      */
     @Transactional(readOnly = true)
     public LoadedMedia loadReceipt(StaffContext context, UUID expenseId) {
@@ -178,10 +150,22 @@ public class ExpenseService {
                 .orElseThrow(() -> new ResourceNotFoundException("Receipt file not found: " + expenseId));
     }
 
-    /** Section 17: approved-expense total for the "Yönetimsel Net Sonuç" figure - reporting module's public entry point into this module. */
+    /**
+     * Only realized Expense rows are included. Templates themselves are deliberately
+     * not queried, so future periods stay out and archived templates retain their past
+     * generated expenses in reporting.
+     */
     @Transactional(readOnly = true)
-    public long sumApprovedExpenses(UUID businessId, UUID branchId, LocalDate from, LocalDate to) {
-        return expenseRepository.sumApprovedAmount(businessId, branchId, from, to);
+    public ExpenseBreakdown expenseBreakdown(UUID businessId, UUID branchId, LocalDate from, LocalDate to) {
+        long manualExpenses = expenseRepository.sumManualAmount(businessId, branchId, from, to);
+        long recurringExpenses = expenseRepository.sumRecurringAmount(businessId, branchId, from, to);
+        return new ExpenseBreakdown(manualExpenses, recurringExpenses);
+    }
+
+    public record ExpenseBreakdown(long manualExpensesMinorUnits, long recurringExpensesMinorUnits) {
+        public long totalExpensesMinorUnits() {
+            return manualExpensesMinorUnits + recurringExpensesMinorUnits;
+        }
     }
 
     @Transactional
@@ -199,60 +183,71 @@ public class ExpenseService {
         requireCategory(context.businessId(), categoryId);
         RecurringExpenseTemplate template = templateRepository.save(new RecurringExpenseTemplate(
                 context.businessId(), branchId, categoryId, amountMinorUnits, vendor, description, dayOfMonth, startDate, endDate));
+        LocalDate today = LocalDate.now(ZoneOffset.UTC);
+        YearMonth currentPeriod = YearMonth.from(today);
+        RecurringExpenseDuePolicy.dueDate(template, currentPeriod, today)
+                .ifPresent(dueDate -> expenseRepository.save(
+                        RecurringExpenseDuePolicy.newExpense(template, currentPeriod, dueDate)));
         auditService.record(context.businessId(), context.staffUserId(), "RecurringExpenseTemplate", template.getId(), "CREATED", Map.of());
         return template;
     }
 
     @Transactional(readOnly = true)
     public List<RecurringExpenseTemplate> listTemplates(UUID businessId) {
-        return templateRepository.findAllByBusinessIdOrderByStartDateDesc(businessId);
+        return templateRepository.findAllByBusinessIdAndDeletedFalseOrderByStartDateDesc(businessId);
+    }
+
+    @Transactional
+    public RecurringExpenseTemplate updateTemplate(
+            StaffContext context,
+            UUID templateId,
+            UUID categoryId,
+            long amountMinorUnits,
+            String vendor,
+            String description,
+            int dayOfMonth,
+            LocalDate startDate,
+            LocalDate endDate) {
+        RecurringExpenseTemplate template = requireTemplateForMutation(context, templateId);
+        requireCategory(context.businessId(), categoryId);
+        template.update(categoryId, amountMinorUnits, vendor, description, dayOfMonth, startDate, endDate);
+        RecurringExpenseTemplate saved = templateRepository.save(template);
+        auditService.record(
+                context.businessId(),
+                context.staffUserId(),
+                "RecurringExpenseTemplate",
+                templateId,
+                "UPDATED",
+                Map.of("amountMinorUnits", amountMinorUnits, "dayOfMonth", dayOfMonth));
+        return saved;
     }
 
     @Transactional
     public void deactivateTemplate(StaffContext context, UUID templateId) {
-        RecurringExpenseTemplate template = templateRepository
-                .findByIdAndBusinessId(templateId, context.businessId())
-                .orElseThrow(() -> new ResourceNotFoundException("Recurring expense template not found: " + templateId));
-        if (!context.canAccessBranch(template.getBranchId())) {
-            throw new ResourceNotFoundException("Recurring expense template not found: " + templateId);
-        }
+        RecurringExpenseTemplate template = requireTemplateForMutation(context, templateId);
         template.deactivate();
         templateRepository.save(template);
         auditService.record(context.businessId(), context.staffUserId(), "RecurringExpenseTemplate", templateId, "DEACTIVATED", Map.of());
     }
 
-    /** Used only by {@link RecurringExpenseScheduler} - no StaffContext exists in a scheduled job. */
     @Transactional
-    List<Expense> generateDueDraftsForPeriod(LocalDate today) {
-        YearMonth period = YearMonth.from(today);
-        return templateRepository.findAllByActiveTrue().stream()
-                .filter(template -> isDue(template, today))
-                .filter(template -> !expenseRepository.existsBySourceTemplateIdAndGeneratedForPeriod(template.getId(), period.toString()))
-                .map(template -> expenseRepository.save(new Expense(
-                        template.getBusinessId(),
-                        template.getBranchId(),
-                        template.getCategoryId(),
-                        template.getAmountMinorUnits(),
-                        today,
-                        template.getVendor(),
-                        template.getDescription(),
-                        null,
-                        null,
-                        template.getId(),
-                        period)))
-                .toList();
+    public void activateTemplate(StaffContext context, UUID templateId) {
+        RecurringExpenseTemplate template = requireTemplateForMutation(context, templateId);
+        template.activate();
+        templateRepository.save(template);
+        auditService.record(context.businessId(), context.staffUserId(), "RecurringExpenseTemplate", templateId, "ACTIVATED", Map.of());
     }
 
-    private boolean isDue(RecurringExpenseTemplate template, LocalDate today) {
-        if (today.isBefore(template.getStartDate())) {
-            return false;
-        }
-        if (template.getEndDate() != null && today.isAfter(template.getEndDate())) {
-            return false;
-        }
-        int lastDayOfMonth = today.lengthOfMonth();
-        int effectiveDay = Math.min(template.getDayOfMonth(), lastDayOfMonth);
-        return today.getDayOfMonth() == effectiveDay;
+    /**
+     * Logical deletion stops future generation while preserving the source relationship
+     * and immutable values of every expense previously generated from this template.
+     */
+    @Transactional
+    public void deleteTemplate(StaffContext context, UUID templateId) {
+        RecurringExpenseTemplate template = requireTemplateForMutation(context, templateId);
+        template.delete();
+        templateRepository.save(template);
+        auditService.record(context.businessId(), context.staffUserId(), "RecurringExpenseTemplate", templateId, "DELETED", Map.of());
     }
 
     private void requireCreateAccess(StaffContext context, UUID branchId) {
@@ -273,12 +268,23 @@ public class ExpenseService {
                 .orElseThrow(() -> new ResourceNotFoundException("Expense category not found: " + categoryId));
     }
 
-    private Expense requireEditableExpense(StaffContext context, UUID expenseId) {
+    private Expense requireManualExpense(StaffContext context, UUID expenseId) {
         Expense expense = requireViewableExpense(context, expenseId);
-        if (!expense.isEditable()) {
-            throw new IllegalStateException("Expense is not editable in status " + expense.getStatus());
+        if (expense.isRecurring()) {
+            throw new IllegalStateException("System-generated recurring expenses are immutable");
         }
         return expense;
+    }
+
+    private RecurringExpenseTemplate requireTemplateForMutation(StaffContext context, UUID templateId) {
+        RecurringExpenseTemplate template = templateRepository
+                .findByIdForUpdate(templateId)
+                .filter(candidate -> candidate.getBusinessId().equals(context.businessId()) && !candidate.isDeleted())
+                .orElseThrow(() -> new ResourceNotFoundException("Recurring expense template not found: " + templateId));
+        if (!context.canAccessBranch(template.getBranchId())) {
+            throw new ResourceNotFoundException("Recurring expense template not found: " + templateId);
+        }
+        return template;
     }
 
     private Expense requireViewableExpense(StaffContext context, UUID expenseId) {
@@ -295,11 +301,4 @@ public class ExpenseService {
         return expense;
     }
 
-    private Expense requireSubmittedExpense(StaffContext context, UUID expenseId) {
-        Expense expense = requireViewableExpense(context, expenseId);
-        if (expense.getStatus() != ExpenseStatus.SUBMITTED) {
-            throw new IllegalStateException("Expense is not SUBMITTED (current status: " + expense.getStatus() + ")");
-        }
-        return expense;
-    }
 }

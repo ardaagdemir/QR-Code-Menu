@@ -345,8 +345,7 @@ Sipariş operasyonuna (görüntüleme, kabul/red, hazırlama/hazır/tamamlandı)
 - `REPORT_VIEW`
 - `REPORT_EXPORT`
 - `REPORT_FINANCIAL_SUMMARY_VIEW`
-- `EXPENSE_CREATE`
-- `EXPENSE_APPROVE`
+- `EXPENSE_MANAGE`
 - `EXPENSE_VIEW`
 - `BUSINESS_SETTINGS_MANAGE`
 
@@ -577,13 +576,11 @@ bulunabilir.
 - description
 - receiptImageUrl / file key
 - createdByStaffUserId
-- status (`DRAFT` / `SUBMITTED` / `APPROVED` / `REJECTED`)
-- approvedBy
-- approvedAt
-
 ✅ Gider fişi fotoğrafı/dokümanı eklenebilir.
 
 ✅ Gider kategorileri manuel yönetilebilir.
+
+✅ Manuel gider kaydedildiği anda gerçek giderdir ve seçili dönem raporlarına dahil edilir; ayrı onay akışı yoktur.
 
 ## 16.2 Sabit / recurring giderler
 
@@ -600,7 +597,7 @@ bulunabilir.
 - endDate optional
 - active
 
-✅ Sistem her dönem ilgili gider taslağını üretir; admin onaylayabilir/düzenleyebilir.
+✅ Sistem vadesi gelen her dönem için gerçek bir Expense snapshot'ı üretir. Gelecek dönemler önceden üretilmez; template değişikliği geçmiş dönem kayıtlarını değiştirmez. Bu sistem kayıtları normal manuel gider listesinde gösterilmez.
 
 ---
 
@@ -611,8 +608,8 @@ bulunabilir.
 - gross sales
 - refunds
 - net sales
-- approved expenses
-- net operating result = net sales - approved expenses
+- recorded expenses (manuel + vadesi gelmiş recurring)
+- net operating result = net sales - recorded expenses
 
 ⚠️ Bu değer **yasal/muhasebesel net kâr** olarak sunulmamalıdır. Vergi, stok maliyeti, personel tahakkuku, amortisman vb. tüm muhasebe kalemleri sistemde yoksa “kâr” iddiası yanıltıcı olur.
 

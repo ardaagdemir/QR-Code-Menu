@@ -39,12 +39,10 @@ public enum StaffRole {
                     Permission.ORDER_ACCEPT,
                     Permission.ORDER_REJECT,
                     Permission.BUSINESS_SETTINGS_MANAGE,
-                    Permission.ANNOUNCEMENT_MANAGE,
                     Permission.REPORT_VIEW,
                     Permission.REPORT_FINANCIAL_SUMMARY_VIEW,
                     Permission.EXPENSE_VIEW,
-                    Permission.EXPENSE_MANAGE,
-                    Permission.EXPENSE_APPROVE);
+                    Permission.EXPENSE_MANAGE);
             case BRANCH_MANAGER -> EnumSet.of(
                     Permission.REFUND_ISSUE,
                     Permission.ORDER_HISTORY_VIEW,

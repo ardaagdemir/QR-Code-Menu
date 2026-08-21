@@ -11,6 +11,7 @@ import com.qrmenu.expense.web.dto.ExpenseCategoryResponse;
 import com.qrmenu.expense.web.dto.ExpenseResponse;
 import com.qrmenu.expense.web.dto.RecurringExpenseTemplateResponse;
 import com.qrmenu.expense.web.dto.UpdateExpenseRequest;
+import com.qrmenu.expense.web.dto.UpdateRecurringExpenseTemplateRequest;
 import com.qrmenu.shared.media.LoadedMedia;
 import com.qrmenu.staffaccess.Permission;
 import com.qrmenu.staffaccess.StaffAuthService;
@@ -28,6 +29,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CookieValue;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -111,7 +113,7 @@ public class StaffExpenseController {
             @PathVariable UUID expenseId,
             @Valid @RequestBody UpdateExpenseRequest request) {
         StaffContext context = requireManage(sessionCookie);
-        Expense expense = expenseService.updateDraft(
+        Expense expense = expenseService.updateManualExpense(
                 context,
                 expenseId,
                 request.categoryId(),
@@ -138,32 +140,6 @@ public class StaffExpenseController {
                 .contentType(MediaType.parseMediaType(media.contentType()))
                 .header(HttpHeaders.CONTENT_DISPOSITION, "inline")
                 .body(media.content());
-    }
-
-    @PostMapping("/api/staff/expenses/{expenseId}/submit")
-    public ExpenseResponse submit(
-            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
-            @PathVariable UUID expenseId) {
-        StaffContext context = requireManage(sessionCookie);
-        return toResponse(expenseService.submit(context, expenseId), categoryNameMap(context.businessId()));
-    }
-
-    @PostMapping("/api/staff/expenses/{expenseId}/approve")
-    public ExpenseResponse approve(
-            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
-            @PathVariable UUID expenseId) {
-        StaffContext context = staffAuthService.resolveStaffContextForActiveBranch(
-                StaffCookieSupport.parseSessionId(sessionCookie), Permission.EXPENSE_APPROVE);
-        return toResponse(expenseService.approve(context, expenseId), categoryNameMap(context.businessId()));
-    }
-
-    @PostMapping("/api/staff/expenses/{expenseId}/reject")
-    public ExpenseResponse reject(
-            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
-            @PathVariable UUID expenseId) {
-        StaffContext context = staffAuthService.resolveStaffContextForActiveBranch(
-                StaffCookieSupport.parseSessionId(sessionCookie), Permission.EXPENSE_APPROVE);
-        return toResponse(expenseService.reject(context, expenseId), categoryNameMap(context.businessId()));
     }
 
     @GetMapping("/api/staff/recurring-expense-templates")
@@ -205,6 +181,42 @@ public class StaffExpenseController {
         expenseService.deactivateTemplate(context, templateId);
     }
 
+    @PostMapping("/api/staff/recurring-expense-templates/{templateId}/activate")
+    public void activateTemplate(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
+            @PathVariable UUID templateId) {
+        StaffContext context = requireManage(sessionCookie);
+        expenseService.activateTemplate(context, templateId);
+    }
+
+    @PostMapping("/api/staff/recurring-expense-templates/{templateId}")
+    public RecurringExpenseTemplateResponse updateTemplate(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
+            @PathVariable UUID templateId,
+            @Valid @RequestBody UpdateRecurringExpenseTemplateRequest request) {
+        StaffContext context = requireManage(sessionCookie);
+        RecurringExpenseTemplate template = expenseService.updateTemplate(
+                context,
+                templateId,
+                request.categoryId(),
+                request.amountMinorUnits(),
+                request.vendor(),
+                request.description(),
+                request.dayOfMonth(),
+                request.startDate(),
+                request.endDate());
+        return toResponse(template, categoryNameMap(context.businessId()));
+    }
+
+    @DeleteMapping("/api/staff/recurring-expense-templates/{templateId}")
+    public ResponseEntity<Void> deleteTemplate(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
+            @PathVariable UUID templateId) {
+        StaffContext context = requireManage(sessionCookie);
+        expenseService.deleteTemplate(context, templateId);
+        return ResponseEntity.noContent().build();
+    }
+
     private StaffContext requireView(String sessionCookie) {
         return staffAuthService.resolveStaffContextForActiveBranch(
                 StaffCookieSupport.parseSessionId(sessionCookie), Permission.EXPENSE_VIEW);
@@ -242,10 +254,6 @@ public class StaffExpenseController {
                 expense.getVendor(),
                 expense.getDescription(),
                 expense.getReceiptImageUrl(),
-                expense.getStatus().name(),
-                expense.getApprovedByStaffUserId(),
-                expense.getApprovedAt(),
-                expense.getSourceTemplateId(),
                 expense.getCreatedAt());
     }
 

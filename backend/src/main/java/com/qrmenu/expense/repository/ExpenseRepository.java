@@ -13,13 +13,13 @@ public interface ExpenseRepository extends JpaRepository<Expense, UUID> {
 
     Optional<Expense> findByIdAndBusinessId(UUID id, UUID businessId);
 
-    List<Expense> findAllByBusinessIdAndIncurredAtBetweenOrderByIncurredAtDesc(
+    List<Expense> findAllByBusinessIdAndSourceTemplateIdIsNullAndIncurredAtBetweenOrderByIncurredAtDesc(
             UUID businessId, LocalDate from, LocalDate to);
 
-    List<Expense> findAllByBusinessIdAndBranchIdAndIncurredAtBetweenOrderByIncurredAtDesc(
+    List<Expense> findAllByBusinessIdAndBranchIdAndSourceTemplateIdIsNullAndIncurredAtBetweenOrderByIncurredAtDesc(
             UUID businessId, UUID branchId, LocalDate from, LocalDate to);
 
-    List<Expense> findAllByBranchIdInAndIncurredAtBetweenOrderByIncurredAtDesc(
+    List<Expense> findAllByBranchIdInAndSourceTemplateIdIsNullAndIncurredAtBetweenOrderByIncurredAtDesc(
             List<UUID> branchIds, LocalDate from, LocalDate to);
 
     boolean existsBySourceTemplateIdAndGeneratedForPeriod(UUID sourceTemplateId, String generatedForPeriod);
@@ -28,9 +28,32 @@ public interface ExpenseRepository extends JpaRepository<Expense, UUID> {
             "SELECT COALESCE(SUM(e.amountMinorUnits), 0) FROM Expense e "
                     + "WHERE e.businessId = :businessId "
                     + "AND (:branchId IS NULL OR e.branchId = :branchId) "
-                    + "AND e.status = com.qrmenu.expense.ExpenseStatus.APPROVED "
                     + "AND e.incurredAt BETWEEN :from AND :to")
-    long sumApprovedAmount(
+    long sumAmount(
+            @Param("businessId") UUID businessId,
+            @Param("branchId") UUID branchId,
+            @Param("from") LocalDate from,
+            @Param("to") LocalDate to);
+
+    @Query(
+            "SELECT COALESCE(SUM(e.amountMinorUnits), 0) FROM Expense e "
+                    + "WHERE e.businessId = :businessId "
+                    + "AND (:branchId IS NULL OR e.branchId = :branchId) "
+                    + "AND e.sourceTemplateId IS NULL "
+                    + "AND e.incurredAt BETWEEN :from AND :to")
+    long sumManualAmount(
+            @Param("businessId") UUID businessId,
+            @Param("branchId") UUID branchId,
+            @Param("from") LocalDate from,
+            @Param("to") LocalDate to);
+
+    @Query(
+            "SELECT COALESCE(SUM(e.amountMinorUnits), 0) FROM Expense e "
+                    + "WHERE e.businessId = :businessId "
+                    + "AND (:branchId IS NULL OR e.branchId = :branchId) "
+                    + "AND e.sourceTemplateId IS NOT NULL "
+                    + "AND e.incurredAt BETWEEN :from AND :to")
+    long sumRecurringAmount(
             @Param("businessId") UUID businessId,
             @Param("branchId") UUID branchId,
             @Param("from") LocalDate from,

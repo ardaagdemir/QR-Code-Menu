@@ -6,6 +6,7 @@ import com.qrmenu.reporting.ChainSalesReportView;
 import com.qrmenu.reporting.HourlySalesView;
 import com.qrmenu.reporting.ProductSalesView;
 import com.qrmenu.expense.ExpenseService;
+import com.qrmenu.expense.ExpenseService.ExpenseBreakdown;
 import com.qrmenu.reporting.ReportingService;
 import com.qrmenu.reporting.web.dto.BranchSalesReportResponse;
 import com.qrmenu.reporting.web.dto.CategorySalesResponse;
@@ -53,7 +54,7 @@ public class StaffReportingController {
         return toResponse(reportingService.getBranchReport(context.businessId(), branchId, from, to));
     }
 
-    /** Section 17: brüt/net satış + onaylı giderler = "Yönetimsel Net Sonuç" - kâr olarak sunulmaz (bkz. OperatingResultResponse javadoc). */
+    /** Section 17: net satış - kayıtlı giderler = "Yönetimsel Net Sonuç". */
     @GetMapping({"/api/staff/reports/operating-result", "/api/staff/branches/{branchId}/reports/operating-result"})
     public OperatingResultResponse operatingResult(
             @PathVariable(required = false) UUID branchId,
@@ -63,7 +64,7 @@ public class StaffReportingController {
         StaffContext context = resolveReportContext(sessionCookie, Permission.REPORT_VIEW, branchId);
         branchId = context.activeBranchId();
         BranchSalesReportView report = reportingService.getBranchReport(context.businessId(), branchId, from, to);
-        long approvedExpenses = expenseService.sumApprovedExpenses(context.businessId(), branchId, from, to);
+        ExpenseBreakdown expenses = expenseService.expenseBreakdown(context.businessId(), branchId, from, to);
         return new OperatingResultResponse(
                 branchId,
                 report.branchName(),
@@ -72,8 +73,10 @@ public class StaffReportingController {
                 report.grossSalesMinorUnits(),
                 report.refundTotalMinorUnits(),
                 report.netSalesMinorUnits(),
-                approvedExpenses,
-                report.netSalesMinorUnits() - approvedExpenses);
+                expenses.manualExpensesMinorUnits(),
+                expenses.recurringExpensesMinorUnits(),
+                expenses.totalExpensesMinorUnits(),
+                report.netSalesMinorUnits() - expenses.totalExpensesMinorUnits());
     }
 
     /**

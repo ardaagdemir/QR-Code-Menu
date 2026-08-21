@@ -14,9 +14,5 @@ public record ExpenseResponse(
         String vendor,
         String description,
         String receiptImageUrl,
-        String status,
-        UUID approvedByStaffUserId,
-        Instant approvedAt,
-        UUID sourceTemplateId,
         Instant createdAt) {
 }

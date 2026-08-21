@@ -2,8 +2,6 @@ package com.qrmenu.expense;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -14,11 +12,9 @@ import java.time.YearMonth;
 import java.util.UUID;
 
 /**
- * Section 16.1: DRAFT/SUBMITTED are freely editable by the creator; once APPROVED or
- * REJECTED the row is immutable (enforced in {@link ExpenseService}, mirrors
- * DailyBranchCloseReport's FINAL-lock pattern from gap-analysis #9). branchId is nullable
- * for business-level expenses (Section 16.1: "Business-level gider olabilir").
- * sourceTemplateId/generatedForPeriod are set only for rows the recurring scheduler drafted.
+ * A persisted row is a real expense. Manually-created rows remain editable; recurring
+ * rows are immutable period snapshots so later template changes cannot rewrite history.
+ * sourceTemplateId/generatedForPeriod are set only for scheduler-generated rows.
  */
 @Entity
 @Table(name = "expense")
@@ -52,19 +48,9 @@ public class Expense {
     @Column(name = "receipt_image_url")
     private String receiptImageUrl;
 
-    /** Null for scheduler-generated recurring drafts (Section 16.2) - no staff actor initiated those. */
+    /** Null for scheduler-generated recurring expenses because no staff actor initiated them. */
     @Column(name = "created_by_staff_user_id")
     private UUID createdByStaffUserId;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 10)
-    private ExpenseStatus status;
-
-    @Column(name = "approved_by_staff_user_id")
-    private UUID approvedByStaffUserId;
-
-    @Column(name = "approved_at")
-    private Instant approvedAt;
 
     @Column(name = "source_template_id")
     private UUID sourceTemplateId;
@@ -100,13 +86,12 @@ public class Expense {
         this.description = description;
         this.receiptImageUrl = receiptImageUrl;
         this.createdByStaffUserId = createdByStaffUserId;
-        this.status = ExpenseStatus.DRAFT;
         this.sourceTemplateId = sourceTemplateId;
         this.generatedForPeriod = generatedForPeriod == null ? null : generatedForPeriod.toString();
         this.createdAt = Instant.now();
     }
 
-    void applyDraftEdit(
+    void applyManualEdit(
             UUID categoryId,
             long amountMinorUnits,
             LocalDate incurredAt,
@@ -121,28 +106,8 @@ public class Expense {
         this.receiptImageUrl = receiptImageUrl;
     }
 
-    void submit() {
-        this.status = ExpenseStatus.SUBMITTED;
-    }
-
-    void approve(UUID approvedByStaffUserId, Instant approvedAt) {
-        this.status = ExpenseStatus.APPROVED;
-        this.approvedByStaffUserId = approvedByStaffUserId;
-        this.approvedAt = approvedAt;
-    }
-
-    void reject(UUID approvedByStaffUserId, Instant approvedAt) {
-        this.status = ExpenseStatus.REJECTED;
-        this.approvedByStaffUserId = approvedByStaffUserId;
-        this.approvedAt = approvedAt;
-    }
-
-    public boolean isEditable() {
-        return status == ExpenseStatus.DRAFT;
-    }
-
-    public boolean isLocked() {
-        return status == ExpenseStatus.APPROVED || status == ExpenseStatus.REJECTED;
+    public boolean isRecurring() {
+        return sourceTemplateId != null;
     }
 
     public UUID getId() {
@@ -183,18 +148,6 @@ public class Expense {
 
     public UUID getCreatedByStaffUserId() {
         return createdByStaffUserId;
-    }
-
-    public ExpenseStatus getStatus() {
-        return status;
-    }
-
-    public UUID getApprovedByStaffUserId() {
-        return approvedByStaffUserId;
-    }
-
-    public Instant getApprovedAt() {
-        return approvedAt;
     }
 
     public UUID getSourceTemplateId() {

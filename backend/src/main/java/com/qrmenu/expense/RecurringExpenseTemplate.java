@@ -11,7 +11,7 @@ import jakarta.persistence.Table;
 import java.time.LocalDate;
 import java.util.UUID;
 
-/** Section 16.2: monthly recurring expense template - the scheduler reads active rows and drafts an Expense per due period. */
+/** Monthly recurring expense template; generated period expenses retain their own immutable snapshot values. */
 @Entity
 @Table(name = "recurring_expense_template")
 public class RecurringExpenseTemplate {
@@ -54,6 +54,13 @@ public class RecurringExpenseTemplate {
     @Column(nullable = false)
     private boolean active = true;
 
+    /**
+     * Templates are archived instead of physically deleted so already generated expense
+     * snapshots can retain their source_template_id relationship.
+     */
+    @Column(nullable = false)
+    private boolean deleted = false;
+
     protected RecurringExpenseTemplate() {
         // JPA
     }
@@ -82,6 +89,32 @@ public class RecurringExpenseTemplate {
 
     void deactivate() {
         this.active = false;
+    }
+
+    void activate() {
+        this.active = true;
+    }
+
+    void update(
+            UUID categoryId,
+            long amountMinorUnits,
+            String vendor,
+            String description,
+            int dayOfMonth,
+            LocalDate startDate,
+            LocalDate endDate) {
+        this.categoryId = categoryId;
+        this.amountMinorUnits = amountMinorUnits;
+        this.vendor = vendor;
+        this.description = description;
+        this.dayOfMonth = dayOfMonth;
+        this.startDate = startDate;
+        this.endDate = endDate;
+    }
+
+    void delete() {
+        this.active = false;
+        this.deleted = true;
     }
 
     public UUID getId() {
@@ -130,5 +163,9 @@ public class RecurringExpenseTemplate {
 
     public boolean isActive() {
         return active;
+    }
+
+    public boolean isDeleted() {
+        return deleted;
     }
 }

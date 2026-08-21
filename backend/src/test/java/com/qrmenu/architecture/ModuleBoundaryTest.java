@@ -137,19 +137,6 @@ class ModuleBoundaryTest {
     }
 
     @Test
-    void announcementRepositoriesAreOnlyUsedWithinTheAnnouncementModule() {
-        ArchRule rule = noClasses()
-                .that()
-                .resideOutsideOfPackage("com.qrmenu.announcement..")
-                .should()
-                .dependOnClassesThat()
-                .resideInAPackage("com.qrmenu.announcement.repository..")
-                .because("cross-module access must go through AnnouncementService, not its repositories");
-
-        rule.check(importedClasses);
-    }
-
-    @Test
     void dailyCloseRepositoriesAreOnlyUsedWithinTheDailyCloseModule() {
         ArchRule rule = noClasses()
                 .that()

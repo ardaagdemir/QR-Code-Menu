@@ -1,13 +1,17 @@
 package com.qrmenu.expense;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.qrmenu.expense.repository.ExpenseRepository;
+import com.qrmenu.expense.repository.RecurringExpenseTemplateRepository;
 import com.qrmenu.staffaccess.StaffCookieSupport;
 import com.qrmenu.support.AbstractIntegrationTest;
 import com.qrmenu.support.StaffFixtures;
 import com.qrmenu.support.TenantFixtures;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,24 +22,29 @@ import org.springframework.test.web.servlet.MvcResult;
 
 import static com.qrmenu.support.AbstractIntegrationTest.TEST_ADMIN_TOKEN;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Gap-analysis #10 (product-requirements.md Section 16): expense DRAFT->SUBMITTED->
- * APPROVED/REJECTED state machine + immutability after approval, EXPENSE_VIEW/MANAGE/
- * APPROVE permission gates, branch-scoped access for BRANCH_MANAGER, recurring template
- * scheduler idempotency, and the Section 17 operating-result figure.
+ * Expense records are effective immediately. Covers branch-scoped access, immutable
+ * recurring period snapshots, scheduler failure/idempotency and operating-result totals.
  */
 class ExpenseFlowIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private RecurringExpenseScheduler scheduler;
 
+    @Autowired
+    private RecurringExpenseTemplateRepository templateRepository;
+
+    @Autowired
+    private ExpenseRepository expenseRepository;
+
     @Test
-    void draftSubmitApproveIsImmutableAfterward() throws Exception {
+    void manualExpenseIsImmediatelyReportedAndRemainsEditable() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Expense Business 1");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String adminCookie =
@@ -46,25 +55,29 @@ class ExpenseFlowIntegrationTest extends AbstractIntegrationTest {
         String categoryId = createCategory(cookie, "Kira");
         String expenseId = createExpense(cookie, branchId, categoryId, 150000);
 
-        mockMvc.perform(post("/api/staff/expenses/{expenseId}/submit", expenseId).cookie(cookie))
-                .andExpect(status().isOk())
-                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.status").value("SUBMITTED"));
+        JsonNode initialResult = operatingResult(cookie, branchId, YearMonth.from(LocalDate.now(ZoneOffset.UTC)));
+        assertThat(initialResult.get("manualExpensesMinorUnits").asLong()).isEqualTo(150000);
+        assertThat(initialResult.get("recurringExpensesMinorUnits").asLong()).isZero();
+        assertThat(initialResult.get("totalExpensesMinorUnits").asLong()).isEqualTo(150000);
 
-        JsonNode approved = objectMapper.readTree(mockMvc.perform(post("/api/staff/expenses/{expenseId}/approve", expenseId).cookie(cookie))
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString());
-        assertThat(approved.get("status").asText()).isEqualTo("APPROVED");
-        assertThat(approved.get("approvedByStaffUserId")).isNotNull();
-
-        // APPROVED is immutable: editing must fail.
         mockMvc.perform(post("/api/staff/expenses/{expenseId}", expenseId)
                         .cookie(cookie)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"categoryId\":\"" + categoryId + "\",\"amountMinorUnits\":999,\"incurredAt\":\""
                                 + LocalDate.now(ZoneOffset.UTC) + "\"}"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isOk());
+
+        JsonNode updatedResult = operatingResult(cookie, branchId, YearMonth.from(LocalDate.now(ZoneOffset.UTC)));
+        assertThat(updatedResult.get("manualExpensesMinorUnits").asLong()).isEqualTo(999);
+        assertThat(updatedResult.get("recurringExpensesMinorUnits").asLong()).isZero();
+        assertThat(updatedResult.get("totalExpensesMinorUnits").asLong()).isEqualTo(999);
+
+        mockMvc.perform(post("/api/staff/expenses/{expenseId}/submit", expenseId).cookie(cookie))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(post("/api/staff/expenses/{expenseId}/approve", expenseId).cookie(cookie))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(post("/api/staff/expenses/{expenseId}/reject", expenseId).cookie(cookie))
+                .andExpect(status().isNotFound());
     }
 
     @Test
@@ -91,7 +104,7 @@ class ExpenseFlowIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void branchManagerUsesActiveBranchButCannotApproveOrTargetAnotherBranch() throws Exception {
+    void branchManagerUsesActiveBranchAndCannotTargetAnotherBranch() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Expense Business 3");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String otherBranchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Diğer Şube");
@@ -118,14 +131,8 @@ class ExpenseFlowIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(status().isCreated())
                 .andReturn();
 
-        // Own-branch expense creation and submission are allowed.
         String expenseId = objectMapper.readTree(createResult.getResponse().getContentAsString()).get("id").asText();
-        mockMvc.perform(post("/api/staff/expenses/{expenseId}/submit", expenseId).cookie(managerCookie))
-                .andExpect(status().isOk());
-
-        // Approval requires EXPENSE_APPROVE (BUSINESS_ADMIN-only).
-        mockMvc.perform(post("/api/staff/expenses/{expenseId}/approve", expenseId).cookie(managerCookie))
-                .andExpect(status().isForbidden());
+        assertThat(expenseId).isNotBlank();
 
         // Another branch is out of scope.
         mockMvc.perform(post("/api/staff/expenses")
@@ -146,17 +153,43 @@ class ExpenseFlowIntegrationTest extends AbstractIntegrationTest {
                 .andReturn()
                 .getResponse()
                 .getContentAsString()).get("id").asText();
-        mockMvc.perform(post("/api/staff/expenses/{expenseId}/submit", otherExpenseId).cookie(otherAdminCookie))
-                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/staff/expenses/{expenseId}", otherExpenseId)
+                        .cookie(managerCookie)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"categoryId\":\"" + categoryId + "\",\"amountMinorUnits\":999,\"incurredAt\":\""
+                                + LocalDate.now(ZoneOffset.UTC) + "\"}"))
+                .andExpect(status().isForbidden());
 
-        mockMvc.perform(post("/api/staff/expenses/{expenseId}/approve", otherExpenseId).cookie(adminCookieObj))
-                .andExpect(status().isForbidden());
-        mockMvc.perform(post("/api/staff/expenses/{expenseId}/reject", otherExpenseId).cookie(adminCookieObj))
-                .andExpect(status().isForbidden());
+        LocalDate today = LocalDate.now(ZoneOffset.UTC);
+        String otherTemplateId = objectMapper.readTree(mockMvc.perform(post("/api/staff/recurring-expense-templates")
+                        .cookie(otherAdminCookie)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"categoryId\":\"" + categoryId
+                                + "\",\"amountMinorUnits\":2000,\"description\":\"Diğer şube kirası\",\"dayOfMonth\":1,\"startDate\":\""
+                                + today + "\"}"))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString()).get("id").asText();
+
+        String updateTemplateBody = "{\"categoryId\":\"" + categoryId
+                + "\",\"amountMinorUnits\":3000,\"description\":\"Yetkisiz değişiklik\",\"dayOfMonth\":2,\"startDate\":\""
+                + today + "\"}";
+        mockMvc.perform(post("/api/staff/recurring-expense-templates/{templateId}", otherTemplateId)
+                        .cookie(managerCookie)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(updateTemplateBody))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(delete("/api/staff/recurring-expense-templates/{templateId}", otherTemplateId)
+                        .cookie(managerCookie))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(post("/api/staff/recurring-expense-templates/{templateId}/activate", otherTemplateId)
+                        .cookie(managerCookie))
+                .andExpect(status().isNotFound());
     }
 
     @Test
-    void recurringTemplateSchedulerDraftsExactlyOnceForTheDuePeriod() throws Exception {
+    void dueRecurringTemplateCreatesAnExpenseImmediatelyAndSchedulerRemainsIdempotent() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Expense Business 4");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String adminCookie =
@@ -166,18 +199,20 @@ class ExpenseFlowIntegrationTest extends AbstractIntegrationTest {
         String categoryId = createCategory(cookie, "Elektrik");
 
         LocalDate today = LocalDate.now(ZoneOffset.UTC);
+        int dueDay = Math.max(1, today.getDayOfMonth() - 1);
+        LocalDate dueDate = YearMonth.from(today).atDay(dueDay);
         MvcResult templateResult = mockMvc.perform(post("/api/staff/recurring-expense-templates")
                         .cookie(cookie)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"branchId\":\"" + branchId + "\",\"categoryId\":\"" + categoryId
-                                + "\",\"amountMinorUnits\":25000,\"dayOfMonth\":" + today.getDayOfMonth()
-                                + ",\"startDate\":\"" + today.minusDays(1) + "\"}"))
+                                + "\",\"amountMinorUnits\":25000,\"dayOfMonth\":" + dueDay
+                                + ",\"startDate\":\"" + today + "\"}"))
                 .andExpect(status().isCreated())
                 .andReturn();
         String templateId = objectMapper.readTree(templateResult.getResponse().getContentAsString()).get("id").asText();
 
-        scheduler.generateDueDrafts();
-        scheduler.generateDueDrafts();
+        scheduler.generateDueExpenses();
+        scheduler.generateDueExpenses();
 
         JsonNode expenses = objectMapper.readTree(mockMvc.perform(get("/api/staff/expenses")
                         .param("branchId", branchId)
@@ -188,31 +223,194 @@ class ExpenseFlowIntegrationTest extends AbstractIntegrationTest {
                 .andReturn()
                 .getResponse()
                 .getContentAsString());
-        long generatedCount = 0;
-        for (JsonNode expense : expenses) {
-            if (templateId.equals(expense.path("sourceTemplateId").asText(null))) {
-                generatedCount++;
-                assertThat(expense.get("status").asText()).isEqualTo("DRAFT");
-                assertThat(expense.get("amountMinorUnits").asLong()).isEqualTo(25000);
-            }
-        }
-        assertThat(generatedCount).isEqualTo(1);
+        assertThat(expenses).isEmpty();
+
+        List<Expense> generatedExpenses = expenseRepository.findAll().stream()
+                .filter(expense -> templateId.equals(String.valueOf(expense.getSourceTemplateId())))
+                .toList();
+        assertThat(generatedExpenses).hasSize(1);
+        Expense generatedExpense = generatedExpenses.get(0);
+        assertThat(generatedExpense.getAmountMinorUnits()).isEqualTo(25000);
+        assertThat(generatedExpense.getIncurredAt()).isEqualTo(dueDate);
+        assertThat(generatedExpense.getBranchId()).isEqualTo(UUID.fromString(branchId));
+
+        mockMvc.perform(post("/api/staff/recurring-expense-templates/{templateId}/deactivate", templateId)
+                        .cookie(cookie))
+                .andExpect(status().isOk());
+        assertThat(templateRepository.findById(UUID.fromString(templateId)).orElseThrow().isActive()).isFalse();
+        mockMvc.perform(post("/api/staff/recurring-expense-templates/{templateId}/activate", templateId)
+                        .cookie(cookie))
+                .andExpect(status().isOk());
+        assertThat(templateRepository.findById(UUID.fromString(templateId)).orElseThrow().isActive()).isTrue();
+        assertThat(expenseRepository.findById(generatedExpense.getId()).orElseThrow().getAmountMinorUnits())
+                .isEqualTo(25000);
+
+        JsonNode result = operatingResult(cookie, branchId, YearMonth.from(today));
+        assertThat(result.get("manualExpensesMinorUnits").asLong()).isZero();
+        assertThat(result.get("recurringExpensesMinorUnits").asLong()).isEqualTo(25000);
+        assertThat(result.get("totalExpensesMinorUnits").asLong()).isEqualTo(25000);
+
+        mockMvc.perform(post("/api/staff/expenses/{expenseId}", generatedExpense.getId())
+                        .cookie(cookie)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"categoryId\":\"" + categoryId + "\",\"amountMinorUnits\":999,\"incurredAt\":\""
+                                + dueDate + "\"}"))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(post("/api/staff/recurring-expense-templates/{templateId}", templateId)
+                        .cookie(cookie)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"categoryId\":\"" + categoryId
+                                + "\",\"amountMinorUnits\":99000,\"description\":\"Güncel elektrik\",\"dayOfMonth\":"
+                                + dueDay + ",\"startDate\":\"" + today + "\"}"))
+                .andExpect(status().isOk());
+
+        assertThat(expenseRepository.findById(generatedExpense.getId()).orElseThrow().getAmountMinorUnits())
+                .isEqualTo(25000);
+        assertThat(operatingResult(cookie, branchId, YearMonth.from(today)).get("totalExpensesMinorUnits").asLong())
+                .isEqualTo(25000);
+
+        mockMvc.perform(delete("/api/staff/recurring-expense-templates/{templateId}", templateId).cookie(cookie))
+                .andExpect(status().isNoContent());
+
+        JsonNode templates = objectMapper.readTree(mockMvc.perform(get("/api/staff/recurring-expense-templates")
+                        .cookie(cookie))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString());
+        assertThat(templates.findValuesAsText("id")).doesNotContain(templateId);
+
+        RecurringExpenseTemplate archivedTemplate = templateRepository.findById(UUID.fromString(templateId)).orElseThrow();
+        assertThat(archivedTemplate.isDeleted()).isTrue();
+        assertThat(archivedTemplate.isActive()).isFalse();
+        assertThat(expenseRepository.findById(generatedExpense.getId()).orElseThrow().getAmountMinorUnits())
+                .isEqualTo(25000);
+
+        YearMonth nextPeriod = YearMonth.from(today).plusMonths(1);
+        scheduler.generateDueExpensesForTemplates(List.of(UUID.fromString(templateId)), nextPeriod.atEndOfMonth());
+        assertThat(expenseRepository.existsBySourceTemplateIdAndGeneratedForPeriod(
+                        UUID.fromString(templateId), nextPeriod.toString()))
+                .isFalse();
+        assertThat(operatingResult(cookie, branchId, YearMonth.from(today)).get("totalExpensesMinorUnits").asLong())
+                .isEqualTo(25000);
     }
 
     @Test
-    void operatingResultSubtractsApprovedExpensesFromNetSales() throws Exception {
+    void oneRecurringTemplateFailureDoesNotBlockAnotherTemplatesDuePeriods() throws Exception {
+        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Expense Failure Isolation");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
+        String adminCookie = StaffFixtures.bootstrapBusinessAdminAndLogin(
+                mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "expense-failure@example.com");
+        MockCookie cookie = new MockCookie(StaffCookieSupport.COOKIE_NAME, adminCookie);
+        String categoryId = createCategory(cookie, "Bakım");
+        LocalDate today = LocalDate.now(ZoneOffset.UTC);
+        YearMonth previousPeriod = YearMonth.from(today).minusMonths(1);
+        YearMonth currentPeriod = YearMonth.from(today);
+
+        RecurringExpenseTemplate validTemplate = templateRepository.saveAndFlush(new RecurringExpenseTemplate(
+                UUID.fromString(businessId),
+                UUID.fromString(branchId),
+                UUID.fromString(categoryId),
+                32000,
+                "Servis sağlayıcı",
+                null,
+                1,
+                previousPeriod.atDay(1),
+                null));
+
+        scheduler.generateDueExpensesForTemplates(List.of(UUID.randomUUID(), validTemplate.getId()), today);
+
+        assertThat(expenseRepository.existsBySourceTemplateIdAndGeneratedForPeriod(
+                        validTemplate.getId(), previousPeriod.toString()))
+                .isTrue();
+        assertThat(expenseRepository.existsBySourceTemplateIdAndGeneratedForPeriod(
+                        validTemplate.getId(), currentPeriod.toString()))
+                .isTrue();
+    }
+
+    @Test
+    void schedulerDoesNotGenerateFutureRecurringExpensePeriods() throws Exception {
+        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Expense Future Period");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
+        String adminCookie = StaffFixtures.bootstrapBusinessAdminAndLogin(
+                mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "expense-future@example.com");
+        MockCookie cookie = new MockCookie(StaffCookieSupport.COOKIE_NAME, adminCookie);
+        String categoryId = createCategory(cookie, "Gelecek Dönem");
+        LocalDate today = LocalDate.now(ZoneOffset.UTC);
+        LocalDate nextMonthStart = YearMonth.from(today).plusMonths(1).atDay(1);
+
+        MvcResult templateResult = mockMvc.perform(post("/api/staff/recurring-expense-templates")
+                        .cookie(cookie)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"branchId\":\"" + branchId + "\",\"categoryId\":\"" + categoryId
+                                + "\",\"amountMinorUnits\":18000,\"dayOfMonth\":1,\"startDate\":\""
+                                + nextMonthStart + "\"}"))
+                .andExpect(status().isCreated())
+                .andReturn();
+        UUID templateId = UUID.fromString(
+                objectMapper.readTree(templateResult.getResponse().getContentAsString()).get("id").asText());
+
+        scheduler.generateDueExpensesForTemplates(List.of(templateId), today);
+
+        assertThat(expenseRepository.existsBySourceTemplateIdAndGeneratedForPeriod(
+                        templateId, YearMonth.from(nextMonthStart).toString()))
+                .isFalse();
+    }
+
+    @Test
+    void operatingResultIncludesManualAndDueRecurringExpensesOnly() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Expense Business 5");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
+        String otherBranchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Diğer Şube");
         String adminCookie =
                 StaffFixtures.bootstrapBusinessAdminAndLogin(
                         mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "expense-admin-5@example.com");
         MockCookie cookie = new MockCookie(StaffCookieSupport.COOKIE_NAME, adminCookie);
         String categoryId = createCategory(cookie, "Temizlik");
-        String expenseId = createExpense(cookie, branchId, categoryId, 4000);
-        mockMvc.perform(post("/api/staff/expenses/{expenseId}/submit", expenseId).cookie(cookie)).andExpect(status().isOk());
-        mockMvc.perform(post("/api/staff/expenses/{expenseId}/approve", expenseId).cookie(cookie)).andExpect(status().isOk());
-
         LocalDate today = LocalDate.now(ZoneOffset.UTC);
+        createExpense(cookie, branchId, categoryId, 4000);
+        MvcResult realizedTemplateResult = mockMvc.perform(post("/api/staff/recurring-expense-templates")
+                        .cookie(cookie)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"branchId\":\"" + branchId + "\",\"categoryId\":\"" + categoryId
+                                + "\",\"amountMinorUnits\":6000,\"dayOfMonth\":" + today.getDayOfMonth()
+                                + ",\"startDate\":\"" + today + "\"}"))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String realizedTemplateId = objectMapper.readTree(realizedTemplateResult.getResponse().getContentAsString())
+                .get("id")
+                .asText();
+        LocalDate nextMonthStart = YearMonth.from(today).plusMonths(1).atDay(1);
+        mockMvc.perform(post("/api/staff/recurring-expense-templates")
+                        .cookie(cookie)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"branchId\":\"" + branchId + "\",\"categoryId\":\"" + categoryId
+                                + "\",\"amountMinorUnits\":9000,\"dayOfMonth\":1,\"startDate\":\""
+                                + nextMonthStart + "\"}"))
+                .andExpect(status().isCreated());
+
+        MockCookie otherBranchCookie = new MockCookie(StaffCookieSupport.COOKIE_NAME, StaffFixtures.bootstrapAndLogin(
+                mockMvc,
+                TEST_ADMIN_TOKEN,
+                businessId,
+                otherBranchId,
+                "expense-admin-other-5@example.com",
+                "BUSINESS_ADMIN"));
+        createExpense(otherBranchCookie, otherBranchId, categoryId, 7000);
+        mockMvc.perform(post("/api/staff/recurring-expense-templates")
+                        .cookie(otherBranchCookie)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"categoryId\":\"" + categoryId
+                                + "\",\"amountMinorUnits\":8000,\"dayOfMonth\":" + today.getDayOfMonth()
+                                + ",\"startDate\":\"" + today + "\"}"))
+                .andExpect(status().isCreated());
+
+        // Archiving the template must stop future generation without removing its
+        // already realized expense from this period's report.
+        mockMvc.perform(delete("/api/staff/recurring-expense-templates/{templateId}", realizedTemplateId).cookie(cookie))
+                .andExpect(status().isNoContent());
+
         JsonNode result = objectMapper.readTree(mockMvc.perform(get("/api/staff/branches/{branchId}/reports/operating-result", branchId)
                         .param("from", today.toString())
                         .param("to", today.toString())
@@ -221,9 +419,11 @@ class ExpenseFlowIntegrationTest extends AbstractIntegrationTest {
                 .andReturn()
                 .getResponse()
                 .getContentAsString());
-        assertThat(result.get("approvedExpensesMinorUnits").asLong()).isEqualTo(4000);
+        assertThat(result.get("manualExpensesMinorUnits").asLong()).isEqualTo(4000);
+        assertThat(result.get("recurringExpensesMinorUnits").asLong()).isEqualTo(6000);
+        assertThat(result.get("totalExpensesMinorUnits").asLong()).isEqualTo(10000);
         assertThat(result.get("netOperatingResultMinorUnits").asLong())
-                .isEqualTo(result.get("netSalesMinorUnits").asLong() - 4000);
+                .isEqualTo(result.get("netSalesMinorUnits").asLong() - 10000);
     }
 
     @Test
@@ -308,5 +508,16 @@ class ExpenseFlowIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(status().isCreated())
                 .andReturn();
         return objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asText();
+    }
+
+    private JsonNode operatingResult(MockCookie cookie, String branchId, YearMonth period) throws Exception {
+        return objectMapper.readTree(mockMvc.perform(get("/api/staff/branches/{branchId}/reports/operating-result", branchId)
+                        .param("from", period.atDay(1).toString())
+                        .param("to", period.atEndOfMonth().toString())
+                        .cookie(cookie))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString());
     }
 }
