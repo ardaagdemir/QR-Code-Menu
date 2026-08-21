@@ -659,27 +659,26 @@ başına anlamlı değil, doğal sonucu olan "Yönetimsel Net Sonuç" dashboard'
 listesinde ayrı bir madde olarak numaralanmamıştı.
 
 **Ana özellikler:**
-- **Yeni `com.qrmenu.expense` modülü:** `ExpenseCategory` (business-scoped, manuel yönetim), `Expense`
-  (`DRAFT`→`SUBMITTED`→`APPROVED`/`REJECTED`; `APPROVED`/`REJECTED` sonrası **immutable** - gün sonu kapanış
-  raporunun FINAL kilidiyle aynı desen), `RecurringExpenseTemplate` (yalnızca `MONTHLY`, spec'in "ilk ihtiyaç"
+- **Yeni `com.qrmenu.expense` modülü:** `ExpenseCategory` (business-scoped, manuel yönetim), kaydedildiği
+  anda raporlanan manuel `Expense` ve her vadesi gelen dönem için immutable Expense snapshot'ı üreten
+  `RecurringExpenseTemplate` (yalnızca `MONTHLY`, spec'in "ilk ihtiyaç"
   dediği tek değer). `branchId` nullable - business-level (şube bağımsız) gider de mümkün (Section 16.1).
 - **Yeni permission'lar:** `EXPENSE_VIEW`/`EXPENSE_MANAGE` (BUSINESS_ADMIN + BRANCH_MANAGER - kendi şubesi için
-  oluştur/gönder), `EXPENSE_APPROVE` (yalnızca BUSINESS_ADMIN - finansal onay merkezi kalıyor, `REPORT_CHAIN_
-  VIEW` ile aynı gerekçe). Business-level (branchId=null) gider oluşturma da BUSINESS_ADMIN-only.
+  görüntüleme ve oluşturma). Ayrı bir gider onay permission/workflow'u yoktur.
 - **`RecurringExpenseScheduler`** (`@Scheduled`, 6 saatte bir): aktif şablonları tarar, `dayOfMonth` bugüne
   denk geliyorsa (kısa aylarda ayın son gününe düşürülüyor) ve o dönem (`YearMonth`) için henüz üretilmemişse
-  otomatik bir `DRAFT` Expense oluşturur - admin sonra düzenler/onaylar (Section 16.2). İdempotency DB'deki
+  otomatik, immutable bir Expense oluşturur. İdempotency DB'deki
   `uq_expense_template_period` partial unique index + `existsBySourceTemplateIdAndGeneratedForPeriod` ön
   kontrolüyle sağlanıyor; scheduler'ın kaçırılan/tekrarlanan çalışması hiçbir zaman bir dönemi iki kez
   taslaklamıyor (gün sonu kapanış scheduler'ıyla aynı self-correcting felsefe).
-- **`StaffExpenseController`:** kategori CRUD, gider CRUD + submit/approve/reject, tekrarlayan şablon CRUD.
+- **`StaffExpenseController`:** kategori CRUD, manuel gider CRUD ve tekrarlayan şablon CRUD.
 - **`reporting` modülüne Section 17 endpoint'i:** `GET .../reports/operating-result` - `ReportingService.
-  getBranchReport`'un net satışından `ExpenseService.sumApprovedExpenses`'i (yalnızca `APPROVED` giderler)
+  getBranchReport`'un net satışından seçili dönemdeki manuel + oluşmuş recurring giderleri
   çıkararak "Yönetimsel Net Sonuç" döner. Backend/frontend hiçbir yerde "net kâr" ifadesi kullanılmıyor -
   Section 17'nin uyarısı (vergi/stok maliyeti/personel tahakkuku/amortisman modellenmiyor) `OperatingResult
   Response`'un javadoc'unda ve staff-web kartındaki uyarı metninde açıkça belirtiliyor.
-- **staff-web:** yeni `/expenses` ekranı (kategori yönetimi, gider oluştur/gönder/onayla/reddet - rol bazlı
-  aksiyon görünürlüğü, tekrarlayan şablon listesi/oluşturma), `/reports/[branchId]`'ye "Yönetimsel Net Sonuç"
+- **staff-web:** yeni `/expenses` ekranı (kategori yönetimi, manuel gider oluşturma/listeleme,
+  tekrarlayan şablon listesi/oluşturma), `/reports/[branchId]`'ye "Yönetimsel Net Sonuç"
   kartı. `StaffNav`'a BUSINESS_ADMIN + BRANCH_MANAGER için "Giderler" linki eklendi.
 
 **Teknik kararlar:**
@@ -693,11 +692,10 @@ listesinde ayrı bir madde olarak numaralanmamıştı.
   erişilebilir); `reporting`'in `ExpenseService`'e bağımlılığı bu kuralı ihlal etmiyor çünkü yalnızca public
   facade'a erişiyor.
 
-**Backend test sayısı 103 → 109** (yeni: `ExpenseFlowIntegrationTest` 5 - DRAFT→SUBMIT→APPROVE ve sonrasında
-immutability, KITCHEN_STAFF'ın 403 alması, BRANCH_MANAGER'ın business-level gider oluşturamaması + başka
-şubeye erişememesi + onaylayamaması, recurring scheduler'ın bir dönem için tam olarak bir kez taslak
-üretmesi (idempotency), operating-result'ın net satıştan onaylı giderleri doğru çıkarması; `ModuleBoundaryTest`
-'e 1 yeni case).
+**Backend entegrasyon kapsamı:** manuel giderin anında rapora girmesi ve düzenlenebilmesi, CASHIER'ın
+403 alması, BRANCH_MANAGER'ın başka şubeye erişememesi, recurring scheduler'ın bir dönem için tam
+olarak bir kez kayıt üretmesi (idempotency), recurring snapshot immutability ve operating-result'ın manuel
++ vadesi gelmiş recurring giderleri doğru çıkarması; `ModuleBoundaryTest` kapsamı korunur.
 
 **Not:** Bu madde de canlı tarayıcı doğrulaması olmadan tamamlandı (bkz. proje hafızası - Chrome testi bu
 projede kapalı); doğrulama backend integration testleri + `npm run build`/`lint`/`tsc --noEmit` ile yapıldı.
@@ -1190,7 +1188,7 @@ bir component).
     `ProductRow` (müsaitlik/aktiflik toggle'ları + düzenle/şubelere-ata genişleyen `colSpan` panelleri,
     kendi API çağrılarını yönetip günceli parent'a callback ile bildiriyor).
   - `expenses/features/`: `ExpenseCategories`, `ExpenseForm` (Dialog'lu oluşturma), `ExpenseList` (filtre
-    formu + Table + gönder/onayla/reddet), `RecurringTemplates` (Dialog'lu oluşturma + Table). Gider
+    formu + manuel gider tablosu), `RecurringTemplates` (Dialog'lu oluşturma + Table). Gider
     ekleme sonrası `ExpenseList`'in tazelenmesi, sayfa orkestratöründen geçilen bir `refreshToken` sayaç
     prop'uyla sağlanıyor (state'i tam yukarı taşımak yerine YAGNI bir çözüm). Kategori/şablon devre dışı
     bırakma ConfirmDialog ister (reaktive uç noktası yok).
@@ -2633,3 +2631,276 @@ Backend'e dokunulmadı; yalnızca `staff-web` (cashier sayfası + AppShell + sta
 `BUSINESS_ADMIN`, `BRANCH_MANAGER` ve `CASHIER` için aktif şube artık staff session/context'ten çözülüyor; schema tek atamayı enforce ediyor ve eski branch-parametreli backend alias'ları başka şubeyi reddediyor. Staff-web'den şube seçimi kaldırıldı; kasa, rapor, gider, personel ve menü doğrudan aktif şubeyi kullanıyor. Duyuru ve audit ekranları korunarak active-branch scope'una alındı; chain karşılaştırma/rapor kodu korunup mevcut user-facing rollerden ve nav'dan kapatıldı. QR üretme/yenileme/revoke/PNG indirme/yazdırma işlemleri `/tables` altındaki masa kartlarına taşındı. Kasa route'u branch parametresiz çalışıyor ve referans tasarım düzenini koruyor.
 
 Doğrulama: backend `./mvnw test` (**130 test, 0 failure**), staff-web `npm run lint` ve `npm run build` temiz. Aynı işletmedeki başka şubenin sipariş, rapor, masa ve QR kaynaklarına erişim için negatif integration testleri eklendi.
+
+---
+
+## Finansal Veri Akışı Uçtan Uca Audit — Sipariş → Ödeme → Ciro → İade → Gider → Rapor → Özet/Kasa KPI — ✅ COMPLETED
+
+Kullanıcı talebiyle finansal veri akışı uçtan uca denetlendi: backend servis/query katmanı (`OrderingService`,
+`PaymentService`, `RefundService`, `ExpenseService`, `RecurringExpenseScheduler`/`Generator`/`DuePolicy`,
+`ReportingService`, `DailyCloseService`, `StaffReportingController`), DB şeması, API response'ları ve
+frontend mapping'i (Özet/Kasa/Raporlar/Giderler) birlikte okundu; backend `./mvnw test` (**tüm modüller,
+0 failure**) ile doğrulandı.
+
+**Backend tarafı: hata bulunmadı.** Brüt satış → net satış → refund toplamı → gider (manuel+tekrarlayan) →
+Yönetimsel Net Sonuç zinciri (`ReportingService.buildReport` + `ExpenseService.expenseBreakdown` +
+`StaffReportingController.operatingResult`) doğru kuruluydu: ödenmiş ama henüz kabul edilmemiş/reddedilmiş
+siparişler de brüt satışa dahil (red bir tam refund'la nötrleniyor), refund yalnızca `COMPLETED` statüsünde
+toplanıyor, tarih aralıkları branch'in kendi `ZoneId`'siyle günün başlangıcına çevriliyor, silinmiş/pasif
+recurring template'lerin geçmişte üretilmiş `Expense` satırları sorgudan hiç etkilenmiyor (template join'i yok),
+scheduler idempotent (period+template unique check). Özet/Kasa/Raporlar üçü de aynı `ReportingService.
+getBranchReport`'u (`DailyCloseService` de dahil) çağırıyor, ayrı bir hesaplama yolu yok.
+
+**Bulunan hata (frontend, gerçek): "bugün" hesaplaması UTC'ye kayıyor.** 7 dosyada `new Date().
+toISOString().slice(0, 10)` (veya yerel y/a/g'den kurulan bir `Date`'i aynı şekilde `toISOString()`'a
+vermek) kalıp olarak "bugünün tarihi"ni üretiyordu - ama `toISOString()` her zaman UTC döndürür. Pozitif
+UTC ofsetli bir branch timezone'unda (örn. Europe/Istanbul, UTC+3) bu iki farklı şekilde bozuluyordu: (1)
+yerel gece yarısı-03:00 arası her gün "bugün" bir gün geriye kayıyordu, (2) ayın 1'i gibi yerel y/a/g'den
+inşa edilen herhangi bir tarih için ofset her saatte koşulsuz bozuluyordu (örn. "bu ay" filtresinin
+varsayılan başlangıcı her zaman bir önceki ayın son gününü gösteriyordu). Etkilenen yerler: Raporlar'ın
+"Bugün/Dün/Bu Hafta/Bu Ay" preset'leri (`DateRangePresets.tsx` - sayfa ilk açıldığında varsayılan aralık),
+Özet'in "Bugünün Özeti" KPI'ları (`dashboard/page.tsx`), Raporlar'ın gün sonu kapatma akışı
+(`reports/[branchId]/page.tsx` - `handleCloseToday`/`todayAlreadyFinal`, yanlış iş gününü kapatma riski),
+manuel gider formunun varsayılan tarihi (`ExpenseForm.tsx`), gider listesinin varsayılan "bugün"/"bu ay"
+filtreleri (`ExpenseList.tsx`), ve tekrarlayan gider şablonunun varsayılan başlangıç tarihi + "sıradaki
+vade" önizlemesi (`RecurringTemplates.tsx`). Kasa ekranı (`cashier/[branchId]/page.tsx`) zaten doğru
+yerel-tarih fonksiyonunu kullanıyordu - referans implementasyon oradan alındı.
+
+**Düzeltme:** `lib/time.ts`'e tek bir paylaşılan `localIsoDate(date = new Date())` eklendi (yerel
+`getFullYear`/`getMonth`/`getDate` bileşenlerinden string kuruyor, hiç `toISOString()` kullanmıyor); yukarıdaki
+7 dosyadaki hatalı yerel fonksiyon/çağrı bu ortak fonksiyona yönlendirildi, Kasa'daki doğru-ama-tekrarlanan
+yerel fonksiyon da aynı ortak fonksiyona taşındı (tek kaynak, aynı hatanın başka bir yerde tekrar
+girmesini önlüyor). `RecurringTemplates.tsx`'teki `toIsoDate(year, monthIndex, dayOfMonth)` (y/a/g'den
+`Date.UTC` ile inşa edip `toISOString()`'a veren takvim tarihi kurucusu) bilinçli olarak dokunulmadı - o zaten
+UTC-tutarlı, "şimdiki an"a değil sabit y/a/g'ye dayanıyor, dolayısıyla doğru.
+
+**Doğrulama:** `TZ=Europe/Istanbul node -e ...` ile hem "yerel 01:00" hem "ayın 1'i yerel gece yarısı"
+senaryosu izole reprodüksiyonla doğrulandı (düzeltme öncesi bir gün geri kayıyor, düzeltme sonrası doğru).
+`npx tsc --noEmit`, `npx eslint` (değişen dosyalar, `--max-warnings 0`) ve `npm run build` (staff-web) temiz.
+Backend `./mvnw test` tüm modüllerde 0 failure (bu hata frontend-only olduğu için backend testleri zaten
+etkilenmiyordu, ama regresyon olmadığını doğrulamak için tekrar koşuldu). staff-web'de hiç test runner'ı
+kurulu değil (`package.json`'da `test` script'i yok, jest/vitest yok) - bu yüzden repo'ya yeni bir test
+altyapısı eklemek yerine (kapsam dışı bir altyapı kararı olurdu) düzeltme izole node reprodüksiyonuyla
+kanıtlandı; kullanıcı isterse ayrı bir adımda staff-web'e bir test runner kurulması teklif edilebilir.
+
+---
+
+## Sipariş Görünürlüğü ve Customer Order-Status Akışı Uçtan Uca Audit — ✅ COMPLETED (commit/push bekliyor)
+
+Kullanıcı talebiyle sipariş görünürlüğü (staff tarafı) ve customer order-status akışı uçtan uca denetlendi:
+backend order/payment/refund domain'i (`CustomerOrder`, `OrderNumberGenerator`, `OrderingService`,
+`OrderControlController`, `RefundController`, `OrderTrackingController`, SSE notifier) ile customer-web'in
+sipariş oluşturma/tracking ekranları ve staff-web'in Kasa/İadeler ekranları birlikte okundu.
+
+**Bulunan hata (backend, gerçek): sipariş numarası araması günler arası çakışınca 500 atıyordu.**
+`OrderNumberGenerator`, okunabilir sipariş numarasını şube+gün bazlı bir sayaçla üretiyor
+(`branch_daily_order_sequence`, her gün 1'den başlıyor) - yani `orderNumber` yalnızca aynı şube+aynı gün
+içinde benzersiz, zaman içinde değil. Ama `OrderRepository.findByBranchIdAndOrderNumber` tek sonuç bekleyen
+bir derived query'ydi (`Optional<CustomerOrder>`). Bir şube bir günden fazla açık kaldığı anda (ör. her gün en
+az 1 sipariş alan bir şubede "sipariş #1" her gün tekrar üretilir), aynı numarayı taşıyan ikinci sipariş
+oluşur oluşmaz `GET /api/staff/orders/search?orderNumber=` (İadeler ekranının tek arama yolu) İadeler ve yeni
+Siparişler ekranındaki arama için `IncorrectResultSizeDataAccessException` ile 500 dönmeye başlıyordu -
+sessiz bir veri bütünlüğü sorunu değil, doğrudan üretimde bir haftadan uzun çalışan her şubede tetiklenecek
+aktif bir çökme.
+
+**Düzeltme:** `findByBranchIdAndOrderNumber` → `findAllByBranchIdAndOrderNumberOrderByCreatedAtDesc` (liste
+döner), `OrderingService.getOrderByNumber` ilk (en yeni) eşleşmeyi alacak şekilde güncellendi - staff bir
+numarayla ararken pratikte neredeyse her zaman en güncel siparişi arıyor, o yüzden çakışma artık hata değil
+"en yeniye çöz" davranışına dönüşüyor. Regresyon testi (`OrderHistoryIntegrationTest.
+searchByOrderNumberResolvesToTheMostRecentOrderWhenTheDailyCounterHasRecycled`) gerçek bir çakışmayı
+`branch_daily_order_sequence`'ın günlük resetini simüle ederek (aynı sipariş `created_at - 1 gün` ile
+klonlanıp) reprodüksiyon eder.
+
+**Bulunan gap (staff): tamamlanan/reddedilen siparişler Kasa'dan düşünce hiçbir yerde görünmüyordu.** Kasa
+yalnızca `AWAITING_STORE_ACCEPTANCE`/`IN_KITCHEN`/`READY` sorguluyor (ürün kararı: tek operasyon ekranı); bir
+sipariş `COMPLETED`/`REJECTED_BY_STORE` olunca backend'de bu statüleri listeleyen hiçbir endpoint yoktu - tek
+erişim yolu sipariş numarasını ezbere bilip İadeler'den aratmaktı. **Düzeltme:** `OrderRepository`'ye
+`findAllByBranchIdAndStatusInAndCreatedAtBetweenOrderByLastActivityAtDesc`,
+`OrderingService.getOrderHistory` (branch-local `LocalDate` aralığı, `ReportingService.buildReport` ile aynı
+zone-handling deseni) ve `OrderControlController`'a yeni `GET /api/staff/orders/history` endpoint'i eklendi
+(`OrderHistoryResponse` - orderNumber, tableLabel, rejectionReasonCode/Note, en son refund statüsü, item
+listesi). staff-web'e yeni bir **Siparişler** ekranı eklendi (`app/orders/page.tsx`, nav: Operasyon grubu,
+Kasa'nın yanına) - Aktif/Tamamlanan/Reddedilen/İade sekmeleri (Aktif mevcut 3 endpoint'i salt-okunur birleştirir,
+diğer üçü yeni `/history`'yi `DateRangePresets` ile besler; İade sekmesi `latestRefundStatus != null` olan
+kayıtları filtreler), sipariş no ile arama (mevcut `/search`'ü İadeler ile paylaşır) ve tıklanan satırın
+detayını (kalemler, red nedeni, iade durumu) gösteren bir `Dialog`. Kasa'ya dokunulmadı - hâlâ yalnızca aktif
+akışı yönetiyor.
+
+**Customer tarafı: büyük ölçüde zaten doğruydu, bir kopya güncellemesi yapıldı.** `OrderTrackingController`
+zaten GET-by-token + SSE ikilisini destekliyordu (SSE yalnızca "refetch sinyali", sayfa her mount/reconnect'te
+REST'ten güncel durumu çekiyor - transient event'e güvenmiyor); `latestRefundStatus` zaten aynı response'ta
+geliyordu (REQUESTED/PROCESSING/COMPLETED/FAILED → "İadeniz işleniyor" vb. Türkçe mesajlar); tamamlanan/
+reddedilen sipariş tracking token'ıyla sonradan tekrar açılabiliyordu (terminal state'te redirect/clear yok).
+Tek değişiklik: `OrderStatusTimeline.tsx`'teki red mesajı kullanıcının talep ettiği tam ifadeyle
+("İşletme siparişi reddetti" → **"Siparişiniz işletme tarafından reddedildi"**) eşleşecek şekilde güncellendi.
+
+**Doğrulama:** Backend `./mvnw test` (tüm modüller, **0 failure**, yeni `OrderHistoryIntegrationTest` dahil -
+çakışma regresyonu + `/history` endpoint'i status filtresi/tarih aralığı/refund durumu için). staff-web ve
+customer-web'de `tsc --noEmit`, `eslint . --max-warnings 0`, `npm run build` üçü de temiz (staff-web'in yeni
+Siparişler sayfası ilk yazımda `react-hooks/set-state-in-effect` hatası verdi - async/await tabanlı veri
+yükleme fonksiyonu doğrudan effect'ten çağrılıyordu; `app/tables/page.tsx`'teki mevcut desene uyacak şekilde
+`.then()` zincirine çevrilip mount-only effect + kullanıcı-tetikli handler'lara (tab/tarih değişimi) ayrıldı).
+
+Gerçek senaryo, Docker'da yeniden build edilen `backend`/`staff-web`/`customer-web` image'larına karşı canlı
+API çağrılarıyla uçtan uca koşuldu (Chrome uzantısı bu oturumda bağlantısını kaybettiği için tarayıcı yerine
+doğrudan HTTP ile; geçici bir `BUSINESS_ADMIN` smoke-test hesabı kullanıldı, standing hesabın (bkz. yerel
+hafıza) şifresi hâlâ 401 veriyor): (1) **ödeme → red**: sipariş #3 ödendi, kasa reddetti → customer tracking
+anında `REJECTED_BY_STORE` + `latestRefundStatus=COMPLETED` gösterdi, İadeler araması ve yeni Siparişler'in
+"Reddedilen" sekmesi (`/history?status=REJECTED_BY_STORE`) siparişi refund detayıyla birlikte buldu; (2)
+**ödeme → kabul → hazırlanıyor → hazır → tamamlandı**: sipariş #4 her adımda customer tracking'de doğru
+durumu gösterdi (`IN_KITCHEN`→"Hazırlanıyor", `READY`, `COMPLETED`), tamamlanınca Kasa'nın aktif listelerinden
+düştü ve yeni "Tamamlanan" sekmesinde (`/history?status=COMPLETED`) tüm detaylarıyla göründü. Test sonunda
+oluşturulan 2 sipariş/payment/table-visit/anonymous-session ve geçici staff hesabı DB'den temizlendi
+(audit_log_entry.actor_staff_user_id nulled, staff_session/staff_user_branch/staff_user silindi - [[reference_standing_staff_account]] ile
+aynı disiplin).
+
+Branch isolation, payment/refund akışı ve order state machine'e (ACCEPT/REJECT order-level kaldı, item-level
+red eklenmedi) dokunulmadı.
+
+---
+
+## 2026-08-21 Müşteri Menü Görsel Yönü — Referans Görsele Yeniden Yaklaştırma — ✅ COMPLETED
+
+**Bağlam:** Önceki (loglanmamış, `/clear` ile kesilen) bir oturumda `app/t/[token]/*`'a Favoriler/Arama/
+"En Çok Tercih Edilenler" özellikleri eklenmiş ama görsel yön referans mockup'tan (`docs/design/
+customer-menu-reference.png` - "Lalezar Coffee", açık/sıcak kahve dükkânı estetiği) uzaklaşmıştı: kullanıcı
+"dark/kahverengi tema"yı reddetti, referansı tek doğru kaynak olarak işaretledi.
+
+**Kök neden - tema:** `page.module.css`'teki `.page` sınıfı zaten referansın renklerini taşıyordu (`#fff9f5`
+zemin, `#e85d24` accent) **ama** bir `@media (prefers-color-scheme: dark)` bloğu bunu sistem karanlık
+modunda koyu kahverengiye (`#201812`) çeviriyordu - müşteri kendi telefonunun karanlık modunda QR okuttuğunda
+gördüğü şey buydu. Referans tek bir sıcak/açık kimlik öneriyor, adaptif bir koyu varyant değil - blok
+tamamen kaldırıldı (`color-scheme: light` sabitlendi). Diğer ekranların (tracking sayfası, staff-web) karanlık
+modu dokunulmadı.
+
+**Ürün görselleri neden yüklenmiyordu:** Kod tarafında hata yok - `ProductCard`'ın `<img>`/`onError` fallback'i
+doğru çalışıyor (`PublicMenuController` de `imageUrl`'i doğru map'liyor). Gerçek sebep: DB'deki mevcut demo
+ürünlerin (`Meydan Bistro` iş yeri) `image_url` alanı tamamen boştu - hiç görsel yüklenmemişti, bu bir görüntüleme
+hatası değil bir veri boşluğuydu.
+
+**Yeniden tasarlanan bileşenler (`frontend/customer-web/app/t/[token]/`):**
+- `VisitHeader` - referanstaki güçlü hero yeniden kuruldu: sıcak degrade + doku zemin (gerçek işletme/şube
+  görsel yükleme altyapısı backend'de yok - sahte bir fotoğraf yerine kasıtlı olarak dokulu degrade, referansın
+  kompozisyon ağırlığını taşıyor), ortalanmış işletme adı/şube/masa + yeşil noktalı "Oturum aktif" pill.
+  Referanstaki hamburger ikonunun yerine **işlevsiz bir dekor değil**, gerçek ve mevcut bir aksiyon kondu: sol
+  üstte ziyaretçi sayısı ikon-butonu (`onEditGuestCount`, rozet olarak mevcut sayıyı gösteriyor); sağ üstte
+  "Siparişlerim" (değişmedi, her zaman görünür).
+- `page.tsx` - sıra referansa uyacak şekilde değişti: hero artık sticky değil (yukarı kaydırılınca sayfayla
+  birlikte kayboluyor), Arama + kategori pill'leri birlikte sticky.
+- `SearchBar` - beyaz, gölgeli, hero'nun altına hafifçe taşan (negative margin) yuvarlak pill.
+- `CategoryNav` - aktif chip artık accent turuncu değil referanstaki gibi koyu/ink dolgu + beyaz metin.
+- `ProductCard` - üç varyant birbirinden ayrıştırıldı: `grid` (kategori listesi - kare foto, fiyat+"+ Ekle"
+  aynı satırda alt kısımda), `featured` (En Çok Tercih Edilenler - 4:3 foto, ★ rozet + kalp, "+ Ekle" yok,
+  yalnızca fiyat), `compact` (Favoriler - referanstaki gibi tamamen yatay mini kart: küçük kare thumbnail +
+  isim/fiyat + kalp aynı satırda, eskiden `featured` ile aynı dikey markup'ı paylaşıyordu).
+
+**Kapsam dışı bırakılanlar (bilinçli):** Arama input'unun sağındaki filtre/slider ikonu (referansta var, ama
+karşılık gelen bir filtre özelliği yok - işlevsiz ikon eklenmedi). Kategori pill'lerindeki ikonlar (referansta
+kahve/tatlı ikonları var ama bunlar business-specific; generic bir kategori-adı→ikon eşlemesi kırılgan bir
+heuristic olurdu, eklenmedi).
+
+**Görsel doğrulama (canlı Chrome, 400×850 mobil viewport):** `/internal/**` bootstrap API'siyle (aynı desen:
+[[reference_standing_staff_account]]) geçici bir "Lalezar Coffee (design-verify)" işletmesi + şube + referanstaki
+kategoriler (Sıcak/Soğuk Kahveler, Tatlılar, Sandviçler) + gerçek Unsplash CDN görselli 8 ürün oluşturuldu -
+mevcut `Meydan Bistro` verisine dokunulmadı. Hero, arama, kategori pill'leri, kare fotoğraflı grid kartları,
+Favoriler şeridi (bir ürün favorilendi) ve sepet/ödeme akışı (gerçek mock ödeme + staff accept) üzerinden "En
+Çok Tercih Edilenler" kartı canlı olarak referansla karşılaştırıldı - hepsi eşleşti. Doğrulama sonunda oluşturulan
+işletme/şube/masa/QR/kategori/ürün/sipariş/ödeme/table-visit/geçici staff hesabı tek transaction'da DB'den
+temizlendi (FK sırasına uyularak: audit_log_entry nullanıp silindi, payment_webhook_event/payment/order_item/
+customer_order, table_visit/anonymous_customer_session, branch_product/product_option(_group)/product/
+menu_category, table_qr_token/restaurant_table, staff_session/staff_user_branch/staff_user, branch_business_hours/
+branch_daily_order_sequence, branch, business - [[reference_standing_staff_account]] ile aynı disiplin).
+
+**Doğrulama:** `tsc --noEmit`, `eslint app/t/[token]/ --max-warnings 0`, `npm run build` üçü de temiz.
+Business logic/checkout/tracking akışına dokunulmadı; "En Çok Tercih Edilenler" hâlâ yalnızca gerçek 30 günlük
+satış verisiyle doluyor (heuristic/fake fallback eklenmedi - o bölüm gerçek satış geçmişi olmayan bir şubede
+hâlâ görünmez kalıyor, bu beklenen davranış). Commit/push yapılmadı (kullanıcı talebi).
+
+**Takip düzeltmesi (aynı gün): başlıklar sistem karanlık modunda beyaz görünüyordu.** Kullanıcı canlı ortamda
+(kendi telefonu/tarayıcısı sistem karanlık modundaydı) kategori/bölüm başlıklarının (`h2` - "En Çok Tercih
+Edilenler", "Başlangıçlar" vb.) neredeyse görünmez, açık/beyaza yakın renkte olduğunu bildirdi. Kök neden CSS
+custom property miras zinciriyle ilgili bir kesişim hatasıydı: `globals.css`'teki `body { color: var(--color-fg);
+}` kuralı `color`'ı **body seviyesinde**, o anki (kök/sistem) `--color-fg` değeriyle çözüp o hesaplanmış rengi
+alt elementlere miras bırakıyor - `.page`'in kendi `--color-fg`'yi override etmesi bu zaten çözülmüş `color`
+mirasını geri almıyor, çünkü `.page`'in kendisi hiç `color` bildirmiyordu (yalnızca `background`). Sonuç: kendi
+`color`'ını set etmeyen her element (tüm `h2` başlıklar dahil) body'den miras kalan sistem-teması rengini
+kullanmaya devam ediyordu - açık modda tesadüfen doğru görünüyordu (iki değer birbirine yakın), karanlık modda
+görünmez oluyordu. **Düzeltme:** `page.module.css`'teki `.page` kuralına `color: var(--color-fg);` eklendi -
+artık `color` da `.page` seviyesinde .page'in kendi (sıcak/açık) `--color-fg`'siyle yeniden çözülüyor ve doğru
+şekilde aşağı miras kalıyor. Canlı Chrome'da (`getComputedStyle`, sistem karanlık modu açıkken) doğrulandı:
+düzeltme öncesi `rgb(237, 243, 241)` (neredeyse beyaz), sonrası `rgb(43, 33, 28)` (doğru koyu mürekkep).
+`tsc`/`eslint`/`npm run build` temiz. Commit/push yapılmadı (kullanıcı talebi).
+
+---
+
+## 2026-08-21 Müşteri Menü - Sipariş Takip Teması, Ürün Görselleri, Kahve Dükkânı Kataloğu, Kart/Kontrol İyileştirmeleri — ✅ COMPLETED
+
+Kullanıcının aynı gün ilettiği 9 maddelik eksik listesi çözüldü (customer-web, `frontend/customer-web`).
+
+**Kök neden - sipariş takip/makbuz ekranı hâlâ koyu temaydı, masaüstünde yan boşluklar siyahtı:** Önceki
+oturumda yalnızca `app/t/[token]/page.module.css`'teki `.page` sınıfına sıcak/açık palet lokal olarak
+override edilmişti; `app/order/track/[token]/*` ve `globals.css`'teki `body` hâlâ `@media
+(prefers-color-scheme: dark)` bloğuyla sistem karanlık moduna uyarlanan orijinal "Tide" (teal) paletini
+kullanıyordu. Masaüstünde `.page`'in `max-width` sınırının dışında kalan yan boşluklar da body'nin (karanlık
+modda neredeyse siyah) zeminini gösteriyordu. **Düzeltme (kapsamlı, tek seferlik):** sıcak/açık palet
+(`#fff9f5` zemin, `#e85d24` accent, vb.) `globals.css`'teki `:root`'un kendisine taşındı, `@media
+(prefers-color-scheme: dark)` bloğu tamamen kaldırıldı (`color-scheme: light` sabitlendi) - bu app (customer-web)
+yalnızca QR menü + sipariş takip ekranlarından oluşuyor, tek bir sıcak/açık kimlik dışında bir varyanta
+gerek yok. `app/t/[token]/page.module.css`'teki artık gereksiz kalan lokal değişken override'ı silinip yalnızca
+yapısal kurallar bırakıldı. Sonuç: order/track + receipt ekranları otomatik olarak doğru temaya geçti, masaüstü
+yan boşlukları da body ile aynı sıcak renge döndü - iki ayrı şikayet tek kök nedene bağlıydı.
+
+**Ürün görselleri neden yüklenmiyordu (yeniden doğrulandı):** Önceki oturumda zaten teşhis edilen aynı sebep -
+`Meydan Bistro`'nun 24 demo ürününün `image_url` alanı tamamen boştu, kod tarafında hata yoktu. Bu kez kalıcı
+çözüm için 24 ürünün tamamına gerçek, içerikle eşleşen Unsplash CDN görseli eklendi (aşağıdaki kategori
+dönüşümüyle birlikte, tek SQL script).
+
+**Test/catalog kategorileri kahve dükkânına çevrildi:** `Meydan Bistro`'nun jenerik restoran kataloğu (6
+kategori: Başlangıçlar/Ana Yemekler/Pizzalar/Salatalar/Tatlılar/İçecekler, 24 ürün - steak/pizza/salata vb.)
+tamamen bir kahve dükkânı kataloğuna dönüştürüldü: **Sıcak Kahveler** (Espresso/Latte/Cappuccino/Amerikano/
+Türk Kahvesi/Filtre Kahve), **Soğuk Kahveler** (Buzlu Latte/Cold Brew), **Kahvaltılıklar** (Ekmek Sepeti/
+Kruvasan/Tarçınlı Rulo/Çikolatalı Kurabiye), **Sandviçler & Atıştırmalıklar** (Izgara Tost/Karidesli Sezar
+Salata/Karışık Sandviç/Tavuklu Sandviç/Tavuk Burger), **Tatlılar** (San Sebastian Cheesecake/Çikolatalı Sufle/
+Brownie), **Çaylar & Diğer İçecekler** (Bitki Çayı/Siyah Çay/Chai Latte/Doğal Kaynak Suyu). Seçenek grubu olan
+3 ürün (business logic'e dokunmadan) isim/bağlamı uyacak şekilde yeniden kuruldu: eski "Dana Antrikot" →
+**Izgara Tost** (`Pişirme derecesi` grubu → `Kızartma derecesi`, Az/Orta/Çıtır kızarmış), eski "Karışık Pizza" →
+**Latte** (`Boyut` Orta/Büyük korunuyor, `Ekstralar` → Ekstra Shot/Yulaf Sütü), eski "Sezar Salata" →
+**Karidesli Sezar Salata** (sos tercihi grubu değişmedi). Alerjen eşlemeleri (`product_allergen`) eski menüden
+kalan (ör. karides/kabuklu görseline EGGS/MOLLUSCS gibi tutarsız) kayıtlar silinip yeni kataloğa göre
+(MILK/GLUTEN/EGGS/CRUSTACEANS ağırlıklı) yeniden girildi. Fiyat/vergi/hazırlama süresi alanları da gerçekçi
+kahve dükkânı değerlerine güncellendi. Görseller seçilirken her aday curl ile `200`'e karşı doğrulanıp
+(Unsplash'in `source.unsplash.com` anahtar kelime yönlendirmesi artık `503` döndüğü için kullanılamadı, doğrudan
+`images.unsplash.com/photo-<id>` URL'leri kullanıldı), belirsiz olanlar (`Fıstıklı Katmer`, `Simit`, `Poğaça`
+gibi çok spesifik yerel isimler) indirilip Read tool ile görsel olarak içerik kontrolünden geçirildi - eşleşmeyenler
+(ör. bir tabak makarna görüntüsü, bir otel yatağı manzarası) elenip isim görselle dürüst şekilde eşleşene kadar
+(ör. "Fıstıklı Katmer" yerine gerçekten kurabiye görseli olan "Çikolatalı Kurabiye") yeniden arandı.
+
+**"En Çok Tercih Edilenler" kartları büyütüldü + "Tümünü Gör" eklendi:** `ProductCard.module.css`'teki
+`.featured` sabit `200px` yerine `clamp(220px, 30vw, 260px)` kullanıyor - dar telefonda daha büyük/okunur
+kartlar, geniş ekranda (masaüstü genişliğinde) satırda doğal olarak ~3-3.5 kart görünür kalıyor (yatay kaydırma
+her genişlikte korunuyor). `ProductRowSection`'a `showSeeAll` prop'u eklendi (yalnızca popüler satırında
+kullanılıyor, Favoriler'de değil) - tıklanınca aynı ürün listesini (satır zaten hepsini DOM'da tutuyor, yeni veri
+çekmiyor) `BottomSheet` içinde 2 sütunlu bir `grid` olarak gösteriyor; oradan bir ürün seçmek sheet'i kapatıp
+normal `ProductOptionsSheet` akışını açıyor.
+
+**Normal ürün kartları (grid variant) daha kompakt yapıldı:** `.body` padding'i azaltıldı, grid variant için
+isim/fiyat font'u küçültüldü, açıklama tek satıra (`-webkit-line-clamp: 1`) indirildi, "+ Ekle" butonu küçültüldü;
+`MenuSection`'daki grid gap'i de daraltıldı.
+
+**Kişi sayısı kontrolü ikon-only'den anlaşılır metne çevrildi:** `VisitHeader`'daki sol üst buton artık yalnızca
+ikon+rozet değil, "Kişi ekle" / "N kişi" metnini de gösteren bir pill (referanstaki "Siparişlerim" butonuyla
+aynı stil).
+
+**Doğrulama (canlı Chrome, 400×850 mobil + 1400×900 masaüstü, mevcut `Meydan Bistro`/Masa 01 üzerinden -
+ayrı bir demo işletme kurulmadı):** `tsc --noEmit`, `eslint`, `npm run build` üçü de temiz; `infra-customer-web-1`
+image'ı yeniden build edilip container yeniden oluşturuldu. Canlı doğrulanan akışlar: (1) kategori pill'leri
+kahve dükkânı isimleriyle, ürün kartları gerçek görsellerle yükleniyor; (2) bir ürün favorilenip sayfa yeniden
+yüklendiğinde favori korunuyor, favoriden çıkarılınca Favoriler bölümü kayboluyor; (3) "Tümünü Gör" popüler
+ürünlerin tamamını grid sheet'te gösteriyor; (4) sepete ürün eklenince sticky sepet barı referanstaki gibi
+görünüyor; (5) "Kişi ekle" → "2 kişi" metne dönüyor; (6) gerçek bir sipariş oluşturulup ödenip (mock ödeme)
+sipariş takip ve makbuz ekranları sıcak/açık temada, masaüstünde siyah kenar boşluğu olmadan görüntülendi.
+Doğrulama sonunda oluşturulan test siparişi/ödemesi (payment_webhook_event dahil) DB'den temizlendi; favoriler
+yalnızca tarayıcının localStorage'ındaydı, ayrıca temizlik gerektirmedi. Mevcut oturumlar/masa ziyaretleri
+(önceden var olan, bu oturuma ait olmayan) dokunulmadan bırakıldı.
+
+Mevcut Siparişlerim/Oturum aktif yapısına, business logic'e dokunulmadı. Commit/push yapılmadı (kullanıcı talebi).
