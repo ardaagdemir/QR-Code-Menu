@@ -18,7 +18,7 @@ export default function MenuSkeleton() {
       <div className={styles.list}>
         {[0, 1, 2, 3].map((i) => (
           <div key={i} className={styles.card}>
-            <Skeleton width="84px" height="84px" radius="12px" />
+            <Skeleton width="100%" height="96px" radius="10px" />
             <div className={styles.cardBody}>
               <Skeleton width="65%" height="1rem" />
               <Skeleton width="35%" height="0.85rem" />

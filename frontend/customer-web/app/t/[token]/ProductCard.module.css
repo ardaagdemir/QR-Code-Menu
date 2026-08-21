@@ -1,44 +1,57 @@
 .item {
   display: block;
+  height: 100%;
 }
 
 .card {
+  position: relative;
+  height: 100%;
+}
+
+.tapArea {
   display: flex;
-  align-items: stretch;
-  gap: var(--space-3);
+  flex-direction: column;
   width: 100%;
+  height: 100%;
   text-align: left;
   background: var(--color-surface-raised);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  padding: var(--space-3);
+  overflow: hidden;
   cursor: pointer;
   transition:
     border-color var(--transition-fast),
+    box-shadow var(--transition-fast),
     opacity var(--transition-fast);
 }
 
-.card:not(:disabled):hover {
+.tapArea:not(:disabled):hover {
   border-color: var(--color-border-strong);
   box-shadow: var(--shadow-sm);
 }
 
-.card:not(:disabled):active {
-  opacity: 0.88;
+.tapArea:not(:disabled):active {
+  opacity: 0.9;
 }
 
-.card:disabled {
+.tapArea:disabled {
   cursor: default;
+}
+
+.grid {
+  /* default vertical grid card - no extra overrides needed beyond .card/.tapArea */
 }
 
 .media {
   position: relative;
   flex-shrink: 0;
-  width: 112px;
+  width: 100%;
   aspect-ratio: 1 / 1;
-  border-radius: var(--radius-sm);
-  overflow: hidden;
   background: var(--color-surface);
+}
+
+.featured .media {
+  aspect-ratio: 4 / 3;
 }
 
 .image {
@@ -68,19 +81,47 @@
   background: rgba(15, 15, 17, 0.5);
 }
 
+.featuredBadge {
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-2);
+  padding: 3px var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--color-primary);
+  color: var(--color-primary-fg);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+}
+
+.favoriteButton {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  z-index: 2;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--color-fg-muted);
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+}
+
+.favoriteButtonActive {
+  color: var(--color-primary);
+}
+
 .body {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-}
-
-.headerRow {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: var(--space-2);
+  gap: 2px;
+  padding: var(--space-2) var(--space-3) var(--space-3);
 }
 
 .name {
@@ -90,12 +131,12 @@
 
 .price {
   white-space: nowrap;
-  color: var(--color-fg-muted);
-  font-size: var(--font-size-sm);
+  color: var(--color-primary);
+  font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-base);
 }
 
 .description {
-  margin-top: var(--space-1);
   font-size: var(--font-size-sm);
   color: var(--color-fg-muted);
   overflow: hidden;
@@ -105,8 +146,127 @@
   -webkit-box-orient: vertical;
 }
 
+/* grid: 2 sütunlu mobil liste - referanstaki daha kompakt kart için isim/fiyat
+ * daha küçük, açıklama tek satıra sıkıştırılmış. */
+.grid .name {
+  font-size: var(--font-size-sm);
+}
+
+.grid .price {
+  font-size: var(--font-size-sm);
+}
+
+.grid .description {
+  -webkit-line-clamp: 1;
+}
+
 .meta {
-  margin-top: var(--space-1);
   font-size: var(--font-size-xs);
   color: var(--color-fg-muted);
+}
+
+.footerRow {
+  margin-top: auto;
+  padding-top: var(--space-1);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.grid .addButton {
+  padding: 4px var(--space-2);
+  font-size: var(--font-size-xs);
+}
+
+.featured .footerRow {
+  justify-content: flex-start;
+}
+
+.addButton {
+  padding: 6px var(--space-3);
+  border-radius: var(--radius-full);
+  background: var(--color-primary);
+  color: var(--color-primary-fg);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+}
+
+.tapArea:disabled .addButton {
+  opacity: 0.5;
+}
+
+/* featured: referanstaki büyük vitrin kartları - viewport genişliğine göre ölçeklenir
+ * (dar telefonda daha büyük/okunur kartlar, geniş ekranda satırda ~3-3.5 kart görünür
+ * kalır - yatay kaydırma her genişlikte korunur). */
+.featured {
+  width: clamp(220px, 30vw, 260px);
+  flex-shrink: 0;
+}
+
+/* compact: Favoriler şeridi - referanstaki yatay mini kart (thumbnail + isim/fiyat + kalp) */
+.compact {
+  width: 190px;
+  flex-shrink: 0;
+}
+
+.tapAreaCompact {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2);
+  padding-right: calc(var(--space-2) + 30px + var(--space-1));
+  text-align: left;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: border-color var(--transition-fast);
+}
+
+.tapAreaCompact:not(:disabled):hover {
+  border-color: var(--color-border-strong);
+}
+
+.tapAreaCompact:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.compactMedia {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--color-surface);
+}
+
+.compactBody {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.compactBody .name {
+  font-size: var(--font-size-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compactBody .price {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+}
+
+.compact .favoriteButton {
+  top: 50%;
+  transform: translateY(-50%);
+  width: 26px;
+  height: 26px;
+  background: none;
+  box-shadow: none;
 }

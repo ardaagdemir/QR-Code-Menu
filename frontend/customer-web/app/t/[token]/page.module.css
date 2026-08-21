@@ -1,3 +1,6 @@
+/* Sıcak/açık palet artık globals.css'teki :root'un kendisi (bkz. order/track ekranı
+ * ve masaüstü kenar boşluklarının aynı temayı kullanması) - burada yalnızca sayfanın
+ * yapısal genişlik/yükseklik kuralları kalıyor. */
 .page {
   max-width: var(--container-width-desktop);
   margin: 0 auto;

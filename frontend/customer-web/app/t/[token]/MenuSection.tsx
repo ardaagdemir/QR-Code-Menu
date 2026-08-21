@@ -5,9 +5,11 @@ import styles from "./MenuSection.module.css";
 type Props = {
   category: MenuCategory;
   onSelectProduct: (product: MenuProduct) => void;
+  favoriteIds: Set<string>;
+  onToggleFavorite: (productId: string) => void;
 };
 
-export default function MenuSection({ category, onSelectProduct }: Props) {
+export default function MenuSection({ category, onSelectProduct, favoriteIds, onToggleFavorite }: Props) {
   const headingId = `category-heading-${category.id}`;
   return (
     <section id={`category-${category.id}`} className={styles.section} aria-labelledby={headingId}>
@@ -16,7 +18,14 @@ export default function MenuSection({ category, onSelectProduct }: Props) {
       </h2>
       <ul className={styles.list}>
         {category.products.map((product) => (
-          <ProductCard key={product.id} product={product} onSelect={onSelectProduct} />
+          <ProductCard
+            key={product.id}
+            product={product}
+            onSelect={onSelectProduct}
+            variant="grid"
+            isFavorite={favoriteIds.has(product.id)}
+            onToggleFavorite={onToggleFavorite}
+          />
         ))}
       </ul>
     </section>

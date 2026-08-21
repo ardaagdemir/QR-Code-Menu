@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
 import {
   addCartItem,
   ApiError,
@@ -9,6 +9,7 @@ import {
   createPaymentIntent,
   getCart,
   getMenu,
+  getPopularProductIds,
   removeCartItem,
   setGuestCount as setGuestCountRequest,
   type Cart,
@@ -20,6 +21,7 @@ import {
 import DishPlaceholderIcon from "@/components/ui/DishPlaceholderIcon";
 import EmptyState from "@/components/ui/EmptyState";
 import ErrorState from "@/components/ui/ErrorState";
+import { useToast } from "@/components/ui/ToastProvider";
 import CartDrawer from "./CartDrawer";
 import CategoryNav from "./CategoryNav";
 import GuestCountSheet from "./GuestCountSheet";
@@ -27,6 +29,9 @@ import MenuSection from "./MenuSection";
 import MenuSkeleton from "./MenuSkeleton";
 import PaymentSheet from "./PaymentSheet";
 import ProductOptionsSheet from "./ProductOptionsSheet";
+import ProductRowSection from "./ProductRowSection";
+import SearchBar from "./SearchBar";
+import { useFavorites } from "./useFavorites";
 import VisitHeader from "./VisitHeader";
 import styles from "./page.module.css";
 
@@ -90,6 +95,8 @@ function checkoutErrorMessage(error: unknown): string {
 export default function TableVisitPage() {
   const params = useParams<{ token: string }>();
   const token = params.token;
+  const router = useRouter();
+  const { showToast } = useToast();
 
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [cart, setCart] = useState<Cart | null>(null);
@@ -109,6 +116,22 @@ export default function TableVisitPage() {
   const [guestCountSheetOpen, setGuestCountSheetOpen] = useState(false);
   const [guestCountSubmitting, setGuestCountSubmitting] = useState(false);
   const [guestCountError, setGuestCountError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  // Gerçek son 30 günlük satış verisinden - veri yoksa boş kalır, sahte sıralama yok.
+  const [popularProductIds, setPopularProductIds] = useState<string[]>([]);
+
+  // Favoriler backend'de yok, branch bazlı localStorage'da tutulur (hook Rules of
+  // Hooks gereği loading/error early-return'lardan önce, koşulsuz çağrılmalı).
+  const menuForFavorites = state.status === "ready" ? state.menu : null;
+  const branchIdForFavorites = state.status === "ready" ? state.visit.branchId : "";
+  const validProductIds = useMemo(
+    () =>
+      new Set(
+        menuForFavorites ? menuForFavorites.categories.flatMap((category) => category.products.map((product) => product.id)) : [],
+      ),
+    [menuForFavorites],
+  );
+  const { favoriteIds, toggleFavorite } = useFavorites(branchIdForFavorites, validProductIds);
 
   const retry = useCallback(() => {
     setState({ status: "loading" });
@@ -133,6 +156,15 @@ export default function TableVisitPage() {
           if (visit.guestCount == null && sessionStorage.getItem(guestCountPromptDismissedKey(visit.tableVisitId)) == null) {
             setGuestCountSheetOpen(true);
           }
+          // En Çok Tercih Edilenler: best-effort - başarısız olursa bölüm gizli kalır,
+          // ana menü akışını bloklamaz/bozmaz.
+          getPopularProductIds(visit.branchId)
+            .then((ids) => {
+              if (!cancelled) {
+                setPopularProductIds(ids);
+              }
+            })
+            .catch(() => {});
         }
       } catch (error) {
         if (!cancelled) {
@@ -207,9 +239,42 @@ export default function TableVisitPage() {
 
   const { visit, menu } = state;
 
+  const productById = new Map<string, MenuProduct>(
+    menu.categories.flatMap((category) => category.products).map((product) => [product.id, product]),
+  );
+  const favoriteProducts = Array.from(favoriteIds)
+    .map((id) => productById.get(id))
+    .filter((product): product is MenuProduct => Boolean(product));
+  const popularProducts = popularProductIds
+    .map((id) => productById.get(id))
+    .filter((product): product is MenuProduct => Boolean(product));
+
+  const normalizedQuery = searchQuery.trim().toLocaleLowerCase("tr");
+  const isSearching = normalizedQuery.length > 0;
+  const searchResults = isSearching
+    ? menu.categories
+        .map((category) => ({
+          ...category,
+          products: category.products.filter(
+            (product) =>
+              product.name.toLocaleLowerCase("tr").includes(normalizedQuery) ||
+              (product.description?.toLocaleLowerCase("tr").includes(normalizedQuery) ?? false),
+          ),
+        }))
+        .filter((category) => category.products.length > 0)
+    : [];
+
   function scrollToCategory(categoryId: string) {
     setActiveCategoryId(categoryId);
     document.getElementById(`category-${categoryId}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function handleOpenTracking() {
+    if (trackingToken) {
+      router.push(`/order/track/${trackingToken}`);
+      return;
+    }
+    showToast("Henüz bir siparişiniz yok.", "info");
   }
 
   async function handleAddToCart(selectedOptionIds: string[], quantity: number) {
@@ -306,9 +371,15 @@ export default function TableVisitPage() {
 
   return (
     <main className={styles.page}>
+      <VisitHeader visit={visit} onEditGuestCount={() => setGuestCountSheetOpen(true)} onOpenTracking={handleOpenTracking} />
+
       <div className={styles.stickyTop}>
-        <VisitHeader visit={visit} onEditGuestCount={() => setGuestCountSheetOpen(true)} />
-        <CategoryNav categories={menu.categories} activeCategoryId={activeCategoryId} onSelect={scrollToCategory} />
+        <SearchBar value={searchQuery} onChange={setSearchQuery} />
+        <CategoryNav
+          categories={isSearching ? [] : menu.categories}
+          activeCategoryId={activeCategoryId}
+          onSelect={scrollToCategory}
+        />
       </div>
 
       <div className={styles.content}>
@@ -318,10 +389,54 @@ export default function TableVisitPage() {
             title="Menü hazırlanıyor"
             description="Bu şube için henüz menüde ürün bulunmuyor."
           />
+        ) : isSearching ? (
+          searchResults.length === 0 ? (
+            <EmptyState
+              icon={<DishPlaceholderIcon size={32} />}
+              title="Sonuç bulunamadı"
+              description={`"${searchQuery.trim()}" için bir eşleşme yok.`}
+            />
+          ) : (
+            searchResults.map((category) => (
+              <MenuSection
+                key={category.id}
+                category={category}
+                onSelectProduct={setActiveProduct}
+                favoriteIds={favoriteIds}
+                onToggleFavorite={toggleFavorite}
+              />
+            ))
+          )
         ) : (
-          menu.categories.map((category) => (
-            <MenuSection key={category.id} category={category} onSelectProduct={setActiveProduct} />
-          ))
+          <>
+            <ProductRowSection
+              title="🔥 En Çok Tercih Edilenler"
+              products={popularProducts}
+              onSelectProduct={setActiveProduct}
+              variant="featured"
+              favoriteIds={favoriteIds}
+              onToggleFavorite={toggleFavorite}
+              badge="Popüler"
+              showSeeAll
+            />
+            <ProductRowSection
+              title="♡ Favoriler"
+              products={favoriteProducts}
+              onSelectProduct={setActiveProduct}
+              variant="compact"
+              favoriteIds={favoriteIds}
+              onToggleFavorite={toggleFavorite}
+            />
+            {menu.categories.map((category) => (
+              <MenuSection
+                key={category.id}
+                category={category}
+                onSelectProduct={setActiveProduct}
+                favoriteIds={favoriteIds}
+                onToggleFavorite={toggleFavorite}
+              />
+            ))}
+          </>
         )}
       </div>
 

@@ -4,31 +4,32 @@
  * from these custom properties instead of repeating magic numbers/hex values.
  */
 :root {
-  /* Color - "Tide" kimliği: nötr ink/paper zemin + tek bir camgöbeği accent
-   * (docs/product-requirements.md Bölüm 19.1: "güven veren", "primary/secondary/
-   * destructive action ayrımı"). Accent (--color-primary) her iki app'te de
-   * tüm primary aksiyon/link/focus-ring için tek kaynak - success/danger/warning
-   * durum tonlarından hue olarak bilinçli şekilde uzak tutulur. */
-  --color-bg: #ffffff;
-  --color-surface: #f2f4f3;
+  /* Color - müşteri menüsünün tek kimliği: sıcak/açık "kahve dükkânı" paleti
+   * (docs/product-requirements.md Bölüm 19.1). Bu app (customer-web) yalnızca
+   * QR menü + sipariş takip ekranlarından oluşur - referans tasarım tek bir
+   * sıcak/açık kimlik öngörür, sistem karanlık moduna uyarlanan ayrı bir varyant
+   * değil (kullanıcı dark/kahverengi temayı reddetti). Accent (--color-primary)
+   * tüm primary aksiyon/link/focus-ring için tek kaynak. */
+  --color-bg: #fff9f5;
+  --color-surface: #fff3ea;
   --color-surface-raised: #ffffff;
-  --color-fg: #14201e;
-  --color-fg-muted: #5c6d69;
-  --color-border: rgba(20, 32, 30, 0.1);
-  --color-border-strong: rgba(20, 32, 30, 0.2);
-  --color-primary: #0e7c86;
-  --color-primary-strong: #0b626b;
+  --color-fg: #2b211c;
+  --color-fg-muted: #8a7a6f;
+  --color-border: rgba(43, 33, 28, 0.1);
+  --color-border-strong: rgba(43, 33, 28, 0.18);
+  --color-primary: #e85d24;
+  --color-primary-strong: #c94b18;
   --color-primary-fg: #ffffff;
+  --color-badge-bg: rgba(232, 93, 36, 0.1);
   --color-danger: #c23a2e;
   --color-danger-bg: rgba(194, 58, 46, 0.09);
   --color-success: #2e7d4f;
   --color-success-bg: rgba(46, 125, 79, 0.1);
   --color-warning: #b25e0a;
   --color-warning-bg: rgba(178, 94, 10, 0.1);
-  --color-badge-bg: rgba(20, 32, 30, 0.06);
-  --color-overlay: rgba(8, 14, 13, 0.55);
-  --color-skeleton: rgba(20, 32, 30, 0.08);
-  --color-skeleton-shine: rgba(20, 32, 30, 0.16);
+  --color-overlay: rgba(20, 12, 6, 0.55);
+  --color-skeleton: rgba(43, 33, 28, 0.08);
+  --color-skeleton-shine: rgba(43, 33, 28, 0.16);
 
   /* Spacing scale */
   --space-1: 4px;
@@ -87,32 +88,7 @@
   --z-overlay: 30;
   --z-sheet: 31;
 
-  color-scheme: light dark;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-bg: #0b1211;
-    --color-surface: #121b19;
-    --color-surface-raised: #17211f;
-    --color-fg: #edf3f1;
-    --color-fg-muted: #93a3a0;
-    --color-border: rgba(255, 255, 255, 0.1);
-    --color-border-strong: rgba(255, 255, 255, 0.2);
-    --color-primary: #4fd0c6;
-    --color-primary-strong: #7be0d6;
-    --color-primary-fg: #0b1211;
-    --color-danger: #f0847a;
-    --color-danger-bg: rgba(240, 132, 122, 0.14);
-    --color-success: #6fce93;
-    --color-success-bg: rgba(111, 206, 147, 0.14);
-    --color-warning: #f0ae5c;
-    --color-warning-bg: rgba(240, 174, 92, 0.14);
-    --color-badge-bg: rgba(255, 255, 255, 0.1);
-    --color-overlay: rgba(0, 0, 0, 0.65);
-    --color-skeleton: rgba(255, 255, 255, 0.08);
-    --color-skeleton-shine: rgba(255, 255, 255, 0.16);
-  }
+  color-scheme: light;
 }
 
 *,

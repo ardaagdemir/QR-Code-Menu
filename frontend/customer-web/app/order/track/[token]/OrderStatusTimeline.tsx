@@ -36,7 +36,7 @@ function stepIndexForStatus(status: string): number | null {
 }
 
 const STOPPED_LABELS: Record<string, string> = {
-  REJECTED_BY_STORE: "İşletme siparişi reddetti",
+  REJECTED_BY_STORE: "Siparişiniz işletme tarafından reddedildi",
   CANCELLED: "Sipariş iptal edildi",
 };
 
