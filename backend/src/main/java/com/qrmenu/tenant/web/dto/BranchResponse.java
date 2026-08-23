@@ -7,6 +7,7 @@ public record BranchResponse(
         UUID businessId,
         String name,
         boolean orderingEnabled,
+        boolean openNow,
         String address,
         String timezone,
         String deliveryModel,

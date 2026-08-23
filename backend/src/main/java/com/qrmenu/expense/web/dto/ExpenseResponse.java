@@ -14,5 +14,6 @@ public record ExpenseResponse(
         String vendor,
         String description,
         String receiptImageUrl,
-        Instant createdAt) {
+        Instant createdAt,
+        Instant cancelledAt) {
 }

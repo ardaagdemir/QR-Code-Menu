@@ -36,7 +36,16 @@ export default function PickupBoardPage() {
     }
 
     const eventSource = new EventSource(buildPickupBoardStreamUrl(branchId));
-    eventSource.addEventListener("open", () => setConnectionStatus("live"));
+    // The stream itself never replays a backlog (Section 2: "initial connect delivers no
+    // backlog") - a status change that lands while the connection is down/reconnecting
+    // (network blip, kiosk screen sleep) would otherwise never reach this board until some
+    // later, unrelated event happens to trigger a refetch. Refetching on "open" (fired both
+    // for the first connect and every reconnect) closes that gap - same fix as the customer
+    // tracking page's unconditional reload on visibilitychange/reconnect.
+    eventSource.addEventListener("open", () => {
+      setConnectionStatus("live");
+      void fetchBoard();
+    });
     eventSource.addEventListener("error", () => setConnectionStatus("reconnecting"));
     eventSource.addEventListener("order-status", () => fetchBoard());
     void fetchBoard();

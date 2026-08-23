@@ -1,15 +1,18 @@
 package com.qrmenu.staffaccess;
 
+import com.qrmenu.audit.AuditService;
 import com.qrmenu.common.web.ResourceNotFoundException;
 import com.qrmenu.common.web.StaffAuthenticationRequiredException;
 import com.qrmenu.common.web.StaffPermissionDeniedException;
 import com.qrmenu.staffaccess.repository.StaffSessionRepository;
 import com.qrmenu.staffaccess.repository.StaffUserBranchRepository;
 import com.qrmenu.staffaccess.repository.StaffUserRepository;
+import com.qrmenu.tenant.Branch;
 import com.qrmenu.tenant.TenantService;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -35,17 +38,20 @@ public class StaffAuthService {
     private final StaffUserBranchRepository staffUserBranchRepository;
     private final StaffSessionRepository staffSessionRepository;
     private final TenantService tenantService;
+    private final AuditService auditService;
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
     public StaffAuthService(
             StaffUserRepository staffUserRepository,
             StaffUserBranchRepository staffUserBranchRepository,
             StaffSessionRepository staffSessionRepository,
-            TenantService tenantService) {
+            TenantService tenantService,
+            AuditService auditService) {
         this.staffUserRepository = staffUserRepository;
         this.staffUserBranchRepository = staffUserBranchRepository;
         this.staffSessionRepository = staffSessionRepository;
         this.tenantService = tenantService;
+        this.auditService = auditService;
     }
 
     @Transactional
@@ -127,17 +133,26 @@ public class StaffAuthService {
     @Transactional
     public StaffUser createStaffUser(
             UUID businessId, String email, String rawPassword, StaffRole role, List<UUID> branchIds) {
-        if (role != StaffRole.PLATFORM_ADMIN && branchIds.size() != 1) {
+        // PLATFORM_ADMIN oversees the whole business, not one branch - caller-supplied
+        // branchIds is ignored and replaced with every branch the business currently has
+        // (see enforce_user_facing_staff_single_branch, which deliberately allows
+        // PLATFORM_ADMIN more than one staff_user_branch row). This also keeps
+        // StaffContext.activeBranchId() resolvable for single-branch businesses instead
+        // of throwing when a PLATFORM_ADMIN has zero branch assignments.
+        List<UUID> effectiveBranchIds = role == StaffRole.PLATFORM_ADMIN
+                ? tenantService.listBranches(businessId).stream().map(Branch::getId).toList()
+                : branchIds;
+        if (role != StaffRole.PLATFORM_ADMIN && effectiveBranchIds.size() != 1) {
             throw new IllegalArgumentException("User-facing staff users must be assigned to exactly one branch");
         }
-        for (UUID branchId : branchIds) {
+        for (UUID branchId : effectiveBranchIds) {
             if (!tenantService.requireBusinessIdForBranch(branchId).equals(businessId)) {
                 throw new StaffPermissionDeniedException("Branch does not belong to staff business");
             }
         }
         StaffUser staffUser =
                 staffUserRepository.save(new StaffUser(businessId, email, passwordEncoder.encode(rawPassword), role));
-        for (UUID branchId : branchIds) {
+        for (UUID branchId : effectiveBranchIds) {
             staffUserBranchRepository.save(new StaffUserBranch(staffUser.getId(), branchId));
         }
         return staffUser;
@@ -181,6 +196,56 @@ public class StaffAuthService {
         }
         staffUser.deactivate();
         staffUserRepository.save(staffUser);
+    }
+
+    /** Self-service: requires the caller's own current password, keeps their own session alive
+     * but ends every other session of theirs (Section: password change must revoke stolen sessions). */
+    @Transactional
+    public void changePassword(UUID staffUserId, UUID currentSessionId, String currentPassword, String newPassword, String confirmNewPassword) {
+        validatePasswordsMatch(newPassword, confirmNewPassword);
+        StaffUser staffUser = staffUserRepository
+                .findById(staffUserId)
+                .filter(StaffUser::isActive)
+                .orElseThrow(() -> new StaffAuthenticationRequiredException("Staff user not found or inactive"));
+        if (!passwordEncoder.matches(currentPassword, staffUser.getPasswordHash())) {
+            throw new StaffAuthenticationRequiredException("Current password is incorrect");
+        }
+        staffUser.updatePasswordHash(passwordEncoder.encode(newPassword));
+        staffUserRepository.save(staffUser);
+        staffSessionRepository.deleteAllByStaffUserIdAndIdNot(staffUserId, currentSessionId);
+        auditService.record(staffUser.getBusinessId(), staffUserId, "StaffUser", staffUserId, "PASSWORD_CHANGED", Map.of());
+    }
+
+    /** Admin-triggered: never touches the caller's own account (self-reset must go through
+     * changePassword, which actually verifies the current password), never reaches a
+     * PLATFORM_ADMIN target, and never reactivates a disabled user. Revokes every one of the
+     * target's sessions since there is no "current" session of theirs to preserve. */
+    @Transactional
+    public void resetPassword(
+            UUID businessId, UUID branchId, UUID actorStaffUserId, UUID targetStaffUserId, String newPassword, String confirmNewPassword) {
+        if (actorStaffUserId.equals(targetStaffUserId)) {
+            throw new IllegalArgumentException("Use change-password to update your own password");
+        }
+        validatePasswordsMatch(newPassword, confirmNewPassword);
+        StaffUser target = staffUserRepository
+                .findByIdAndBusinessId(targetStaffUserId, businessId)
+                .orElseThrow(() -> new ResourceNotFoundException("Staff user not found: " + targetStaffUserId));
+        if (target.getRole() == StaffRole.PLATFORM_ADMIN) {
+            throw new StaffPermissionDeniedException("Cannot reset a PLATFORM_ADMIN password through business-scoped staff management");
+        }
+        if (!hasEffectiveBranchAssignment(target, branchId)) {
+            throw new ResourceNotFoundException("Staff user not found in active branch: " + targetStaffUserId);
+        }
+        target.updatePasswordHash(passwordEncoder.encode(newPassword));
+        staffUserRepository.save(target);
+        staffSessionRepository.deleteAllByStaffUserId(targetStaffUserId);
+        auditService.record(businessId, actorStaffUserId, "StaffUser", targetStaffUserId, "PASSWORD_RESET", Map.of());
+    }
+
+    private static void validatePasswordsMatch(String newPassword, String confirmNewPassword) {
+        if (!newPassword.equals(confirmNewPassword)) {
+            throw new IllegalArgumentException("New password and confirmation do not match");
+        }
     }
 
     private boolean hasEffectiveBranchAssignment(StaffUser staffUser, UUID branchId) {

@@ -12,5 +12,5 @@ public record ReceiptResponse(
         long totalMinorUnits,
         long totalRefundedMinorUnits,
         long netPaidMinorUnits,
-        List<RefundResponse> refunds) {
+        List<ReceiptRefundResponse> refunds) {
 }

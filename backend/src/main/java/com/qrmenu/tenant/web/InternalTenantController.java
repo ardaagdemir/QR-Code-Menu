@@ -84,8 +84,9 @@ class InternalTenantController {
     }
 
     private BranchResponse toResponse(Branch branch) {
+        boolean openNow = tenantService.isOpenNow(branch.getBusinessId(), branch.getId());
         return new BranchResponse(
-                branch.getId(), branch.getBusinessId(), branch.getName(), branch.isOrderingEnabled(), branch.getAddress(),
+                branch.getId(), branch.getBusinessId(), branch.getName(), branch.isOrderingEnabled(), openNow, branch.getAddress(),
                 branch.getTimezone(), branch.getDeliveryModel().name(), branch.getStoreAcceptanceTimeoutSeconds());
     }
 

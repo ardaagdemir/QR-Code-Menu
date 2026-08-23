@@ -9,7 +9,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.Optional;
 import org.slf4j.Logger;
@@ -69,7 +68,9 @@ class DailyCloseScheduler {
     }
 
     private void processBranch(Branch branch, Instant now) {
-        ZoneId zone = branch.getTimezone() != null ? ZoneId.of(branch.getTimezone()) : ZoneOffset.UTC;
+        // TenantService.resolveBranchTimeZone is the single source of truth (branch's
+        // own timezone, else its business's defaultTimeZone - never a bare UTC guess).
+        ZoneId zone = tenantService.resolveBranchTimeZone(branch);
         ZonedDateTime nowZoned = now.atZone(zone);
         LocalDate businessDate = nowZoned.toLocalDate();
         DayOfWeek dayOfWeek = businessDate.getDayOfWeek();

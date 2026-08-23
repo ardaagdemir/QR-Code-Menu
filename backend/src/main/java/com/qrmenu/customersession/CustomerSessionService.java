@@ -1,6 +1,7 @@
 package com.qrmenu.customersession;
 
 import com.qrmenu.common.web.ResourceNotFoundException;
+import com.qrmenu.common.web.TableVisitExpiredException;
 import com.qrmenu.customersession.repository.AnonymousCustomerSessionRepository;
 import com.qrmenu.customersession.repository.TableVisitRepository;
 import com.qrmenu.tenant.TableReference;
@@ -15,10 +16,14 @@ import org.springframework.transaction.annotation.Transactional;
 public class CustomerSessionService {
 
     /**
-     * RECOMMENDED in docs/product-requirements.md Section 5 (not a fixed user
-     * decision): "TableVisit için ~4-6 saat". Picking the upper bound of that range.
+     * Customer TableVisit security hardening: two independent expiry clocks replacing
+     * the old flat VISIT_TTL. INACTIVITY_TIMEOUT resets on every touch() (check-in or
+     * order-mutating action); ABSOLUTE_LIFETIME never resets, so a visit can't be kept
+     * alive indefinitely just by staying active.
      */
-    static final Duration VISIT_TTL = Duration.ofHours(6);
+    static final Duration INACTIVITY_TIMEOUT = Duration.ofMinutes(60);
+
+    static final Duration ABSOLUTE_LIFETIME = Duration.ofHours(4);
 
     private final AnonymousCustomerSessionRepository sessionRepository;
     private final TableVisitRepository tableVisitRepository;
@@ -32,8 +37,10 @@ public class CustomerSessionService {
     /**
      * Resumes the caller's AnonymousCustomerSession (creating one if the cookie is
      * missing or points at a session that no longer exists), then either continues the
-     * existing TableVisit for that session+table (if still within VISIT_TTL) or starts
-     * a new one - the exact continuation rule from Section 5.
+     * existing TableVisit for that session+table (if neither expiry clock has passed) or
+     * starts a new one - the exact continuation rule from Section 5. A visit past its
+     * inactivity timeout or absolute lifetime is never continued, so re-scanning the QR
+     * after either expiry safely starts a fresh visit instead of reviving a stale one.
      */
     @Transactional
     public CheckInResult checkIn(TableReference tableReference, UUID existingSessionId) {
@@ -43,11 +50,11 @@ public class CustomerSessionService {
         session.touch();
         session = sessionRepository.save(session);
 
-        Instant cutoff = Instant.now().minus(VISIT_TTL);
+        Instant now = Instant.now();
         UUID sessionId = session.getId();
         TableVisit visit = tableVisitRepository
                 .findFirstByAnonymousCustomerSessionIdAndTableIdOrderByStartedAtDesc(sessionId, tableReference.tableId())
-                .filter(v -> v.getLastActivityAt().isAfter(cutoff))
+                .filter(v -> !v.isExpired(now, INACTIVITY_TIMEOUT, ABSOLUTE_LIFETIME))
                 .map(v -> {
                     v.touch();
                     return v;
@@ -78,6 +85,26 @@ public class CustomerSessionService {
             throw new ResourceNotFoundException("Table visit not found: " + tableVisitId);
         }
         return visit;
+    }
+
+    /**
+     * Authoritative, synchronous gate before creating or advancing an order (Section 5:
+     * "client state'e güvenme" - never trust a client-supplied notion of the visit still
+     * being active). Unlike getOwnedTableVisit's isClosed() check - set asynchronously,
+     * up to 15 minutes late, by TableVisitCleanupScheduler - this compares the visit's
+     * own timestamps against now() at call time, so an inactivity- or
+     * absolute-lifetime-expired visit is rejected immediately even if the scheduler
+     * hasn't run yet. A still-active visit is touched here too, extending its inactivity
+     * window the same way a QR re-scan would.
+     */
+    @Transactional
+    public TableVisit getActiveTableVisitForOrdering(UUID tableVisitId, UUID callerSessionId) {
+        TableVisit visit = getOwnedTableVisit(tableVisitId, callerSessionId);
+        if (visit.isExpired(Instant.now(), INACTIVITY_TIMEOUT, ABSOLUTE_LIFETIME)) {
+            throw new TableVisitExpiredException("Table visit expired: " + tableVisitId);
+        }
+        visit.touch();
+        return tableVisitRepository.save(visit);
     }
 
     /**

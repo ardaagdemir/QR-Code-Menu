@@ -1,8 +1,16 @@
 "use client";
 
 import { useEffect, useId, useState } from "react";
-import { Eye, EyeOff, UserPlus, Users } from "lucide-react";
-import { createStaffUser, deactivateStaffUser, listStaffUsers, type StaffRole, type StaffUser } from "@/lib/api";
+import { Eye, EyeOff, KeyRound, UserPlus, Users } from "lucide-react";
+import {
+  createStaffUser,
+  deactivateStaffUser,
+  listStaffUsers,
+  resetStaffUserPassword,
+  MIN_PASSWORD_LENGTH,
+  type StaffRole,
+  type StaffUser,
+} from "@/lib/api";
 import AppShell from "@/components/layout/AppShell";
 import PageHeader from "@/components/ui/PageHeader";
 import Table from "@/components/ui/Table";
@@ -46,6 +54,14 @@ export default function StaffPage() {
   const [deactivateTarget, setDeactivateTarget] = useState<StaffUser | null>(null);
   const [deactivating, setDeactivating] = useState(false);
 
+  const [resetTarget, setResetTarget] = useState<StaffUser | null>(null);
+  const [resetPassword, setResetPassword] = useState("");
+  const [resetConfirmPassword, setResetConfirmPassword] = useState("");
+  const [resetPasswordVisible, setResetPasswordVisible] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [resetFormError, setResetFormError] = useState<string | null>(null);
+  const resetDialogTitleId = useId();
+
   function load() {
     listStaffUsers()
       .then((users) => {
@@ -60,8 +76,8 @@ export default function StaffPage() {
 
   async function handleCreate(event: React.FormEvent) {
     event.preventDefault();
-    if (!email.trim() || password.length < 8) {
-      setFormError("E-posta girin ve şifre en az 8 karakter olsun.");
+    if (!email.trim() || password.length < MIN_PASSWORD_LENGTH) {
+      setFormError(`E-posta girin ve şifre en az ${MIN_PASSWORD_LENGTH} karakter olsun.`);
       return;
     }
     setCreating(true);
@@ -95,6 +111,40 @@ export default function StaffPage() {
     } finally {
       setDeactivating(false);
       setDeactivateTarget(null);
+    }
+  }
+
+  function openResetDialog(user: StaffUser) {
+    setResetFormError(null);
+    setResetPassword("");
+    setResetConfirmPassword("");
+    setResetPasswordVisible(false);
+    setResetTarget(user);
+  }
+
+  async function handleConfirmReset(event: React.FormEvent) {
+    event.preventDefault();
+    if (!resetTarget) {
+      return;
+    }
+    if (resetPassword.length < MIN_PASSWORD_LENGTH) {
+      setResetFormError(`Şifre en az ${MIN_PASSWORD_LENGTH} karakter olsun.`);
+      return;
+    }
+    if (resetPassword !== resetConfirmPassword) {
+      setResetFormError("Şifreler eşleşmiyor.");
+      return;
+    }
+    setResetting(true);
+    setResetFormError(null);
+    try {
+      await resetStaffUserPassword(resetTarget.id, resetPassword, resetConfirmPassword);
+      setResetTarget(null);
+      showToast("Şifre sıfırlandı.", "success");
+    } catch {
+      setResetFormError("Şifre sıfırlanamadı.");
+    } finally {
+      setResetting(false);
     }
   }
 
@@ -154,13 +204,14 @@ export default function StaffPage() {
                       </td>
                       <td className={pageStyles.actionsCell}>
                         <div className={`${tableStyles.actions} ${pageStyles.staffActions}`}>
+                          <Button size="md" variant="ghost" onClick={() => openResetDialog(user)}>
+                            <KeyRound size={15} aria-hidden="true" /> Şifre Sıfırla
+                          </Button>
                           {user.active ? (
                             <Button className={pageStyles.dangerAction} size="md" variant="ghost" onClick={() => setDeactivateTarget(user)}>
                               Hesabı Devre Dışı Bırak
                             </Button>
-                          ) : (
-                            <span className={tableStyles.muted}>—</span>
-                          )}
+                          ) : null}
                         </div>
                       </td>
                     </tr>
@@ -220,6 +271,62 @@ export default function StaffPage() {
 
             <Button type="submit" disabled={creating}>
               {creating ? "Oluşturuluyor…" : "Personel Ekle"}
+            </Button>
+          </form>
+        </Dialog>
+      ) : null}
+
+      {resetTarget ? (
+        <Dialog onClose={() => setResetTarget(null)} labelledBy={resetDialogTitleId}>
+          <h2 id={resetDialogTitleId} className={styles.sectionTitle}>
+            Şifre Sıfırla
+          </h2>
+          <form className={styles.section} onSubmit={handleConfirmReset}>
+            <p className={styles.rowMeta}>
+              {`"${resetTarget.email}" için yeni bir geçici şifre belirleyin. Bu şifreyi personelle güvenli bir şekilde paylaşın.`}
+            </p>
+            <FormField label="Yeni Geçici Şifre" hint={`En az ${MIN_PASSWORD_LENGTH} karakter`} required>
+              {(controlProps) => (
+                <div className={pageStyles.passwordField}>
+                  <Input
+                    {...controlProps}
+                    type={resetPasswordVisible ? "text" : "password"}
+                    className={pageStyles.passwordInput}
+                    value={resetPassword}
+                    onChange={(event) => setResetPassword(event.target.value)}
+                    autoComplete="new-password"
+                    required
+                  />
+                  <button
+                    type="button"
+                    className={pageStyles.passwordToggle}
+                    onClick={() => setResetPasswordVisible((visible) => !visible)}
+                    aria-label={resetPasswordVisible ? "Şifreyi gizle" : "Şifreyi göster"}
+                    aria-pressed={resetPasswordVisible}
+                    disabled={resetting}
+                  >
+                    {resetPasswordVisible ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
+                  </button>
+                </div>
+              )}
+            </FormField>
+            <FormField label="Yeni Şifre (Tekrar)" required>
+              {(controlProps) => (
+                <Input
+                  {...controlProps}
+                  type={resetPasswordVisible ? "text" : "password"}
+                  value={resetConfirmPassword}
+                  onChange={(event) => setResetConfirmPassword(event.target.value)}
+                  autoComplete="new-password"
+                  required
+                />
+              )}
+            </FormField>
+
+            {resetFormError ? <ErrorState message={resetFormError} /> : null}
+
+            <Button type="submit" disabled={resetting}>
+              {resetting ? "Sıfırlanıyor…" : "Şifreyi Sıfırla"}
             </Button>
           </form>
         </Dialog>

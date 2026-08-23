@@ -38,7 +38,10 @@ class StaffAccessFlowIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.role").value("BUSINESS_ADMIN"))
                 .andExpect(jsonPath("$.businessName").value("Auth Business"))
                 .andExpect(jsonPath("$.branches[0].id").value(branchId))
-                .andExpect(jsonPath("$.activeBranchId").value(branchId));
+                .andExpect(jsonPath("$.activeBranchId").value(branchId))
+                // No explicit Branch.timezone was set - falls back to Business.defaultTimeZone
+                // (TenantFixtures.createBusiness leaves it at "Europe/Istanbul"), never UTC.
+                .andExpect(jsonPath("$.activeBranchTimeZone").value("Europe/Istanbul"));
 
         mockMvc.perform(post("/api/staff/auth/logout").cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, cookie)))
                 .andExpect(status().isNoContent());
@@ -97,6 +100,33 @@ class StaffAccessFlowIntegrationTest extends AbstractIntegrationTest {
         // CASHIER holds ORDER_*/REPORT_VIEW - BRANCH_MANAGE is out of reach.
         mockMvc.perform(get("/api/staff/branches").cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, cashierCookie)))
                 .andExpect(status().isForbidden());
+    }
+
+    /** Privilege escalation: STAFF_MANAGE (held by BUSINESS_ADMIN) must not double as authority
+     * to grant the all-permissions PLATFORM_ADMIN role - only the trusted /internal/** bootstrap
+     * path may create one. */
+    @Test
+    void businessAdminCannotGrantThemselvesOrAnotherStaffMemberThePlatformAdminRole() throws Exception {
+        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Escalation Business");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
+        String adminCookie = StaffFixtures.bootstrapAndLogin(
+                mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "escalation-admin@example.com", "BUSINESS_ADMIN");
+        MockCookie adminMockCookie = new MockCookie(StaffCookieSupport.COOKIE_NAME, adminCookie);
+
+        String escalatedEmail = "escalated@example.com";
+        mockMvc.perform(post("/api/staff/staff-users")
+                        .cookie(adminMockCookie)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"" + escalatedEmail + "\",\"password\":\"" + StaffFixtures.DEFAULT_PASSWORD
+                                + "\",\"role\":\"PLATFORM_ADMIN\",\"branchIds\":[\"" + branchId + "\"]}"))
+                .andExpect(status().isForbidden());
+
+        JsonNode staffUsers = objectMapper.readTree(mockMvc.perform(get("/api/staff/staff-users").cookie(adminMockCookie))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString());
+        assertThat(staffUsers).noneSatisfy(staffUser -> assertThat(staffUser.get("email").asText()).isEqualTo(escalatedEmail));
     }
 
     @Test
@@ -170,8 +200,9 @@ class StaffAccessFlowIntegrationTest extends AbstractIntegrationTest {
                 assertThat(entry.get("actorStaffUserId").asText()).isEqualTo(staffBId));
     }
 
+    /** Edit must support the same field set as create (name/description/price/KDV), not just active/prep/allergens/image. */
     @Test
-    void staffCanTogglePassiveOnAnExistingProductAndTheChangePersists() throws Exception {
+    void staffCanEditEveryFieldOfAnExistingProductAndTheChangesPersist() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Product Toggle Business");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String adminCookie = StaffFixtures.bootstrapAndLogin(
@@ -186,12 +217,18 @@ class StaffAccessFlowIntegrationTest extends AbstractIntegrationTest {
                         .patch("/api/staff/products/{productId}", productId)
                         .cookie(adminMockCookie)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"active\":false,\"estimatedPreparationMinutes\":20,\"allergens\":[\"GLUTEN\"]}"))
+                        .content("{\"name\":\"Köfte Deluxe\",\"description\":\"Özel soslu\",\"basePriceMinorUnits\":15000,"
+                                + "\"taxRatePercent\":20,\"active\":false,\"estimatedPreparationMinutes\":20,"
+                                + "\"allergens\":[\"GLUTEN\"]}"))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
         JsonNode updated = objectMapper.readTree(response);
+        assertThat(updated.get("name").asText()).isEqualTo("Köfte Deluxe");
+        assertThat(updated.get("description").asText()).isEqualTo("Özel soslu");
+        assertThat(updated.get("basePriceMinorUnits").asLong()).isEqualTo(15000);
+        assertThat(updated.get("taxRatePercent").asInt()).isEqualTo(20);
         assertThat(updated.get("active").asBoolean()).isFalse();
         assertThat(updated.get("estimatedPreparationMinutes").asInt()).isEqualTo(20);
         assertThat(updated.get("allergens")).hasSize(1);
@@ -205,7 +242,68 @@ class StaffAccessFlowIntegrationTest extends AbstractIntegrationTest {
                 .getContentAsString());
         assertThat(products).anySatisfy(product -> {
             if (product.get("id").asText().equals(productId)) {
+                assertThat(product.get("name").asText()).isEqualTo("Köfte Deluxe");
+                assertThat(product.get("basePriceMinorUnits").asLong()).isEqualTo(15000);
                 assertThat(product.get("active").asBoolean()).isFalse();
+            }
+        });
+    }
+
+    /** Section 2/12: a branch-scoped role (no MENU_MANAGE) must not be able to touch global
+     * Product fields or the branch's BranchProduct opt-in row either - both go through the
+     * same permission gate today, so neither should be reachable without it. */
+    @Test
+    void branchScopedStaffCannotMutateGlobalOrBranchProductState() throws Exception {
+        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Product Guard Business");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
+        String adminCookie = StaffFixtures.bootstrapAndLogin(
+                mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "product-guard-admin@example.com", "BUSINESS_ADMIN");
+        MockCookie adminMockCookie = new MockCookie(StaffCookieSupport.COOKIE_NAME, adminCookie);
+        String categoryId =
+                TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Ana Yemekler");
+        String productId = TenantFixtures.createProduct(
+                mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Çorba", 8000, 10);
+
+        String cashierEmail = "product-guard-cashier@example.com";
+        mockMvc.perform(post("/api/staff/staff-users")
+                        .cookie(adminMockCookie)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"" + cashierEmail + "\",\"password\":\"" + StaffFixtures.DEFAULT_PASSWORD
+                                + "\",\"role\":\"CASHIER\",\"branchIds\":[\"" + branchId + "\"]}"))
+                .andExpect(status().isCreated());
+        MockCookie cashierMockCookie = new MockCookie(StaffCookieSupport.COOKIE_NAME, StaffFixtures.login(mockMvc, cashierEmail));
+
+        mockMvc.perform(post("/api/staff/products")
+                        .cookie(cashierMockCookie)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"categoryId\":\"" + categoryId + "\",\"name\":\"Kaçak Ürün\",\"basePriceMinorUnits\":1000,"
+                                + "\"taxRatePercent\":10}"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .patch("/api/staff/products/{productId}", productId)
+                        .cookie(cashierMockCookie)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Ele Geçirilmiş\",\"basePriceMinorUnits\":1,\"taxRatePercent\":0,"
+                                + "\"active\":false,\"estimatedPreparationMinutes\":null,\"allergens\":[]}"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .put("/api/staff/branch-products/{productId}", productId)
+                        .cookie(cashierMockCookie)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"availability\":\"UNAVAILABLE\",\"priceOverrideMinorUnits\":null}"))
+                .andExpect(status().isForbidden());
+
+        JsonNode untouched = objectMapper.readTree(mockMvc.perform(get(
+                                "/api/staff/menu-categories/{categoryId}/products", categoryId)
+                        .cookie(adminMockCookie))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString());
+        assertThat(untouched).anySatisfy(product -> {
+            if (product.get("id").asText().equals(productId)) {
+                assertThat(product.get("name").asText()).isEqualTo("Çorba");
+                assertThat(product.get("basePriceMinorUnits").asLong()).isEqualTo(8000);
             }
         });
     }

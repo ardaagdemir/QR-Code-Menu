@@ -10,7 +10,7 @@ import {
   type BranchSalesReport,
   type StaffContext,
 } from "@/lib/api";
-import { localIsoDate } from "@/lib/time";
+import { branchIsoDate } from "@/lib/time";
 import AppShell from "@/components/layout/AppShell";
 import KpiCard from "@/components/ui/KpiCard";
 import BarList from "@/components/ui/BarList";
@@ -43,7 +43,9 @@ export default function DashboardPage() {
           return;
         }
         setReportsLoading(true);
-        const today = localIsoDate();
+        // Branch-local "today", not the device's - agrees with the backend's own
+        // TenantService.resolveBranchTimeZone-based day boundary (see lib/time.ts).
+        const today = branchIsoDate(staffContext.activeBranchTimeZone);
         if (staffContext.activeBranchId) {
           getBranchSalesReport(today, today)
             .then(setBranchReport)

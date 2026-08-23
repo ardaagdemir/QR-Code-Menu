@@ -40,7 +40,15 @@ public class ReceiptService {
         CustomerOrder order = tracking.order();
         BranchDisplayInfo branchInfo = tenantService.getBranchDisplayInfo(order.getBranchId());
         List<RefundView> refunds = refundService.getRefundsForOrder(order.getId());
-        long totalRefunded = refunds.stream().mapToLong(RefundView::totalAmountMinorUnits).sum();
+        // Only a COMPLETED refund actually moved money - a REQUESTED/PROCESSING one
+        // hasn't yet, and a FAILED one never did (Payment.releaseRefund already
+        // reverted its reservation). Summing every row regardless of status would
+        // show the customer money as "refunded" that's still sitting with the
+        // business, e.g. after a provider-side refund failure on a rejected order.
+        long totalRefunded = refunds.stream()
+                .filter(refund -> refund.status().equals(RefundStatus.COMPLETED.name()))
+                .mapToLong(RefundView::totalAmountMinorUnits)
+                .sum();
         List<ReceiptItemView> items =
                 tracking.items().stream().map(ReceiptService::toItemView).toList();
 

@@ -55,8 +55,9 @@ class MediaUploadFlowIntegrationTest extends AbstractIntegrationTest {
         JsonNode product = objectMapper.readTree(mockMvc.perform(patch("/api/staff/products/{productId}", productId)
                         .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, staffCookie))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"active\":true,\"estimatedPreparationMinutes\":null,\"allergens\":[],\"imageUrl\":\""
-                                + imageUrl + "\"}"))
+                        .content("{\"name\":\"Pizza\",\"description\":null,\"basePriceMinorUnits\":25000,"
+                                + "\"taxRatePercent\":10,\"active\":true,\"estimatedPreparationMinutes\":null,"
+                                + "\"allergens\":[],\"imageUrl\":\"" + imageUrl + "\"}"))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()

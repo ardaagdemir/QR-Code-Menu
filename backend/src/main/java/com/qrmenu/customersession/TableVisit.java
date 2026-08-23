@@ -6,6 +6,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -71,6 +72,16 @@ public class TableVisit {
 
     public boolean isClosed() {
         return closedAt != null;
+    }
+
+    /**
+     * Two independent expiry clocks (customer TableVisit security hardening): an
+     * inactivity timeout measured from the last touch(), and an absolute lifetime
+     * measured from startedAt that keeps ticking no matter how recently the visit was
+     * touched - a visit can't be kept alive forever just by staying active.
+     */
+    public boolean isExpired(Instant now, Duration inactivityTimeout, Duration absoluteLifetime) {
+        return lastActivityAt.isBefore(now.minus(inactivityTimeout)) || startedAt.isBefore(now.minus(absoluteLifetime));
     }
 
     /**

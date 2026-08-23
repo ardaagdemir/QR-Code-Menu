@@ -136,6 +136,10 @@ public class StaffMenuController {
         Product product = menuService.updateProductDetails(
                 context.businessId(),
                 productId,
+                request.name(),
+                request.description(),
+                request.basePriceMinorUnits(),
+                request.taxRatePercent(),
                 request.active(),
                 request.estimatedPreparationMinutes(),
                 request.allergensOrEmpty(),

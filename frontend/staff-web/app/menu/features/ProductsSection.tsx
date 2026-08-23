@@ -167,7 +167,7 @@ export default function ProductsSection({ categoryId }: Props) {
             Yeni Ürün
           </h2>
           <form className={`${styles.section} ${menuStyles.productDialogForm}`} onSubmit={handleCreateProduct}>
-            <ProductFormFields values={formValues} onChange={setFormValues} mode="create" />
+            <ProductFormFields values={formValues} onChange={setFormValues} />
             {formError ? <ErrorState message={formError} /> : null}
             <div className={menuStyles.productFormActions}>
               <Button type="button" variant="secondary" disabled={creating} onClick={() => setCreateOpen(false)}>

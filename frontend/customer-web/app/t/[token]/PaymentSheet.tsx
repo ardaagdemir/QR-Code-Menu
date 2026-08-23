@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ApiError,
   createPaymentIntent,
@@ -17,6 +17,16 @@ import styles from "./PaymentSheet.module.css";
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function retryErrorMessage(error: unknown): string {
+  if (error instanceof ApiError && error.status === 409) {
+    return "Bu şube şu anda sipariş kabul etmiyor (kapalı ya da çalışma saatleri dışında).";
+  }
+  if (error instanceof ApiError && error.status === 410) {
+    return "Oturumunuz sona erdi. Yeni sipariş için masadaki QR kodunu tekrar okutun.";
+  }
+  return "Yeni ödeme denemesi başlatılamadı.";
 }
 
 type Props = {
@@ -37,6 +47,7 @@ type Phase = "awaiting-outcome" | "dispatching" | "succeeded" | "failed" | "erro
  * getPaymentStatus afterward to observe the real outcome once it lands.
  */
 export default function PaymentSheet({ tableVisitId, initialIntent, trackingToken, onClose, onOrderPaid }: Props) {
+  const router = useRouter();
   const [intent, setIntent] = useState(initialIntent);
   const [phase, setPhase] = useState<Phase>("awaiting-outcome");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -106,9 +117,9 @@ export default function PaymentSheet({ tableVisitId, initialIntent, trackingToke
       const newIntent = await createPaymentIntent(tableVisitId);
       setIntent(newIntent);
       setPhase("awaiting-outcome");
-    } catch {
+    } catch (error) {
       setPhase("error");
-      setErrorMessage("Yeni ödeme denemesi başlatılamadı.");
+      setErrorMessage(retryErrorMessage(error));
     }
   }
 
@@ -144,14 +155,18 @@ export default function PaymentSheet({ tableVisitId, initialIntent, trackingToke
         <>
           <p className={styles.statusSuccess}>Ödeme başarılı. Siparişiniz işletmeye iletildi, onay bekleniyor.</p>
           {orderNumber !== null ? <p className={styles.orderNumber}>Sipariş No: #{orderNumber}</p> : null}
-          {trackingToken ? (
-            <Link href={`/order/track/${trackingToken}`} className={styles.trackingLink}>
-              Sipariş durumunu takip et
-            </Link>
-          ) : null}
-          <Button size="lg" onClick={onOrderPaid}>
-            Tamam
-          </Button>
+          <div className={styles.actions}>
+            <Button variant="secondary" size="lg" onClick={onOrderPaid}>
+              Menüye Dön
+            </Button>
+            <Button
+              size="lg"
+              className={styles.successButton}
+              onClick={() => (trackingToken ? router.push(`/order/track/${trackingToken}`) : onOrderPaid())}
+            >
+              Siparişi Takip Et
+            </Button>
+          </div>
         </>
       ) : null}
 

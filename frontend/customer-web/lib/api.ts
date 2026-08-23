@@ -302,18 +302,10 @@ export type ReceiptItem = {
   lineTotalMinorUnits: number;
 };
 
-export type ReceiptRefundItem = {
-  orderItemId: string;
-  refundedQuantity: number;
-  refundAmountMinorUnits: number;
-};
-
 export type ReceiptRefund = {
-  refundId: string;
   status: string;
   totalAmountMinorUnits: number;
   createdAt: string;
-  items: ReceiptRefundItem[];
 };
 
 export type Receipt = {

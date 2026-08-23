@@ -1,13 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { CircleHelp, LogOut } from "lucide-react";
-import { logout, me, type StaffContext } from "@/lib/api";
+import { CircleHelp, Eye, EyeOff, KeyRound, LogOut } from "lucide-react";
+import { ApiError, changePassword, logout, me, MIN_PASSWORD_LENGTH, type StaffContext } from "@/lib/api";
 import { NAV_GROUPS, ROLE_LABELS } from "@/lib/staffNav";
 import IconButton from "@/components/ui/IconButton";
+import Dialog from "@/components/ui/Dialog";
+import FormField from "@/components/ui/FormField";
+import Input from "@/components/ui/Input";
+import Button from "@/components/ui/Button";
+import ErrorState from "@/components/ui/ErrorState";
+import { useToast } from "@/components/ui/ToastProvider";
 import ThemeToggle from "./ThemeToggle";
 import styles from "./AppShell.module.css";
 
@@ -35,6 +41,16 @@ export default function AppShell({ children }: Props) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
+  const { showToast } = useToast();
+  const changePasswordDialogTitleId = useId();
+
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [passwordVisible, setPasswordVisible] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [changePasswordError, setChangePasswordError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -57,6 +73,42 @@ export default function AppShell({ children }: Props) {
   async function handleLogout() {
     await logout().catch(() => undefined);
     router.replace("/");
+  }
+
+  function openChangePasswordDialog() {
+    setChangePasswordError(null);
+    setCurrentPassword("");
+    setNewPassword("");
+    setConfirmNewPassword("");
+    setPasswordVisible(false);
+    setChangePasswordOpen(true);
+  }
+
+  async function handleChangePassword(event: React.FormEvent) {
+    event.preventDefault();
+    if (newPassword.length < MIN_PASSWORD_LENGTH) {
+      setChangePasswordError(`Yeni şifre en az ${MIN_PASSWORD_LENGTH} karakter olsun.`);
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      setChangePasswordError("Yeni şifreler eşleşmiyor.");
+      return;
+    }
+    setChangingPassword(true);
+    setChangePasswordError(null);
+    try {
+      await changePassword(currentPassword, newPassword, confirmNewPassword);
+      setChangePasswordOpen(false);
+      showToast("Şifreniz değiştirildi.", "success");
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        setChangePasswordError("Mevcut şifre yanlış.");
+      } else {
+        setChangePasswordError("Şifre değiştirilemedi.");
+      }
+    } finally {
+      setChangingPassword(false);
+    }
   }
 
   function isActive(matchPrefix: string) {
@@ -110,6 +162,9 @@ export default function AppShell({ children }: Props) {
               <span className={styles.userEmail}>{context.email}</span>
               <span className={styles.userRole}>{ROLE_LABELS[context.role] ?? context.role}</span>
             </span>
+            <IconButton aria-label="Şifremi Değiştir" size="sm" onClick={openChangePasswordDialog}>
+              <KeyRound size={15} />
+            </IconButton>
             <IconButton aria-label="Çıkış Yap" size="sm" onClick={handleLogout}>
               <LogOut size={15} />
             </IconButton>
@@ -150,6 +205,71 @@ export default function AppShell({ children }: Props) {
         </header>
         <div className={styles.content}>{children}</div>
       </div>
+
+      {changePasswordOpen ? (
+        <Dialog onClose={() => setChangePasswordOpen(false)} labelledBy={changePasswordDialogTitleId}>
+          <h2 id={changePasswordDialogTitleId} className={styles.dialogTitle}>
+            Şifremi Değiştir
+          </h2>
+          <form className={styles.dialogForm} onSubmit={handleChangePassword}>
+            <FormField label="Mevcut Şifre" required>
+              {(controlProps) => (
+                <Input
+                  {...controlProps}
+                  type="password"
+                  value={currentPassword}
+                  onChange={(event) => setCurrentPassword(event.target.value)}
+                  autoComplete="current-password"
+                  required
+                />
+              )}
+            </FormField>
+            <FormField label="Yeni Şifre" hint={`En az ${MIN_PASSWORD_LENGTH} karakter`} required>
+              {(controlProps) => (
+                <div className={styles.passwordField}>
+                  <Input
+                    {...controlProps}
+                    type={passwordVisible ? "text" : "password"}
+                    className={styles.passwordInput}
+                    value={newPassword}
+                    onChange={(event) => setNewPassword(event.target.value)}
+                    autoComplete="new-password"
+                    required
+                  />
+                  <button
+                    type="button"
+                    className={styles.passwordToggle}
+                    onClick={() => setPasswordVisible((visible) => !visible)}
+                    aria-label={passwordVisible ? "Şifreyi gizle" : "Şifreyi göster"}
+                    aria-pressed={passwordVisible}
+                    disabled={changingPassword}
+                  >
+                    {passwordVisible ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
+                  </button>
+                </div>
+              )}
+            </FormField>
+            <FormField label="Yeni Şifre (Tekrar)" required>
+              {(controlProps) => (
+                <Input
+                  {...controlProps}
+                  type={passwordVisible ? "text" : "password"}
+                  value={confirmNewPassword}
+                  onChange={(event) => setConfirmNewPassword(event.target.value)}
+                  autoComplete="new-password"
+                  required
+                />
+              )}
+            </FormField>
+
+            {changePasswordError ? <ErrorState message={changePasswordError} /> : null}
+
+            <Button type="submit" disabled={changingPassword}>
+              {changingPassword ? "Değiştiriliyor…" : "Şifreyi Değiştir"}
+            </Button>
+          </form>
+        </Dialog>
+      ) : null}
     </div>
   );
 }

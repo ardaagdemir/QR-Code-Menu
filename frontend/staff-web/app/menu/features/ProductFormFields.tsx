@@ -66,15 +66,10 @@ export function productFormValuesFromProduct(product: ProductAdmin): ProductForm
 type Props = {
   values: ProductFormValues;
   onChange: (values: ProductFormValues) => void;
-  mode: "create" | "edit";
 };
 
-/**
- * Ürün oluşturma ve düzenleme akışlarının ortak alanları. Düzenleme endpoint'i bugün
- * yalnız görsel/hazırlık/alerjen alanlarını desteklediği için temel ticari alanlar
- * sadece create modunda gösterilir; ortak detay alanları iki akışta da aynı bileşendir.
- */
-export default function ProductFormFields({ values, onChange, mode }: Props) {
+/** Ürün oluşturma ve düzenleme akışlarının ortak alanları - iki mod da aynı alan setini gösterir. */
+export default function ProductFormFields({ values, onChange }: Props) {
   function setValue<Key extends keyof ProductFormValues>(key: Key, value: ProductFormValues[Key]) {
     onChange({ ...values, [key]: value });
   }
@@ -90,55 +85,51 @@ export default function ProductFormFields({ values, onChange, mode }: Props) {
 
   return (
     <div className={menuStyles.productFormGrid}>
-      {mode === "create" ? (
-        <>
-          <FormField label="Ürün adı" required>
-            {(controlProps) => (
-              <Input
-                {...controlProps}
-                value={values.name}
-                onChange={(event) => setValue("name", event.target.value)}
-                autoComplete="off"
-                required
-              />
-            )}
-          </FormField>
-          <FormField label="Fiyat (₺)" required>
-            {(controlProps) => (
-              <Input
-                {...controlProps}
-                inputMode="decimal"
-                value={values.price}
-                onChange={(event) => setValue("price", event.target.value)}
-                required
-              />
-            )}
-          </FormField>
-          <div className={menuStyles.productFormFullWidth}>
-            <FormField label="Açıklama" hint="İsteğe bağlı">
-              {(controlProps) => (
-                <Textarea
-                  {...controlProps}
-                  value={values.description}
-                  onChange={(event) => setValue("description", event.target.value)}
-                  rows={3}
-                />
-              )}
-            </FormField>
-          </div>
-          <FormField label="KDV (%)" required>
-            {(controlProps) => (
-              <Input
-                {...controlProps}
-                inputMode="numeric"
-                value={values.taxRate}
-                onChange={(event) => setValue("taxRate", event.target.value)}
-                required
-              />
-            )}
-          </FormField>
-        </>
-      ) : null}
+      <FormField label="Ürün adı" required>
+        {(controlProps) => (
+          <Input
+            {...controlProps}
+            value={values.name}
+            onChange={(event) => setValue("name", event.target.value)}
+            autoComplete="off"
+            required
+          />
+        )}
+      </FormField>
+      <FormField label="Fiyat (₺)" required>
+        {(controlProps) => (
+          <Input
+            {...controlProps}
+            inputMode="decimal"
+            value={values.price}
+            onChange={(event) => setValue("price", event.target.value)}
+            required
+          />
+        )}
+      </FormField>
+      <div className={menuStyles.productFormFullWidth}>
+        <FormField label="Açıklama" hint="İsteğe bağlı">
+          {(controlProps) => (
+            <Textarea
+              {...controlProps}
+              value={values.description}
+              onChange={(event) => setValue("description", event.target.value)}
+              rows={3}
+            />
+          )}
+        </FormField>
+      </div>
+      <FormField label="KDV (%)" required>
+        {(controlProps) => (
+          <Input
+            {...controlProps}
+            inputMode="numeric"
+            value={values.taxRate}
+            onChange={(event) => setValue("taxRate", event.target.value)}
+            required
+          />
+        )}
+      </FormField>
 
       <FormField label="Hazırlık süresi (dk)" hint="İsteğe bağlı">
         {(controlProps) => (

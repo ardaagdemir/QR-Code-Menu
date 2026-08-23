@@ -166,6 +166,19 @@
   background: #fff0ef !important;
 }
 
+.renameButton {
+  min-height: 28px !important;
+  min-width: 28px !important;
+  padding: 0 !important;
+  border-radius: 7px !important;
+  color: var(--tables-muted) !important;
+}
+
+.renameButton:hover {
+  background: #f7f4f2 !important;
+  color: var(--tables-accent-strong) !important;
+}
+
 .createSubmit {
   width: 100%;
 }

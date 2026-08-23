@@ -87,6 +87,29 @@ services:
     volumes:
       - ./backups:/backups
 
+  # Same reasoning as postgres-backup above, for the media_data volume (product images +
+  # private expense receipts). Archives land on the host at infra/backups/media/
+  # (bind-mount). Mounted :ro so this sidecar can never write to media_data itself -
+  # restoring is a separate, deliberate operation (scripts/restore-media.sh). Waits for
+  # "backend" only at startup (LocalFileMediaStorageAdapter creates media_data's
+  # directory on boot) so the very first archive doesn't pick up a freshly-created empty
+  # volume's stray content instead of the real media directories; afterwards it keeps
+  # archiving on its own interval independent of backend's health, same as postgres-backup.
+  media-backup:
+    build:
+      context: ./docker/media-backup
+    restart: unless-stopped
+    logging: *default-logging
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-7}
+    volumes:
+      - media_data:/media:ro
+      - ./backups/media:/backups
+
   # Gap-analysis #11: local SMTP catcher for OwnerNotificationPort's email adapter - no
   # real mailbox needed in dev, sent mail is viewable at http://localhost:8025.
   mailhog:
@@ -141,5 +164,6 @@ services:
 volumes:
   postgres_data:
   media_data:
-  # postgres-backup's dumps intentionally use a host bind-mount (./backups) above,
-  # not a named volume - operators need to rsync/scp them off-host directly.
+  # postgres-backup's dumps and media-backup's archives intentionally use host
+  # bind-mounts (./backups, ./backups/media) above, not named volumes - operators need
+  # to rsync/scp them off-host directly.

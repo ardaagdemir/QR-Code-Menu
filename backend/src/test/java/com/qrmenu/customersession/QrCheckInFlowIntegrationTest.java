@@ -44,6 +44,28 @@ class QrCheckInFlowIntegrationTest extends AbstractIntegrationTest {
         mockMvc.perform(post("/api/qr/{token}/visit", "does-not-exist")).andExpect(status().isNotFound());
     }
 
+    /**
+     * TenantIsolationIntegrationTest already covers explicit-revoke and rotate-revokes-old
+     * separately; this fills the one gap those don't check - that the freshly rotated
+     * token actually succeeds at check-in (not just that the old one fails).
+     */
+    @Test
+    void rotatingTheQrTokenInvalidatesTheOldOneAndTheNewOneWorks() throws Exception {
+        TableFixture fixture =
+                TenantFixtures.createTableWithActiveQrToken(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Rotated Token");
+        String oldToken = fixture.qrToken();
+
+        JsonNode newTokenNode = TenantFixtures.regenerateQrToken(
+                mockMvc, objectMapper, TEST_ADMIN_TOKEN, fixture.businessId(), fixture.tableId());
+        String newToken = newTokenNode.get("token").asText();
+        assertThat(newToken).isNotEqualTo(oldToken);
+
+        mockMvc.perform(post("/api/qr/{token}/visit", oldToken)).andExpect(status().isNotFound());
+        mockMvc.perform(post("/api/qr/{token}/visit", newToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tableVisitId").exists());
+    }
+
     @Test
     void checkingInWithoutASessionCookieIssuesANewSessionCookie() throws Exception {
         TableFixture fixture =

@@ -90,11 +90,15 @@ public class MenuService {
         return product;
     }
 
-    /** Gap-analysis "Product alanları" - active/passive + prep time + allergens edit (staff-web menu screen). */
+    /** Gap-analysis "Product alanları" - full detail edit (staff-web menu screen), same field set as createProduct. */
     @Transactional
     public Product updateProductDetails(
             UUID businessId,
             UUID productId,
+            String name,
+            String description,
+            long basePriceMinorUnits,
+            int taxRatePercent,
             boolean active,
             Integer estimatedPreparationMinutes,
             Set<Allergen> allergens,
@@ -103,7 +107,8 @@ public class MenuService {
         Product product = productRepository
                 .findByIdAndBusinessId(productId, businessId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found for business: " + productId));
-        product.updateDetails(active, estimatedPreparationMinutes, allergens, imageUrl);
+        product.updateDetails(
+                name, description, basePriceMinorUnits, taxRatePercent, active, estimatedPreparationMinutes, allergens, imageUrl);
         Product saved = productRepository.save(product);
         auditService.record(
                 businessId, actorStaffUserId, "Product", saved.getId(), "UPDATED", Map.of("active", String.valueOf(active)));

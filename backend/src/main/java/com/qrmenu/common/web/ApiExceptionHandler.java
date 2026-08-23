@@ -25,6 +25,11 @@ public class ApiExceptionHandler {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
     }
 
+    @ExceptionHandler(TableVisitExpiredException.class)
+    public ProblemDetail handleGone(TableVisitExpiredException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.GONE, ex.getMessage());
+    }
+
     @ExceptionHandler({InvalidWebhookSignatureException.class, StaffAuthenticationRequiredException.class})
     public ProblemDetail handleUnauthorized(RuntimeException ex) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, ex.getMessage());

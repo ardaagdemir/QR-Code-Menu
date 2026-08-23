@@ -219,8 +219,8 @@ export default function ReceiptPage() {
       {receipt.refunds.length > 0 ? (
         <div className={styles.refundsSection}>
           <p className={styles.refundsTitle}>İade Geçmişi</p>
-          {receipt.refunds.map((refund) => (
-            <div key={refund.refundId} className={styles.refundEntry}>
+          {receipt.refunds.map((refund, index) => (
+            <div key={index} className={styles.refundEntry}>
               <span>{formatDate(refund.createdAt)}</span>
               <span>{formatPriceMinorUnits(refund.totalAmountMinorUnits)}</span>
             </div>

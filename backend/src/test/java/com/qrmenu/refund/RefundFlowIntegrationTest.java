@@ -383,6 +383,40 @@ class RefundFlowIntegrationTest extends AbstractIntegrationTest {
         mockMvc.perform(get("/api/staff/branches/{branchId}/orders/search?orderNumber=1", branchId)).andExpect(status().isUnauthorized());
     }
 
+    @Test
+    void refundEndpointsCannotReachOrIssueRefundsForAnotherBranchsOrder() throws Exception {
+        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Branch Isolation Business");
+        String branchA = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "A Şube");
+        String branchB = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "B Şube");
+        String branchBStaffCookie = bootstrapStaffAdmin(businessId, branchB, "isolation-branch-b");
+        String branchAStaffCookie = bootstrapStaffAdmin(businessId, branchA, "isolation-branch-a");
+        String tableId = TenantFixtures.createTable(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchB, "B Masa 1");
+        String qrToken = TenantFixtures.createQrToken(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, tableId);
+        // Order lives entirely in branch B - the branch-A-scoped staff session below has no grant on branch B at all.
+        createPaidOrderWithOneItem(businessId, branchB, qrToken, "Şube B Ürünü", 4000, 2, branchBStaffCookie);
+        int orderNumber = fetchLatestOrderNumber(branchB, branchBStaffCookie);
+        JsonNode orderInBranchB = readJson(staffGet(branchB, "/search?orderNumber=" + orderNumber, branchBStaffCookie));
+        String orderId = orderInBranchB.get("orderId").asText();
+        String orderItemId = orderInBranchB.get("items").get(0).get("id").asText();
+        String refundBody = "{\"items\":[{\"orderItemId\":\"" + orderItemId + "\",\"quantity\":1}]}";
+
+        // The branch-A staff session has no grant on branch B whatsoever - denied before any order lookup happens.
+        mockMvc.perform(staffGet(branchB, "/search?orderNumber=" + orderNumber, branchAStaffCookie)).andExpect(status().isForbidden());
+        mockMvc.perform(staffGet(branchB, "/" + orderId + "/refunds", branchAStaffCookie)).andExpect(status().isForbidden());
+        mockMvc.perform(staffPost(branchB, "/" + orderId + "/refunds", refundBody, branchAStaffCookie)).andExpect(status().isForbidden());
+
+        // Even addressed through branch A (which the session IS scoped to), branch B's order is invisible - 404, not leaked.
+        mockMvc.perform(staffGet(branchA, "/" + orderId + "/refunds", branchAStaffCookie)).andExpect(status().isNotFound());
+        mockMvc.perform(staffPost(branchA, "/" + orderId + "/refunds", refundBody, branchAStaffCookie)).andExpect(status().isNotFound());
+
+        // The order and its funds are untouched by every rejected attempt above.
+        mockMvc.perform(staffGet(branchB, "/search?orderNumber=" + orderNumber, branchBStaffCookie))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].refundedQuantity").value(0))
+                .andExpect(jsonPath("$.items[0].remainingRefundableQuantity").value(2))
+                .andExpect(jsonPath("$.refunds", org.hamcrest.Matchers.hasSize(0)));
+    }
+
     private String bootstrapStaffAdmin(String businessId, String branchId, String emailLocalPart) throws Exception {
         return StaffFixtures.bootstrapBusinessAdminAndLogin(
                 mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, emailLocalPart + "@example.com");

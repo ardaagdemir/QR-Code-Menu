@@ -7,8 +7,8 @@ import styles from "./VisitHeader.module.css";
  * "Oturum aktif" durumu. Gap-analysis #17'nin ziyaretçi sayısı kontrolü artık sol üstteki
  * ikon-buton (referanstaki hamburger menünün konumu) - işlevsiz bir dekor yerine gerçek,
  * mevcut bir aksiyon. "Siparişlerim" sağ üstte her zaman görünür (sepet adedi rozeti
- * kullanılmaz) - henüz sipariş yoksa tıklanınca bilgilendirici bir toast gösterilir,
- * mevcut tracking akışı değişmez. */
+ * kullanılmaz) - branch bazlı kalıcı sipariş geçmişini listeleyen bir sheet açar (bkz.
+ * OrdersSheet.tsx), henüz sipariş yoksa sheet içinde boş durum gösterilir. */
 export default function VisitHeader({
   visit,
   onEditGuestCount,

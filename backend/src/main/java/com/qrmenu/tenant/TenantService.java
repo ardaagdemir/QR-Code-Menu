@@ -12,6 +12,7 @@ import com.qrmenu.tenant.repository.TableQrTokenRepository;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -116,6 +117,16 @@ public class TenantService {
     public TableQrToken regenerateQrToken(UUID businessId, UUID branchId, UUID tableId) {
         requireTableInBranch(businessId, branchId, tableId);
         return regenerateQrToken(businessId, tableId);
+    }
+
+    /** Masa etiketini değiştirir - QR token'ı etkilemez, aynı masaya bağlı kalır. */
+    @Transactional
+    public RestaurantTable renameTable(UUID businessId, UUID branchId, UUID tableId, String label, UUID actorStaffUserId) {
+        RestaurantTable table = requireTableInBranch(businessId, branchId, tableId);
+        table.rename(label);
+        RestaurantTable saved = tableRepository.save(table);
+        auditService.record(businessId, actorStaffUserId, "RestaurantTable", saved.getId(), "RENAMED", Map.of("label", label));
+        return saved;
     }
 
     @Transactional
@@ -304,6 +315,10 @@ public class TenantService {
                 .findByIdAndBusinessId(branchId, businessId)
                 .orElseThrow(() -> new ResourceNotFoundException("Branch not found for business: " + branchId));
         branchBusinessHoursRepository.deleteAllByBranchId(branchId);
+        // Hibernate's default flush order runs inserts before deletes, so without this
+        // explicit flush the inserts below race the queued deletes and hit
+        // uq_branch_business_hours_branch_day for any day kept across the update.
+        branchBusinessHoursRepository.flush();
         List<BranchBusinessHours> saved = entries.stream()
                 .map(entry -> branchBusinessHoursRepository.save(new BranchBusinessHours(
                         businessId, branchId, entry.dayOfWeek(), entry.openingTime(), entry.closingTime(), entry.closed())))
@@ -401,17 +416,78 @@ public class TenantService {
         if (!branch.isOrderingEnabled()) {
             throw new OrderingNotAllowedException("Branch is not currently accepting orders: " + branchId);
         }
-        LocalTime now = LocalTime.now();
-        branchBusinessHoursRepository.findByBranchIdAndDayOfWeek(branchId, LocalDate.now().getDayOfWeek()).ifPresent(hours -> {
-            if (hours.isClosed()) {
-                throw new OrderingNotAllowedException("Branch is closed today: " + branchId);
-            }
-            LocalTime opening = hours.getOpeningTime();
-            LocalTime closing = hours.getClosingTime();
-            if (opening != null && closing != null && !isWithinHours(now, opening, closing)) {
-                throw new OrderingNotAllowedException("Branch is outside its ordering hours: " + branchId);
-            }
-        });
+        if (!isWithinConfiguredBusinessHours(branch)) {
+            throw new OrderingNotAllowedException("Branch is outside its ordering hours: " + branchId);
+        }
+    }
+
+    /** Same authoritative gate as assertOrderingCurrentlyAllowed, without throwing - lets
+     * staff-web show a branch's real open/closed status instead of just its orderingEnabled
+     * toggle, which on its own ignores the configured weekly hours. */
+    @Transactional(readOnly = true)
+    public boolean isOpenNow(UUID businessId, UUID branchId) {
+        Branch branch = branchRepository
+                .findByIdAndBusinessId(branchId, businessId)
+                .orElseThrow(() -> new ResourceNotFoundException("Branch not found for business: " + branchId));
+        return branch.isOrderingEnabled() && isWithinConfiguredBusinessHours(branch);
+    }
+
+    private boolean isWithinConfiguredBusinessHours(Branch branch) {
+        // "Right now" and "today" must be the branch's own local time, not whatever
+        // zone the server/JVM happens to be running in - a server in UTC checking a
+        // Europe/Istanbul branch's hours near local midnight would otherwise enforce
+        // the wrong day-of-week's schedule entirely, not just an off-by-a-few-hours error.
+        ZoneId zone = resolveBranchTimeZone(branch);
+        LocalDate today = LocalDate.now(zone);
+        LocalTime now = LocalTime.now(zone);
+        // An overnight row (e.g. Monday 18:00-02:00) is stored under Monday, but its
+        // early-morning tail is physically Tuesday. Without this, a lookup on Tuesday
+        // 01:00 would check Tuesday's own row (wrong or absent) instead of honoring the
+        // still-open session carried over from Monday night.
+        if (isWithinYesterdaysOvernightCarryOver(branch.getId(), today, now)) {
+            return true;
+        }
+        return branchBusinessHoursRepository.findByBranchIdAndDayOfWeek(branch.getId(), today.getDayOfWeek())
+                .map(hours -> {
+                    if (hours.isClosed()) {
+                        return false;
+                    }
+                    LocalTime opening = hours.getOpeningTime();
+                    LocalTime closing = hours.getClosingTime();
+                    return opening == null || closing == null || isWithinHours(now, opening, closing);
+                })
+                .orElse(true);
+    }
+
+    private boolean isWithinYesterdaysOvernightCarryOver(UUID branchId, LocalDate today, LocalTime now) {
+        return branchBusinessHoursRepository
+                .findByBranchIdAndDayOfWeek(branchId, today.minusDays(1).getDayOfWeek())
+                .filter(hours -> !hours.isClosed())
+                .filter(hours -> hours.getOpeningTime() != null && hours.getClosingTime() != null)
+                .filter(hours -> hours.getOpeningTime().isAfter(hours.getClosingTime()))
+                .map(hours -> now.isBefore(hours.getClosingTime()))
+                .orElse(false);
+    }
+
+    /**
+     * The single source of truth for "what calendar day/time is it for this branch" -
+     * every day-boundary computation (order history, reports, daily close, the
+     * ordering-hours gate above) must resolve through this, never invent its own
+     * fallback. A branch's own timezone wins when set (Section 12.2); otherwise it
+     * defers to its Business's defaultTimeZone (Section 12.1) - never a bare UTC or
+     * server/JVM-default guess, since Business.defaultTimeZone is NOT NULL and
+     * validated as a real IANA zone at write time (defaults to "Europe/Istanbul" -
+     * see Business's single-arg constructor), so there is always a real answer without
+     * falling back to UTC.
+     */
+    public ZoneId resolveBranchTimeZone(Branch branch) {
+        if (branch.getTimezone() != null) {
+            return ZoneId.of(branch.getTimezone());
+        }
+        Business business = businessRepository
+                .findById(branch.getBusinessId())
+                .orElseThrow(() -> new IllegalStateException("Business missing for branch " + branch.getId()));
+        return ZoneId.of(business.getDefaultTimeZone());
     }
 
     private static boolean isWithinHours(LocalTime now, LocalTime opening, LocalTime closing) {

@@ -14,8 +14,11 @@
   background: var(--color-bg);
 }
 
+/* Sticky sepet barı (CartDrawer) sepet doluyken sayfanın üstünde sabitlenir
+ * (bottom: var(--space-4), yükseklik ~var(--tap-target-min) + iç boşluk) - bu
+ * padding olmadan son kategorideki kartlar barın altında kalırdı. */
 .content {
-  padding-bottom: var(--space-12);
+  padding-bottom: calc(var(--tap-target-min) + var(--space-8) + var(--space-4));
 }
 
 .centeredState {

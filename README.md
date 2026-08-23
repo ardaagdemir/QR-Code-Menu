@@ -252,26 +252,37 @@ Gerekli tüm domain/secret/URL değişkenleri için `infra/.env.prod.example` do
 
 ## Backup / restore
 
-`docker compose up` ile birlikte otomatik olarak `postgres-backup` adında ayrı bir servis de ayağa
-kalkar (`infra/docker/postgres-backup/`) - `backend` container'ından bağımsız çalışır, veritabanını
-periyodik olarak (varsayılan: günde bir) yedekleyip `infra/backups/` klasörüne (host'ta, Docker volume
-değil) gzip'li bir `.sql.gz` dosyası olarak yazar ve eski yedekleri otomatik siler (varsayılan: 7 gün).
-Sıklık/saklama süresi `infra/.env`(.prod)`'daki `BACKUP_INTERVAL_SECONDS`/`BACKUP_RETENTION_DAYS` ile
-ayarlanabilir (bkz. `.env.example`).
+`docker compose up` ile birlikte iki ayrı sidecar servis de otomatik ayağa kalkar - ikisi de `backend`
+container'ından bağımsız çalışır ve eski yedekleri otomatik siler (varsayılan: 7 gün):
+
+- `postgres-backup` (`infra/docker/postgres-backup/`) - veritabanını periyodik olarak (varsayılan:
+  günde bir) yedekleyip `infra/backups/` klasörüne gzip'li bir `.sql.gz` dosyası olarak yazar.
+- `media-backup` (`infra/docker/media-backup/`) - `media_data` volume'ünü (ürün görselleri + private
+  gider fişleri) aynı sıklıkla `infra/backups/media/` klasörüne gzip'li bir `.tar.gz` arşivi olarak
+  yazar; volume'e sadece salt-okunur (`:ro`) bağlı, hiçbir zaman yazamaz.
+
+İkisi de host'ta (Docker volume değil, bind-mount) saklanır. Sıklık/saklama süresi ikisi için ortak
+`infra/.env`(.prod)`'daki `BACKUP_INTERVAL_SECONDS`/`BACKUP_RETENTION_DAYS` ile ayarlanabilir (bkz.
+`.env.example`).
 
 Manuel/anlık bir yedek almak veya bir yedeği geri yüklemek için (`infra/` klasöründeyken):
 
 ```bash
-./scripts/backup.sh                                              # dev  (infra/.env)
-./scripts/backup.sh prod                                         # prod (infra/.env.prod)
+./scripts/backup.sh                                              # dev  (infra/.env)  - DB + media
+./scripts/backup.sh prod                                         # prod (infra/.env.prod) - DB + media
 
-./scripts/restore.sh backups/qrmenu_manual_20260814T120000Z.sql.gz        # dev
-./scripts/restore.sh backups/qrmenu_manual_20260814T120000Z.sql.gz prod   # prod
+./scripts/restore.sh backups/qrmenu_manual_20260814T120000Z.sql.gz        # dev  - DB
+./scripts/restore.sh backups/qrmenu_manual_20260814T120000Z.sql.gz prod   # prod - DB
+
+./scripts/restore-media.sh backups/media/media_manual_20260814T120000Z.tar.gz        # dev  - media
+./scripts/restore-media.sh backups/media/media_manual_20260814T120000Z.tar.gz prod   # prod - media
 ```
 
-`restore.sh` **yıkıcıdır** - hedef veritabanını silip yeniden oluşturur, bu yüzden veritabanı adının
-elle yazılarak onaylanmasını ister. S3/bulut depolama entegrasyonu yok (bilinçli olarak kapsam dışı) -
-`infra/backups/` klasörünü başka bir yere kopyalamak (`rsync`/`scp`) operatörün sorumluluğunda.
+`restore.sh` ve `restore-media.sh` **yıkıcıdır** - hedef veritabanını/`media_data` volume'ünü silip
+yeniden oluşturur, bu yüzden ikisi de elle bir onay metni yazılmasını ister (`restore.sh`: veritabanı
+adı, `restore-media.sh`: `RESTORE MEDIA` sabit metni). S3/bulut depolama entegrasyonu yok (bilinçli
+olarak kapsam dışı) - `infra/backups/` klasörünü (DB + media) başka bir yere kopyalamak (`rsync`/`scp`)
+operatörün sorumluluğunda.
 
 ## Katkı / geliştirme sırası
 

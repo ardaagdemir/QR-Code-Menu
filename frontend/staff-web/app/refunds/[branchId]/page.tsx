@@ -260,8 +260,13 @@ function RefundsPage() {
                   <div className={styles.orderTitleRow}>
                     <h2 className={styles.orderNumber}>Sipariş #{order.orderNumber}</h2>
                     <Badge tone={orderStatusTone(order.status)}>{ORDER_STATUS_LABELS[order.status] ?? order.status}</Badge>
-                    {fullyRefunded ? <Badge tone="danger">Tam iade edildi</Badge> : null}
-                    {partiallyRefunded ? <Badge tone="warning">Kısmi iade</Badge> : null}
+                    {fullyRefunded ? (
+                      <Badge tone="danger">Tam iade edildi</Badge>
+                    ) : partiallyRefunded ? (
+                      <Badge tone="warning">Kısmi iade</Badge>
+                    ) : (
+                      <Badge tone="neutral">İade yok</Badge>
+                    )}
                   </div>
                 </div>
               </div>

@@ -2904,3 +2904,633 @@ yalnızca tarayıcının localStorage'ındaydı, ayrıca temizlik gerektirmedi. 
 (önceden var olan, bu oturuma ait olmayan) dokunulmadan bırakıldı.
 
 Mevcut Siparişlerim/Oturum aktif yapısına, business logic'e dokunulmadı. Commit/push yapılmadı (kullanıcı talebi).
+
+---
+
+## 2026-08-21 Müşteri Menü - 7 Maddelik İkinci Görsel Cila Turu — ✅ COMPLETED
+
+**Kök neden bulundu: kart/görsel yükseklikleri neden tutarsızdı.** `ProductCard`'ın `.media` kapsayıcısı
+(`aspect-ratio: 4/3` veya `1/1`, `height: auto`) içindeki `<img>` normal akışta `height: 100%` ile
+konumlanıyordu - dikey (portre) kaynaklı bir fotoğraf (`Brownie`, 800×1200 Unsplash görseli; SQL'de yalnızca
+`w=800` verilip `h=` verilmediği için Unsplash orijinal en-boy oranını koruyarak döndürmüştü) flex item olan
+`.media`'nın `height:auto` + `aspect-ratio` hesabına kendi doğal oranını sızdırıp o kartı diğerlerinin
+neredeyse iki katı yüksekliğe (491px'e karşı 306.5px) uzatıyordu. Bu tek görsel bozukluk iki ayrı şikayet
+gibi görünüyordu: "En Çok Tercih Edilenler" satırında görsel/kart yükseklikleri tutarsızdı VE altındaki
+"Sıcak Kahveler" başlığıyla arasında kullanıcının "Favoriler'e ait boşluk" sandığı büyük bir kör alan
+oluşuyordu - oysa Favoriler zaten favori yokken hiç render edilmiyordu (`ProductRowSection` `products.length
+=== 0` olduğunda `null` döndürüyor, DOM'da hiç yer kaplamıyor - canlı Chrome'da JS ile doğrulandı). **Düzeltme:**
+`<img>` artık `position:absolute; inset:0;` (`.media`/`.compactMedia`'ya `position:relative` eklendi) - görsel
+`.media`'nın box boyutunu hiçbir şekilde etkileyemiyor, kaynak fotoğrafın en-boy oranından bağımsız olarak her
+kart aynı sabit orana kırpılıyor. Canlı Chrome'da doğrulandı: 6 kartlık satırın tamamı artık `306.5px` - tek
+piksel farksız.
+
+Kalan 6 madde: (3) sipariş takip sayfasına `router.back()` ile çalışan "← Menüye Dön" eklendi (üç durum da:
+loading/error/ready). (4) `OrderStatusTimeline` zaten order-level; ama alt taraftaki kalem listesi
+`ITEM_STATUS_LABELS`'a `PENDING_REVIEW: "Onay bekliyor"` ekleyip her satırda gösteriyordu - kabul kararı
+sipariş bazlı olduğu için bu yanlış bir "her kalem ayrı onay bekliyor" izlenimi veriyordu; kaldırıldı
+(PENDING_REVIEW artık haritada yok, rozet yalnızca gerçek bir kalem-durumu olduğunda render ediliyor). (5)
+tracking sayfası artık `.card` (surface-raised, border, radius-lg, shadow-sm) içinde toplanmış durumda, dikey
+boşluklar sıkılaştırıldı (`space-6`→`space-4` sayfa padding'i, `itemList`/`receiptLink` margin'leri küçültüldü).
+(6) `PaymentSheet`'in "Ödeme başarılı" ekranında primary aksiyon artık **Siparişi Takip Et** (trackingToken
+varsa `router.push`, yoksa `onOrderPaid`'e düşer), secondary **Menüye Dön** (`onOrderPaid`) - eski "Tamam" +
+ayrı metin linki kaldırıldı. (7) `app/t/[token]/page.module.css`'teki `.content` padding-bottom'u
+`calc(var(--tap-target-min) + var(--space-8) + var(--space-4))` (~92px) yapıldı - sticky sepet barının
+(~68-84px toplam yükseklik + `space-4` alt boşluk) son kategori kartlarını kapatmasını önlüyor.
+
+**Doğrulama:** `tsc --noEmit`, `eslint`, `npm run build` temiz; `infra-customer-web-1` yeniden build edildi.
+Canlı Chrome'da uçtan uca: kart yükseklikleri tek piksel farksız, Brownie'nin `ProductOptionsSheet`'teki 16:9
+görseli de doğru kırpılıyor (o bileşen ayrı bir CSS modülünde ve flex-item değil, aynı hataya açık değildi -
+kontrol edildi), sepete ürün eklenip sayfanın en altına inildiğinde son satır sticky bar'ın altında kalmıyor,
+gerçek bir sipariş oluşturulup ödendi: başarı ekranında "Siparişi Takip Et"/"Menüye Dön" doğru, tracking
+sayfasında "← Menüye Dön" tıklanınca menüye dönüyor, kart container + sıkı boşluk + kalemde "Onay bekliyor"
+rozetinin yokluğu doğrulandı. Doğrulama sırasında oluşan 2 test siparişi/ödemesi (payment_webhook_event dahil)
+DB'den temizlendi.
+
+Business logic'e dokunulmadı. Commit/push yapılmadı (kullanıcı talebi).
+
+## 2026-08-21 Makbuz sayfası: geri butonu eklendi, yazdır → indir — ✅ COMPLETED
+
+Kullanıcı bildirdi: makbuz sayfasına girince geri dönme butonu yok, ayrıca "Yazdır" yerine indirme olmalı.
+`app/order/track/[token]/receipt/page.tsx`: (1) tracking sayfasındaki (`app/order/track/[token]/page.tsx`)
+`router.back()` ile çalışan "← " geri linki paterni aynen taşındı - loading/error/ready üç durumda da üstte
+render ediliyor, aynı `.backLink` stili receipt'in CSS modülüne eklendi. (2) "Yazdır" butonu (`window.print()`)
+kaldırıldı, yerine "İndir" butonu geldi: `buildReceiptHtml()` makbuzun aynı görünümünü (işletme/şube adı,
+sipariş no/tarih, kalem tablosu, özet, iade geçmişi) kendi inline stilleriyle bağımsız bir `.html` dizesine
+render ediyor, `downloadReceipt()` bunu `Blob` + `URL.createObjectURL` + gizli `<a download>` ile
+`makbuz-{siparişNo}.html` olarak indiriyor. PDF kütüphanesi eklenmedi (proje zaten "no PDF library, no legal
+invoice fields" kararını taşıyordu - kullanıcıya format seçeneği soruldu, HTML dosyası indirme seçildi).
+
+**Doğrulama:** `tsc --noEmit` temiz. `infra-customer-web-1` yeniden build edildi (image'a dosya mount edilmiyor,
+değişiklikler ancak rebuild ile yansıyor). Canlı Chrome'da uçtan uca: Masa 01 üzerinden gerçek bir sipariş
+oluşturulup sandbox ödemesiyle ödendi (Sipariş No: #10), tracking sayfasından "Makbuzu Görüntüle" ile makbuza
+girildi - "← Geri" butonu tracking sayfasına doğru dönüyor, "İndir" butonu tıklanınca makbuzun tam içeriğini
+(işletme adı, sipariş no, kalemler, tutarlar) barındıran bağımsız bir `.html` dosyası indiriliyor (indirilen
+dosya diskte okunarak doğrulandı). Doğrulama sırasında oluşan test siparişi (#10, `AWAITING_STORE_ACCEPTANCE`)
+otomatik DB temizliği auto-mode classifier tarafından engellendiği için elle temizlenemedi - DB'de kalmış
+durumda, ileride manuel temizlenmeli.
+
+## 2026-08-21 Siparişlerim: sipariş geçmişi artık kalıcı (localStorage), geçici React state'e bağlı değil — ✅ COMPLETED
+
+Kullanıcı bildirdi: sipariş ver → Siparişi Takip Et → Menüye Dön → tekrar Siparişlerim → "Siparişiniz yok"
+diyor. **Kök neden:** `app/t/[token]/page.tsx`'teki `trackingToken`, tek bir `useState<string|null>` - hem (a)
+"Menüye Dön" navigasyonu `TableVisitPage`'i yeniden mount ettiğinde sıfırlanıyordu, hem de (b) her yeni
+sipariş geldiğinde bir öncekinin üzerine yazılıyordu (tek değer, liste değil) - "Siparişlerim" de doğrudan bu
+tek token'a `router.push` yapıyordu. Backend'de müşteri hesabı/oturumu kavramı olmadığından (Section 5) bu asla
+kalıcı bir kaynaktan okunmuyordu.
+
+**Çözüm:** favoriler (`useFavorites.ts`) ile aynı desen - şube (branchId) bazlı, yalnızca opak
+`orderTrackingToken` değerlerini tutan bir localStorage listesi:
+- `orderHistoryStorage.ts` (yeni, saf fonksiyonlar): `readOrderTokens`/`addOrderToken`/`removeOrderToken`,
+  anahtar `qrmenu.orderHistory.<branchId>`. `addOrderToken` var olan listeyi asla ezmez, yalnızca ekler
+  (aynı token tekrar gelirse - taslak sepete art arda ürün eklenmesi - yeniden eklenmez).
+- `useOrderHistory.ts` (yeni hook): storage'ı React'e bağlar; `useFavorites`'teki "branchId prop'u değişince
+  render sırasında state'i senkron ayarla" desenini kullanır - her (yeniden) mount'ta güncel liste doğrudan
+  localStorage'dan okunur, önceki bir React state'ine hiç güvenilmez.
+- `OrdersSheet.tsx` (yeni component, `BottomSheet` üzerine): "Siparişlerim" artık tek bir sipariş sayfasına
+  değil bu sheet'e açılıyor; sheet açıldığında listedeki her token için `getOrderTracking` ile taze veri
+  çekiliyor (ham veri hiç saklanmıyor) - 404 dönen (artık bulunamayan) token'lar sessizce hem listeden hem
+  kalıcı depodan siliniyor, diğer hatalarda (geçici ağ sorunu) token korunuyor ve satır "yüklenemedi" gösteriyor
+  (tek başarısız istek geçmişi silmiyor). Liste en yeni sipariş üstte.
+- `page.tsx`: `handleAddToCart` içinde `orderTrackingToken` geldiğinde artık hem eski `trackingToken` state'i
+  (PaymentSheet'in "Siparişi Takip Et" linki için, değişmedi) hem de `addOrderHistoryToken` çağrılıyor.
+  `handleOpenTracking` artık doğrudan `router.push` yapmıyor, `OrdersSheet`'i açıyor - boş liste durumu artık
+  toast yerine sheet içinde `EmptyState` ile gösteriliyor.
+- TableVisit/oturum süresi dolması geçmişi etkilemiyor: liste branchId'ye bağlı, tableVisitId/cookie'ye değil -
+  QR tekrar okutulup yeni bir TableVisit başlasa bile aynı şubenin geçmişi görünmeye devam ediyor (yalnızca yeni
+  sipariş verme yetkisi etkileniyor, mevcut "expired" ekranı davranışı değişmedi).
+
+**Test altyapısı:** `customer-web`'de daha önce hiç test kurulumu yoktu (ne Jest ne Vitest, sadece backend
+Java testleri vardı) - bu akış için `vitest` + `jsdom` + `@testing-library/react` eklendi (`npm test`).
+`orderHistoryStorage.test.ts` (6 test - kalıcılık, üzerine yazmama, branch bazlı izolasyon, bozuk veriye karşı
+dayanıklılık), `useOrderHistory.test.ts` (4 test - unmount/remount sonrası hayatta kalma yani "Menüye Dön"
+senaryosunun birebir regresyon testi, branchId değişince yeniden yükleme), `OrdersSheet.test.tsx` (4 test -
+boş durum, çoklu sipariş sıralaması, 404'te sessiz temizleme, geçici hatada silmeme). Toplam 14 test, hepsi
+geçiyor. (Not: yerel Node 22+/25 ortamında Node'un yerleşik `--experimental-webstorage` global `localStorage`'ı
+jsdom'unkiyle çakışıp `.clear()` gibi metodları bozuyor - `npm test` script'i `NODE_OPTIONS=--no-experimental-webstorage`
+ile bunu bypass ediyor; proje `.nvmrc`'si zaten Node 20 hedeflediği için bu sorun CI/Docker'da oluşmaz.)
+
+**Doğrulama:** `tsc --noEmit`, `eslint`, `npm run build`, `npm test` (14/14) temiz. Canlı Chrome'da uçtan uca
+(`infra-customer-web-1` durdurulup yerine `next dev` ile aynı portta çalıştırıldı, CORS localhost:3000/3002
+allowlist'i gereği - test sonunda container eski image'ıyla geri başlatıldı, image yeniden build edilmedi):
+Masa 01 üzerinden Espresso siparişi verilip ödendi (#12) → "Siparişi Takip Et" → "← Menüye Dön" → "Siparişlerim"
+artık #12'yi doğru gösteriyor (önceden "Henüz siparişiniz yok" derdi). Tam sayfa yenileme/QR tekrar okutma
+simülasyonu (URL'e yeniden navigate) sonrası da #12 görünmeye devam etti. İkinci bir sipariş (#13, Filtre Kahve)
+verilip yalnızca "Menüye Dön" ile kapatıldı - Siparişlerim hem #13 hem #12'yi (en yeni üstte) gösterdi, hiçbiri
+ezilmedi. `window.localStorage` içeriği JS ile okunarak yalnızca iki opak token'ın saklandığı (tutar/kalem/durum
+gibi hiçbir ham verinin saklanmadığı) doğrulandı. Doğrulama sırasında oluşan 2 test siparişi (#12, #13,
+`AWAITING_STORE_ACCEPTANCE`) DB'de kalmış durumda - önceki girişteki #10 gibi ileride manuel temizlenmeli.
+
+Mevcut order tracking/SSE mantığına dokunulmadı (tek sipariş takip sayfası, `OrderStatusTimeline`, receipt akışı
+aynı). Commit/push yapılmadı (kullanıcı talebi).
+
+## 2026-08-21 Siparişlerim: kritik izolasyon bug'ı - branch bazlı değil MASA (tableId) bazlı persistence — ✅ COMPLETED
+
+**Bug (kullanıcı raporu):** Yukarıdaki düzeltme branch bazlı localStorage kullanıyordu (`qrmenu.orderHistory.<branchId>`).
+Aynı şubedeki farklı masalar aynı `branchId`'yi paylaştığı için, Masa 8'de sipariş verip Masa 9'un QR'ı okutulduğunda
+Masa 8'in sipariş geçmişi Masa 9'da da görünüyordu - kritik bir veri izolasyonu/gizlilik sorunu.
+
+**Kök neden:** Favoriler (`useFavorites.ts`) branch bazlı olması doğruydu (menü branch'e ait), ama sipariş geçmişi
+kavramsal olarak masaya ait olmalıydı - aynı deseni (branch bazlı key) kopyalarken bu ayrım gözden kaçmıştı.
+
+**Düzeltme:** `orderHistoryStorage.ts` ve `useOrderHistory.ts` artık `branchId` değil `tableId` alıyor (`TableVisit.tableId`
+zaten mevcuttu, `checkInWithQrToken` yanıtında geliyor). Depolama anahtarı `qrmenu.orderHistory.table.<tableId>` oldu
+(eski format `qrmenu.orderHistory.<branchId>` idi - yeni anahtarda ek `table.` segmenti var, göç/temizlik bunu ayırt
+etmek için kullanıyor). `page.tsx`'te `useOrderHistory(branchIdForFavorites)` çağrısı `useOrderHistory(tableIdForOrderHistory)`
+oldu (`tableIdForOrderHistory = state.status === "ready" ? state.visit.tableId : ""`, Rules of Hooks gereği erken
+return'lerden önce hesaplanıyor). Favoriler'in branch bazlı persistence'ına dokunulmadı.
+
+**Eski (yanlış-scoped) veri temizliği:** Eski `qrmenu.orderHistory.<branchId>` anahtarındaki token'ların hangi masaya
+ait olduğu depolanan veriden güvenle çıkarılamıyor (aksi halde göç sırasında aynı sızıntıyı tekrar üretiriz). Bu yüzden
+`orderHistoryStorage.ts` her okumada (`readOrderTokens` içinde) `qrmenu.orderHistory.` ile başlayıp `qrmenu.orderHistory.table.`
+ile başlamayan tüm eski anahtarları güvenli şekilde siler - veri kaybı değil, opak token'lar zaten `/order/track/<token>`
+linkiyle erişilebilir kalıyor, sadece yanlış-scoped listeleme kaldırılıyor.
+
+**TableVisit expiry etkilenmedi:** Liste hâlâ `tableVisitId`/cookie'ye değil `tableId`'ye bağlı - aynı masanın QR'ı
+tekrar okutulup yeni bir TableVisit başlasa (veya öncekinin süresi dolsa) bile o masanın geçmişi görünmeye devam
+ediyor; yalnızca yeni sipariş verme yetkisi etkileniyor.
+
+**Test:** `orderHistoryStorage.test.ts`'e masa bazlı izolasyon (branch yerine tableId), eski anahtarın sessizce
+silinmesi ve yeni-format anahtarların yanlışlıkla eski sanılıp silinmemesi testleri eklendi. `useOrderHistory.test.ts`'e
+Masa 8 → Masa 9 → Masa 8 senaryosunun birebir regresyon testi eklendi (Masa 8'de token eklenir, unmount; Masa 9
+mount edilir ve boş olduğu doğrulanır, kendi token'ı eklenir, unmount; Masa 8 tekrar mount edilir ve yalnızca kendi
+token'ının geri geldiği, Masa 9'unkinin sızmadığı doğrulanır). Toplam 17 test, hepsi geçiyor.
+
+**Doğrulama:** `tsc --noEmit`, `eslint`, `npm run build`, `npm test` (17/17) temiz. `infra-customer-web-1` Docker
+image'ı bu değişikliklerle rebuild edilip container yeniden başlatıldı (önceki girişte image hiç rebuild edilmemişti,
+bu yüzden kullanıcı "hâlâ aynı durum var" diye bildirmişti - o mesele bu oturumda önce image rebuild edilerek,
+sonra bu yeni izolasyon düzeltmesiyle birlikte çözüldü). Canlı Chrome'da `localhost:3000` üzerinde: localStorage
+temizlenip Masa 08 QR'ı okutuldu, Filtre Kahve (₺75,00) siparişi verildi, Siparişlerim bunu gösterdi → Masa 09 QR'ı
+okutuldu (aynı branch, farklı masa), Siparişlerim "Henüz siparişiniz yok" gösterdi (sızıntı yok) → Masa 08 QR'ı
+tekrar okutuldu, Siparişlerim ₺75,00'lık siparişi hâlâ doğru gösterdi (geçmiş kaybolmadı).
+
+Commit/push yapılmadı (kullanıcı talebi).
+
+## 2026-08-21 Siparişlerim popup'ı görsel yeniden tasarım — ✅ COMPLETED
+
+Sadece görsel/UI değişikliği - business logic (persistence, izolasyon, prune/404 mantığı) dokunulmadı.
+
+- **Header:** `OrdersSheet.tsx`'e başlık + sağ üstte `IconButton` ile X kapatma eklendi (`Dialog.tsx`'teki mevcut
+  kapatma ikonu desenine uyumlu).
+- **Kart tasarımı:** Her sipariş artık `.card` (rounded, `var(--color-border)` border, `var(--color-surface)` dolgu)
+  - sol üstte büyük/kalın sipariş numarası (`#17`), altında küçük/soluk tarih-saat; sağda renkli durum badge'i,
+  altında kalın tutar; en sağda `›` chevron. Tüm kart `<button>` - tıklanınca `/order/track/<token>`'a gidiyor.
+- **Renkli badge:** Durum -> varyant eşlemesi (`ORDER_STATUS_META`) - var olan tema tokenleri kullanılıyor
+  (`--color-warning*` bekleyen/hazırlanan, `--color-success*` hazır, `--color-danger*` reddedildi/ödeme başarısız,
+  nötr gri tamamlandı/sepette/iptal için). Yeni renk icat edilmedi.
+- **Aktif sipariş vurgusu:** Sonuçlanmamış siparişler (`DRAFT`/`AWAITING_PAYMENT`/`AWAITING_STORE_ACCEPTANCE`/
+  `IN_KITCHEN`/`READY`) `.cardActive` ile krem/turuncu tonlu dolgu + belirgin border alıyor; sonuçlanmış siparişler
+  (`COMPLETED`/`REJECTED_BY_STORE`/`CANCELLED`/`PAYMENT_FAILED`) `.cardTerminal` ile hafif soluklaştırılıyor.
+- **Tarih/saat:** Backend `OrderTracking`'de bir zaman damgası yok - bu yüzden `orderHistoryStorage.ts`'in
+  depoladığı veri `string[]`'ten `{token, addedAt}[]`'e genişletildi (`addedAt` = token'ın bu tarayıcıya
+  eklendiği an, `addOrderToken` içinde `new Date().toISOString()`). Bu saf istemci-taraflı görüntüleme meta
+  verisi - sunucu/sipariş durumunun bir parçası değil, business logic sayılmıyor. Eski (bu alan eklenmeden önce
+  yazılmış) kayıtlarda `addedAt: null` - tarih satırı o zaman basitçe gösterilmiyor (hatalı "Invalid Date" yerine).
+  `useOrderHistory.ts` artık `tokens` değil `entries: {token, addedAt}[]` döndürüyor; `page.tsx`'teki
+  `OrdersSheet` prop'u `tokens` yerine `entries` oldu.
+- **Kaydırma:** `.list` içine `max-height: 60vh; overflow-y: auto` eklendi - çok sipariş olduğunda liste kendi
+  içinde kayar, `BottomSheet`'in zaten sahip olduğu dış `max-height: 88dvh` sınırı da yedek olarak duruyor.
+- **Tema uyumu:** Yeni renk/token icat edilmedi, tamamı `globals.css`'teki mevcut `--color-*`/`--space-*`/
+  `--font-*`/`--radius-*` değişkenleri.
+
+**Test altyapısı düzeltmesi (yan bulgu):** `OrdersSheet.test.tsx`'e eklenen yeni "tarih/saat gösterimi" testi
+çalıştırılırken, projede daha önce hiç `@testing-library/react`'in `cleanup()`'ı çağrılmadığı ortaya çıktı - aynı
+dosyadaki testler arasında önceki `render()`'lardan kalan DOM temizlenmiyordu, bu da aynı metni (`entry()` test
+yardımcısındaki varsayılan `addedAt` her testte aynı olduğu için) birden fazla eşleşme veren "multiple elements
+found" hatasına yol açtı. Kalıcı düzeltme: `vitest.setup.ts` eklendi (`afterEach(() => cleanup())`),
+`vitest.config.mts`'e `test.setupFiles` olarak bağlandı - bundan sonraki tüm test dosyaları için geçerli.
+
+**Test:** `useOrderHistory.test.ts`'e `addedAt`'in kaydedildiğini doğrulayan test eklendi; `OrdersSheet.test.tsx`'e
+renkli badge + tarih etiketinin doğru göründüğünü doğrulayan test eklendi (tarih karşılaştırması saat dilimine
+bağlı kırılganlığı önlemek için component'in kullandığı aynı `Intl.DateTimeFormat` ile hesaplanıyor). Toplam 19
+test, hepsi geçiyor.
+
+**Doğrulama:** `tsc --noEmit`, `eslint`, `npm run build`, `npm test` (19/19) temiz. `infra-customer-web-1` Docker
+image'ı rebuild edilip container yeniden başlatıldı. Canlı Chrome'da Masa 08 üzerinden bir sipariş ödenip ikinci
+bir sipariş sepete eklendi - Siparişlerim'de iki farklı renkli badge ("Sepette" nötr gri, "İşletme onayı bekleniyor"
+turuncu/warning) yan yana, tarih/saat, tutar ve `›` ile birlikte doğru göründü; karta tıklayınca ilgili
+`/order/track/<token>` sayfasına gitti; X butonu sheet'i kapattı.
+
+Commit/push yapılmadı (kullanıcı talebi).
+
+## 2026-08-21 Customer TableVisit güvenliği: senkron 60dk/4sa expiry gate — ✅ COMPLETED
+
+**Problem:** `CustomerSessionService.getOwnedTableVisit` (sepete ekleme/ödeme gibi mutasyonların önündeki tek yetki
+kontrolü) yalnızca `visit.isClosed()` bayrağına bakıyordu - bu bayrak `TableVisitCleanupScheduler` tarafından
+15 dakikada bir asenkron olarak set ediliyordu. Yani bir TableVisit süresi dolduktan sonra bile scheduler bir
+sonraki taramasını yapana kadar (en fazla ~15 dk, backlog varsa daha uzun) sipariş oluşturmaya devam edilebiliyordu
+- backend, "aktif visit" için client state'e değil ama gecikmeli bir asenkron sinyale güveniyordu. Ayrıca tek bir
+düz `VISIT_TTL = 6 saat` vardı; ayrı bir "inactivity" ve "absolute lifetime" kavramı yoktu.
+
+**Çözüm - iki bağımsız süre:** `CustomerSessionService`'te `VISIT_TTL` kaldırılıp `INACTIVITY_TIMEOUT = 60 dk` ve
+`ABSOLUTE_LIFETIME = 4 saat` eklendi. `TableVisit.isExpired(now, inactivityTimeout, absoluteLifetime)` iki koşulu
+da kontrol ediyor: `lastActivityAt` inactivity penceresinin dışında MI, YA DA `startedAt` absolute lifetime'ın
+dışında MI (`touch()` yalnızca `lastActivityAt`'i günceller - `startedAt` hiç değişmiyor, yani sürekli aktif
+kalarak visit'i sonsuza dek yaşatmak mümkün değil).
+
+**Senkron gate:** Yeni `CustomerSessionService.getActiveTableVisitForOrdering(tableVisitId, callerSessionId)` -
+önce mevcut `getOwnedTableVisit` (sahiplik + closed kontrolü) çalışıyor, sonra `Instant.now()`'a karşı
+`isExpired(...)` senkron olarak kontrol ediliyor; süresi dolmuşsa yeni `TableVisitExpiredException` fırlatılıyor
+(scheduler'ın çalışıp çalışmadığından bağımsız - client state'e güvenmiyor). Süresi dolmamışsa `visit.touch()`
+çağrılıp kaydediliyor (QR yeniden okutmayla aynı şekilde inactivity penceresini uzatıyor). `OrderingService.addItem`
+(sepete ilk/yeni ürün eklemek = draft order oluşturmak/büyütmek) ve `beginPaymentForDraftOrder` (ödeme başlatma)
+artık `getOwnedTableVisit` yerine bu yeni metodu çağırıyor - "yeni sipariş oluşturma" akışının tamamı bu senkron
+kapıdan geçiyor. `getCart`/`removeItem`/`getOwnedOrder`/`setGuestCount` bilerek dokunulmadı - salt okunur
+görüntüleme veya sepetten çıkarma "yeni sipariş oluşturma" değil, kullanıcı geçmişini/sepetini görebilmeye devam
+etmeli.
+
+**HTTP durum kodu seçimi:** `TableVisitExpiredException` → 410 Gone (`ApiExceptionHandler`). 404 zaten
+"tamamen yok/sahiplik yok" (`getOwnedTableVisit`) için, 409 zaten `ProductNotOrderableException`/
+`OrderingNotAllowedException` için kullanılıyordu - 410 boştaydı ve anlamı tam oturuyor: "bu kaynak (aktif visit)
+artık yok ama başka bir şey hâlâ görüntülenebilir".
+
+**checkIn() re-scan davranışı:** `checkIn`'deki continue-veya-yeni-başlat filtresi artık eski `lastActivityAt.
+isAfter(cutoff)` yerine `!v.isExpired(now, INACTIVITY_TIMEOUT, ABSOLUTE_LIFETIME)` kullanıyor - yani inactivity
+VEYA absolute lifetime'dan biri bile dolmuşsa QR tekrar okutulduğunda eski visit asla devam ettirilmiyor, güvenli
+şekilde yeni bir TableVisit satırı açılıyor (eski satır silinmiyor/değiştirilmiyor - geçmişi bozmuyor).
+
+**Scheduler:** `TableVisitRepository.findAllByClosedAtIsNullAndLastActivityAtBefore` yerine yeni
+`findAllExpiredAndOpen(inactivityCutoff, absoluteLifetimeCutoff)` (`lastActivityAt < inactivityCutoff OR
+startedAt < absoluteLifetimeCutoff`) - scheduler artık iki saatten birini geçen ve hâlâ kapatılmamış her visit'i
+buluyor. Bu job'un rolü değişmedi: senkron gate zaten siparişi anında reddediyor, scheduler yalnızca sadece
+okuma yapan eski tableVisitId+cookie'leri temizliyor.
+
+**Frontend:** `lib/api.ts`'e dokunulmadı (`ApiError.status` zaten HTTP durumunu taşıyordu). `page.tsx`'e
+`VISIT_EXPIRED_MESSAGE` sabiti + `isVisitExpiredForOrderingError` (status === 410) eklendi;
+`cartActionErrorMessage`/`checkoutErrorMessage` artık 410'u önce kontrol edip tam olarak istenen metni
+döndürüyor: "Oturumunuz sona erdi. Yeni sipariş için masadaki QR kodunu tekrar okutun." Kritik nokta: 410,
+mevcut `isStaleVisitError` (404) gibi `state.status`'u `"expired"`e çevirip tüm sayfayı değiştirmiyor - sadece
+`cartActionError`/`checkoutError` state'ine yazılıyor, yani menü ve "Siparişlerim" her zaman erişilebilir kalıyor,
+yalnızca o anki sepete-ekleme/ödeme denemesi engelleniyor. 404 (`isStaleVisitError`) davranışı değişmedi - hâlâ
+gerçekten "geri dönülemez" durumlar (örn. cart'ın kendisi/visit hiç yok) için tam sayfa "Devam edilemiyor" ekranını
+tetikliyor.
+
+**SSE reconnect/resume:** `/order/track/[token]/page.tsx`'teki `EventSource` kurulumu `connect()` fonksiyonuna
+çıkarıldı ve `visibilitychange` listener'ı eklendi - sekme/telefon tekrar görünür olduğunda (kilit açma) her zaman
+`load()` ile backend'den güncel sipariş durumu taze çekiliyor, VE `eventSource.readyState === CLOSED` ise stream
+`connect()` ile yeniden açılıyor. Önceden hiçbir visibilitychange/resume mantığı yoktu - yalnızca EventSource'un
+kendi native reconnect'ine güveniliyordu, bu da arka planda/kilitli telefonlarda gecikebiliyor veya güncel state'i
+garanti etmiyordu.
+
+**Backend test:** `backend/src/test/java/com/qrmenu/customersession/TableVisitOrderingExpiryIntegrationTest.java`
+eklendi (4 test): aktif visit sepete ekleyebiliyor; inactivity-expired visit scheduler hiç çalışmasa bile 410
+alıyor (ve `closed_at` hâlâ null - yani gerçekten senkron gate'in işi, scheduler'ın değil); absolute-lifetime-expired
+visit `lastActivityAt` yeni olsa bile 410 alıyor (iki saatin bağımsızlığını kanıtlıyor); QR tekrar okutma expired
+visit'i devam ettirmek yerine yeni bir tableVisitId ile visit açıyor ve o yeni visit'le sipariş verilebiliyor.
+Ayrıca `TableVisitCleanupSchedulerTest`/`TableVisitCleanupSchedulerIntegrationTest` yeni `INACTIVITY_TIMEOUT`/
+`findAllExpiredAndOpen`'a güncellendi. Toplam ilgili backend testleri (19 test, 5 dosya) hepsi geçiyor.
+
+**Frontend test:** `app/t/[token]/page.test.tsx` eklendi (4 test): aktif visit sepete ekleyebiliyor (mesaj yok);
+410'da tam olarak istenen mesaj gösteriliyor VE menü hâlâ tıklanabilir durumda kalıyor; 404 hâlâ eski tam-sayfa
+"Devam edilemiyor" akışını tetikliyor (410 ile karıştırılmıyor); checkout'ta 410 aynı mesajı checkout alanında
+gösteriyor. `app/order/track/[token]/page.test.tsx` eklendi (4 test, sahte `EventSource` ile): visibilitychange
+her zaman `getOrderTracking`'i tazeden çağırıyor; stream kapanmamışsa yeniden açılmıyor; stream gerçekten
+kapanmışsa (`readyState === CLOSED`) yeniden bağlanıyor; reconnect sonrası SSE push'ları hâlâ state'i güncelliyor.
+Toplam frontend testleri 27/27 geçiyor (`tsc --noEmit`, `eslint` de temiz).
+
+**Canlı doğrulama:** Backend + `customer-web` Docker image'ları rebuild edilip container'lar yeniden başlatıldı.
+Masa 01 QR'ı okutulup Espresso sepete eklendi (aktif visit → başarılı). Postgres'te bu visit'in `last_activity_at`'i
+elle 65 dk geriye çekildi (scheduler'ın hiç çalışmadığı, `closed_at` hâlâ null olan bir durum simüle edildi).
+Aynı sayfada (reload yapılmadan) Filtre Kahve eklenmeye çalışıldı → tam olarak "Oturumunuz sona erdi. Yeni sipariş
+için masadaki QR kodunu tekrar okutun." mesajı göründü, menü ve önceki sepet durumu ekranda kalmaya devam etti.
+Siparişlerim açıldı → önceki Espresso siparişi hâlâ doğru şekilde listelendi (geçmiş silinmedi). Sayfa QR linkiyle
+yeniden yüklendi (re-scan) → Postgres'te aynı masa için tamamen yeni bir `table_visit` satırı açıldığı doğrulandı
+(eski süresi dolmuş satır dokunulmadan kaldı), yeni visit ile misafir sayısı sorusu normal şekilde tekrar açıldı.
+
+Commit/push yapılmadı (kullanıcı talebi).
+
+**Son kontrol - `last_activity_at` gerçekten hangi eylemlerde yenileniyor:** `CustomerSessionService.touch()`'ın
+çağrıldığı tüm yerler tek tek kontrol edildi. Check-in (`checkIn`), sepete ekleme (`OrderingService.addItem`,
+`getActiveTableVisitForOrdering` üzerinden) ve ödeme başlatma (`beginPaymentForDraftOrder`) doğru şekilde
+`touch()` çağırıyordu. Ama `OrderingService.removeItem` (sepetten ürün çıkarma - DELETE
+`/api/table-visits/{id}/cart/items/{itemId}`) sadece salt-okunur `getOwnedTableVisit`'i kullanıyordu, yani gerçek
+bir sepet mutasyonu olmasına rağmen ne `last_activity_at`'i yeniliyordu ne de expiry gate'inden geçiyordu (süresi
+dolmuş bir visit'ten ürün silinebiliyordu). `getCart` (salt okuma) zaten doğru şekilde touch etmiyordu - bu
+beklenen davranış korundu.
+
+**Düzeltme:** `OrderingService.removeItem`, `getOwnedTableVisit` yerine `getActiveTableVisitForOrdering`
+çağıracak şekilde değiştirildi - artık `addItem` ile aynı senkron expiry gate'ten geçiyor ve `touch()` ile
+inactivity süresini yeniliyor.
+
+**Test:** `TableVisitOrderingExpiryIntegrationTest`'e 2 yeni test eklendi: (1) sepete eklenen bir ürünün
+`GET /cart` ile okunması `last_activity_at`'i değiştirmiyor, ama aynı ürünün `DELETE /cart/items/{id}` ile
+silinmesi `last_activity_at`'i şimdiki zamana yeniliyor; (2) inactivity süresi dolmuş bir visit'te ürün silmeye
+çalışmak 410 dönüyor (addItem ile aynı gate). Toplam paket testleri (`customersession` + `ordering`, 42 test)
+hepsi geçiyor. Commit/push yapılmadı (kullanıcı talebi).
+
+## Order rejection + otomatik refund + customer bildirim akışı: uçtan uca denetim
+
+**Bulgu - akışın büyük kısmı zaten sağlamdı:** Kod incelemesi, kasa reddi → otomatik tam refund → müşteri
+bildirimi zincirinin önceki milestone'larda (Gap-analysis #1/#6) zaten kapsamlı şekilde kurulmuş olduğunu
+gösterdi: `OrderControlController.reject` order-level `rejectOrder` + `RefundService.requestFullRefund`'ı
+sırayla çağırıyor; `Refund`/`Payment` entity'leri REQUESTED→PROCESSING→COMPLETED/FAILED ve
+totalRefundedAmount aşım kontrolünü (SELECT FOR UPDATE ile) zaten sıkı tutuyor; `/order/track/[token]` sayfası
+zaten SSE + visibilitychange + reconnect ile "sadece event'e bağlı kalma" kuralını uyguluyor ve
+REFUND_STATUS_MESSAGES COMPLETED dışında hiçbir durumu "tamamlandı" saymıyor; staff-web `orders/page.tsx` da
+aynı COMPLETED-only kuralını zaten uyguluyor; item-level reject hiç yok (order-level'ın kendisi zaten tek karar
+noktası). Denetim üç gerçek eksik/hata buldu, üçü de düzeltildi:
+
+**1) Gerçek eşzamanlı çift-reject açığı (para güvenli ama UX'i kirli):** `OrderingService.rejectOrder`
+`requireOrderInBranch` (kilitsiz `findById`) kullanıyordu - iki REJECT isteği gerçekten aynı anda gelirse, her
+ikisi de bellekte hâlâ `AWAITING_STORE_ACCEPTANCE` okuyup `rejectByStore()`'dan geçebiliyordu; asıl para-aşım
+koruması `Payment.applyRefund`'ın satır kilidinde zaten vardı ama ikinci istek "sipariş zaten reddedildi" yerine
+kafa karıştırıcı bir "Order is already fully refunded" hatasıyla başarısız oluyordu. Düzeltme: `rejectOrder`
+artık `getOrderInBranchForUpdate` (aynı `FOR UPDATE` kilidi `requestFullRefund`'ın zaten kullandığı) ile
+okuyor - ikinci eşzamanlı istek artık ilkinin commit'ini bekleyip temiz bir 400 ("Cannot reject an order in
+status REJECTED_BY_STORE") alıyor.
+
+**2) SSE'nin refund sonucunu hiç haber vermemesi:** `RefundService.executeRefund` refund COMPLETED/FAILED
+olduktan sonra hiçbir bildirim göndermiyordu - müşteri sadece `rejectOrder`'ın gönderdiği (refund henüz
+başlamadan önceki) tek SSE push'una güveniyordu. Senkron mock akışta bu genelde sorun yaratmıyordu (refund
+her zaman refetch'ten önce bitiyordu) ama garantili değildi. Düzeltme: `RefundService` artık `OrderStatusNotifier`
+enjekte ediyor, refund'un durumu kesinleştikten (COMPLETED/FAILED) sonra aynı "order-status" event'ini tekrar
+gönderiyor - bu hem tam refund (reject akışı) hem staff'ın manuel kısmi refund'u için geçerli, müşteri sayfası
+zaten her event'te tam refetch yapıyor.
+
+**3) Gerçek hata: `ReceiptService.buildReceipt` FAILED refund'ı da "iade edilmiş" sayıyordu.** `totalRefunded`,
+`RefundView::totalAmountMinorUnits`'i TÜM refund'lar üzerinden (status'e bakmaksızın) topluyordu - bir refund
+provider hatasıyla FAILED olduğunda bile makbuzdaki `totalRefundedMinorUnits`/`netPaidMinorUnits` sanki para
+gerçekten iade edilmiş gibi gösteriyordu (bu, tam olarak "COMPLETED refund dışında hiçbir durum 'iade
+tamamlandı' sayılmamalı" kuralının ihlaliydi). Bunu yeni eklenen `refundProviderFailureOnRejectKeepsThe...`
+testi yazarken yakaladım. Düzeltme: toplam artık yalnızca `RefundStatus.COMPLETED` durumundaki refund'ları
+topluyor.
+
+**4) Siparişlerim'de (customer-web) refund durumu hiç gösterilmiyordu:** `OrdersSheet.tsx` her kart için sadece
+sipariş durumunu (`REJECTED_BY_STORE` → "Reddedildi") gösteriyordu, `tracking.latestRefundStatus`'u okuyup
+hiçbir yerde render etmiyordu. Düzeltme: `/order/track` sayfasındaki COMPLETED-only kuralla aynı mantıkla ikinci
+bir rozet eklendi (İade işleme alınıyor/İşleniyor/Tamamlandı/Başarısız).
+
+**Backend test:** `OrderControlFlowIntegrationTest`'e 2 yeni test: (1)
+`concurrentDoubleRejectIssuesExactlyOneFullRefundAndTheSecondAttemptFailsCleanly` - aynı sipariş için iki
+`/reject` isteği gerçek thread'lerde eşzamanlı ateşleniyor, tam olarak biri 200/biri 400 dönüyor, tek bir
+COMPLETED refund oluşuyor ve toplam iade tam ödenen tutara eşit kalıyor (aşım yok); (2)
+`refundProviderFailureOnRejectKeepsTheOrderRejectedWithAFailedRefundStatus` - mock payment provider refund
+çağrısında hata fırlatıyor, sipariş yine de REJECTED_BY_STORE kalıyor (sessizce geri alınmıyor), refund FAILED
+olarak kaydediliyor, customer tracking + receipt + staff `/history` üçü de FAILED/0 iade/tam net tutarı doğru
+gösteriyor. İkisi de `com.qrmenu.ordering`/`com.qrmenu.refund`/`com.qrmenu.architecture`/`com.qrmenu.payment`/
+`com.qrmenu.customersession`/`com.qrmenu.staffaccess` paketlerinin tamamıyla (81 test) birlikte geçti.
+
+**Frontend test:** `OrdersSheet.test.tsx`'e 3 yeni test: reddedilen+PROCESSING refund'lu bir siparişte hem
+"Reddedildi" hem "İade işleniyor" rozeti görünüyor; refund FAILED olduğunda "İade başarısız" gösteriliyor ve
+"İade tamamlandı" ASLA görünmüyor (sırf sipariş reddedildi diye refund'un tamamlandığı varsayılmıyor); hiç
+refund'u olmayan bir siparişte iade rozeti hiç render edilmiyor. `OrdersSheet.test.tsx` 8/8 geçti.
+
+**Bilinen, kapsam dışı bırakılan mevcut kırıklık:** `OrderHistoryIntegrationTest.
+historyEndpointListsCompletedAndRejectedOrdersWithRefundStatusButNotActiveOnes` gece yarısından sonraki ilk
+~1 saatte (yerel saat UTC+3, branch timezone'u ayarlanmamışsa `OrderingService.resolveZone` UTC'ye düşüyor)
+flaky - test `LocalDate.now()`'ı JVM'in yerel zaman dilimiyle alıyor ama history sorgusu UTC gün sınırını
+kullanıyor, ikisi geçici olarak farklı takvim günlerine denk geliyor. Bu reject/refund denetiminin kapsamı
+dışında (tarih sınırı, sipariş geçmişi filtresiyle ilgili, refund lifecycle'ıyla ilgisiz) - dokunulmadı, ama
+kendi yeni eşzamanlı testimde aynı tuzağa düşmemek için `LocalDate.now(ZoneOffset.UTC)` kullandım.
+
+Commit/push yapılmadı (kullanıcı talebi).
+
+## UTC/yerel saat dilimi gün-sınırı hatasının kök nedeni: bulundu ve düzeltildi
+
+**Kök neden - `Branch`'in kendi Javadoc'unun bile ihlal edilmesi:** `Branch.timezone` alanının kendi yorumu
+açıkça şunu söylüyor: "null olduğunda tüketen tarafın Business.defaultTimeZone'a düşmesi beklenir." Ama
+gerçek kodda (4 ayrı yerde birbirinden bağımsız kopyalanmış) `resolveZone` metotları hep şunu yapıyordu:
+`branch.getTimezone() != null ? ZoneId.of(...) : ZoneOffset.UTC` - yani branch'te timezone yoksa doğrudan
+UTC'ye düşüyordu, `Business.defaultTimeZone`'u (her business'in constructor'ında varsayılan olarak
+"Europe/Istanbul", `Business.java`) TAMAMEN görmezden geliyordu. `TenantFixtures.createBusiness` (tüm test
+suite'inin kullandığı fixture) hiç explicit timezone göndermiyor, yani her test branch'i bu sessiz UTC
+varsayımına düşüyordu - `OrderHistoryIntegrationTest` flake'inin gerçek kaynağı buydu, ama sorun sadece testte
+değil, üretim kodunun kendisindeydi: gerçek bir işletme branch'i timezone ayarlamazsa (ki bu "opsiyonel" olduğu
+için beklenen durum), raporları/Kasa gün sonunu/sipariş geçmişini/sipariş numarası sıfırlamasını/"şu an sipariş
+alınabilir mi" kapısını hep UTC'ye göre hesaplıyordu - Europe/Istanbul için gece yarısından sonraki ~3 saatte
+(veya herhangi bir an, saatlik kontroller için) yanlış gün/yanlış saat.
+
+**Bulunan 4 ayrı gerçek hata (hepsi aynı desenin kopyaları):**
+1. `ReportingService.resolveZone` (raporlar/Özet) - UTC'ye düşüyordu.
+2. `OrderingService.resolveZone` (sipariş geçmişi, `getOrderHistory`) - UTC'ye düşüyordu (flake'in kaynağı).
+3. `DailyCloseService.resolveZone` + `DailyCloseScheduler`'daki aynı satırın kopyası (Kasa gün sonu PREVIEW/FINAL
+   snapshot'ları + zamanlayıcı) - UTC'ye düşüyordu.
+4. `TenantService.assertOrderingCurrentlyAllowed` (Bölüm 9 Milestone 5'in "otoriter, ödeme öncesi son kontrol"ü
+   - şu an sipariş alınabilir mi kapısı) - hiç zone bile kullanmıyordu, çıplak `LocalDate.now()`/`LocalTime.now()`
+   çağırıyordu, yani sunucunun/JVM'in hangi saat diliminde çalıştığına göre keyfi davranıyordu (UTC de olabilirdi,
+   Europe/Istanbul de - deploy ortamına bağlı, kod içinde hiçbir garanti yok). Bu, gerçek parayı etkileyen en
+   ciddi bulgu: yanlış saat diliminde çalışan bir sunucu, gerçekten açık olan bir şubede siparişi yanlışlıkla
+   reddedebilir ya da kapalı bir şubede siparişi yanlışlıkla kabul edebilirdi.
+
+Ayrıca (5) `OrderingService.markOrderAwaitingStoreAcceptance`'taki günlük sipariş numarası sayacı
+(`OrderNumberGenerator` - "per-branch, per-day") `LocalDate.now(ZoneOffset.UTC)` kullanıyordu - yani "Kasa"
+ekranındaki okunabilir sipariş numarası (#1, #2, ...) her gün UTC gece yarısında değil, Europe/Istanbul'da
+saat 03:00'te sıfırlanıyordu; 00:00-03:00 arası verilen ilk siparişler yeni günün #1'i yerine önceki günün
+sayacına devam ediyordu.
+
+**Bilinçli olarak DOKUNULMAYAN, benzer görünen ama farklı olan iki yer:** `ExpenseService`/
+`RecurringExpenseScheduler`'daki `LocalDate.now(ZoneOffset.UTC)` kullanımları - bunlar kod içinde açıkça
+belgelenmiş, kasıtlı bir ürün kararı ("templates have no branch-timezone requirement in the spec - 'dayOfMonth'
+is a business-level calendar concept, not a store-closing instant"). Bu ikisi kendi içinde tutarlı ve
+gerekçeli, "reports/Kasa/Özet" kapsamının (ve genel "server timezone varsayımı" hatasının) dışında - dokunulmadı.
+
+**Düzeltme - tek doğruluk kaynağı:** `TenantService`'e `public ZoneId resolveBranchTimeZone(Branch branch)`
+eklendi: branch'in kendi timezone'u varsa o, yoksa business'in `defaultTimeZone`'u (asla çıplak UTC/sunucu
+varsayımı - `Business.defaultTimeZone` NOT NULL ve yazılırken IANA zone olarak validate ediliyor, yani gerçek
+bir cevap her zaman var). Yukarıdaki 4 kopyalanmış `resolveZone` metodu artık bu tek metoda delege ediyor;
+`assertOrderingCurrentlyAllowed` artık `LocalTime.now(zone)`/`LocalDate.now(zone)` kullanıyor (çıplak
+`.now()` değil); sipariş numarası sayacı artık branch'in kendi zone'unu kullanıyor.
+
+**Test dalgalanması ve düzeltmesi:** Bu düzeltme üretim davranışını gerçekten değiştirdiği için (branch'siz
+zone artık UTC değil Europe/Istanbul), tüm test suite'i çalıştırıldığında 7 test aynı gizli varsayımla kırıldı:
+`ReportingFlowIntegrationTest` (3), `DailyCloseFlowIntegrationTest` (3), kendi önceki adımımda eklediğim
+`OrderControlFlowIntegrationTest` testi (1) - hepsi `LocalDate.now(ZoneOffset.UTC)`/`LocalTime.now(ZoneOffset.UTC)`
+kullanıp branch'in eskiden (hatalı olarak) UTC'ye düştüğünü varsayıyordu. Ayrıca `BranchBusinessHoursFlowIntegrationTest`
+(5 test) çıplak `LocalDate.now()`/`LocalTime.now()` (JVM varsayılan zone) kullanıyordu - bu makinede JVM zone'u
+zaten Europe/Istanbul olduğu için testler hem eski hem yeni kodla "tesadüfen" geçiyordu, ama başka bir zone'da
+çalışan bir CI sunucusunda (ör. UTC) kırılırdı. Hepsi `Europe/Istanbul` (business'in gerçek varsayılanı) açıkça
+kullanacak şekilde düzeltildi - flake gizlenmedi, testler artık üretimin gerçekte kullandığı zone'u yansıtıyor.
+
+**Yeni regresyon testleri (6):** `BranchTimeZoneResolutionIntegrationTest` (3, yeni dosya) -
+`resolveBranchTimeZone`'un branch'siz durumda business default'a düştüğünü (UTC'ye değil), branch'in kendi
+zone'u varsa onun kazandığını, ve yeni bir business'in gerçekten "Europe/Istanbul"a varsayılan geldiğini
+saf/deterministik şekilde (saat/gün'e bağlı olmadan) kanıtlıyor. Ayrıca 3 uçtan-uca "gece yarısı sınırı" testi
+(`OrderHistoryIntegrationTest`, `ReportingFlowIntegrationTest`, `DailyCloseFlowIntegrationTest`'e birer tane) -
+her biri gerçek "şimdi"ye bağlı olmadan (`LocalDate.now(Europe/Istanbul)`'dan sabit bir offset'le, örn.
+01:30 Europe/Istanbul = önceki gün 22:30 UTC) bir siparişin `created_at`'ini backdate edip o sipariş
+Europe/Istanbul'un "bugün"üne dahil ediliyor mu diye kontrol ediyor - testin ne zaman çalıştığından bağımsız,
+her zaman deterministik, orijinal flake'in yakaladığı ~1 saatlik pencereye bağımlı değil.
+
+**Doğrulama:** Tüm backend test suite'i (158 test, önceki 152 + yeni 6) `BUILD SUCCESS` ile geçti - hiçbir
+regresyon yok. Commit/push yapılmadı (kullanıcı talebi).
+
+## Refund akışı ve staff İadeler ekranı: uçtan uca ikinci denetim
+
+**Bulgu - istenen davranışın neredeyse tamamı önceki milestone'larda zaten doğru kurulmuş:** Kullanıcının
+istediği kontrol listesi (orderedQuantity/refundedQuantity/remainingRefundableQuantity hesaplaması, yalnız
+COMPLETED refund'ların sayılması, tam iade sonrası yeni refund'un engellenmesi, partial→partial akışı,
+transaction seviyesinde aşım koruması, FAILED/PROCESSING'in miktarı düşürmemesi, geçmiş iade listesi, orderNumber
+ile arama) `RefundService`/`RefundController`/`Payment`/`RefundFlowIntegrationTest` içinde madde madde zaten
+karşılanıyordu - `RefundItemRepository.sumCompletedRefundedQuantityByOrderItem` yalnız `RefundStatus.COMPLETED`
+satırlarını topluyor; `Payment.applyRefund` + `findByOrderIdAndStatusForUpdate` (`PESSIMISTIC_WRITE`) +
+`OrderingService.getOrderInBranchForUpdate` üçü birlikte hem sipariş hem ödeme satırını kilitleyip aşımı
+transaction içinde engelliyor; `RefundFlowIntegrationTest` zaten tam/kısmi/ikinci kısmi/duplicate/
+PROCESSING-tüketmiyor/FAILED-tüketmiyor-ve-retry-edilebiliyor/eşzamanlı-çift-refund senaryolarının hepsini
+(8 test) kapsıyordu; staff-web `refunds/[branchId]/page.tsx` zaten orderNumber ile arıyor, UUID'yi hiçbir yerde
+göstermiyor, tam iade edilmiş kalemi disabled yapıyor, "Bu sipariş tamamen iade edildi." mesajını gösterip
+butonu kapatıyor, geçmiş iadelerde tarih/tutar/ürün×adet/durum rozeti listeliyordu. Denetim iki gerçek eksik buldu:
+
+**1) UI'da "İade yok" durumu hiç gösterilmiyordu:** Sipariş kartı yalnızca `fullyRefunded`/`partiallyRefunded`
+true olduğunda bir rozet ekliyordu; hiç iade yapılmamış bir siparişte üç durumdan hiçbiri görünmüyordu (istenen
+"İade yok / Kısmi İade / Tam İade Edildi" üçlüsü aslında ikiliydi). Düzeltme: `refunds/[branchId]/page.tsx`'e
+else dalı olarak nötr `"İade yok"` rozeti eklendi - artık üç durum da her zaman açıkça gösteriliyor.
+
+**2) Refund modülüne özel branch isolation regresyon testi yoktu:** `CrossTenantBranchAccessIntegrationTest`
+genel branch-seçim guard'ını (`/orders/search` için 403) zaten kapsıyordu, ama "branch A'ya scope'lu bir staff,
+branch B'nin gerçek bir siparişini branch B path'i üzerinden 403, branch A path'i üzerinden 404 alarak asla
+göremiyor/refund edemiyor mu" senaryosu (yani `getOrderInBranchForUpdate`'in branch-mismatch kontrolünün refund
+uçları için de çalıştığı) hiç test edilmiyordu. Düzeltme: `RefundFlowIntegrationTest`'e
+`refundEndpointsCannotReachOrIssueRefundsForAnotherBranchsOrder` eklendi - branch B'de gerçek bir ödenmiş sipariş
+oluşturup yalnız branch A'ya yetkili bir staff cookie ile hem branch B path'inden (403, StaffContext hiç
+çözülmüyor) hem branch A path'inden aynı orderId ile (404, sipariş branch A'da bulunamıyor) arama/listeleme/refund
+denemesi yapıyor, sonunda gerçek siparişin refundedQuantity/remainingRefundableQuantity/refunds listesinin hiç
+değişmediğini doğruluyor.
+
+**Kasıtlı olarak dokunulmayan (zaten doğru bulunan) noktalar:** Mock payment provider (`MockPaymentProviderAdapter`)
+değiştirilmedi; `Payment`/`Refund` entity state machine'leri değiştirilmedi; backend'in miktar/tutar hesaplama
+mantığı değiştirilmedi - denetim sırasında bulunan tek gerçek fonksiyonel eksik yukarıdaki ikisiydi.
+
+**Doğrulama:** `RefundFlowIntegrationTest` 9/9 (önceki 8 + yeni branch-isolation testi) `BUILD SUCCESS` ile
+geçti. Frontend `npx tsc --noEmit` staff-web için hatasız. Commit/push yapılmadı (kullanıcı talebi).
+
+## PAYMENT SUCCESS → AWAITING_STORE_ACCEPTANCE → PREPARING → READY → COMPLETED: uçtan uca denetim
+
+**Bulgu - state machine'in kendisi zaten sağlamdı:** `CustomerOrder`/`OrderItem`'ın her geçiş metodu
+(`markAwaitingStoreAcceptance`/`markInKitchen`/`markReady`/`markCompleted`, `acceptFully`/`markReady`/
+`markServed`) kendi ön-koşul durumunu tutarlı şekilde `IllegalStateException` ile reddediyor
+(`ApiExceptionHandler` bunu 400'e çeviriyor) - geçersiz/duplicate (sequential) bir ACCEPT/REJECT/READY/COMPLETE
+zaten kendiliğinden reddediliyordu, herhangi bir kod değişikliği gerekmedi. Ödeme başarılı olmadan hiçbir yol
+siparişi Kasa'ya düşürmüyor (`PaymentWebhookService` yalnız `WebhookOutcome.SUCCEEDED`'da
+`markOrderAwaitingStoreAcceptance`'ı çağırıyor); orderNumber `AWAITING_STORE_ACCEPTANCE`'a geçişte atanıyor ve
+Kasa/customer-tracking/refund tarafında hep aynı değer, internal UUID hiçbir yerde müşteriye gösterilmiyor
+(frontend her yerde `orderNumber`/`#N` kullanıyor). Branch/table isolation her mutating uçta
+`requireOrderInBranch`/`getOrderInBranchForUpdate` ile zaten korunuyordu.
+
+**Test boşluğu bulundu ve kapatıldı:** Sipariş yaşam döngüsünün hiçbir yerinde SSE'nin gerçekten event
+yayınladığını doğrulayan bir test yoktu (`grep`: backend'de `SseEmitter`/`text/event-stream` geçen sıfır test).
+Yeni `OrderLifecycleAuditIntegrationTest` (5 test, backend) eklendi:
+`paidOrderLifecycleEmitsSseAtEveryTransitionAndReconnectAlwaysSeesCurrentState` (MockMvc'nin async desteğiyle
+hem customer-tracking hem Kasa `/stream` uçlarına gerçekten abone olup ACCEPT/READY/COMPLETE'in her birinde
+doğru `orderStatus` payload'ının geldiğini, ayrıca sonradan açılan bir "reconnect" stream'inin backlog
+almadığını ama hemen ardından yapılan düz reload'un her zaman güncel state'i verdiğini kanıtlıyor),
+`anUnpaidOrderNeverReachesTheKasaAcceptanceQueue`, `duplicateSequentialAcceptReadyAndCompleteRequestsAreRejectedWithoutChangingState`,
+`outOfOrderTransitionsAreRejected` (READY/COMPLETE'i erken çağırmak), `crossBranchOrderActionsAreRejectedAsNotFound`
+(accept/reject/ready/complete/refund'ın hepsi başka branch'in siparişinde 404).
+
+**Gerçek bug - staff-web SSE reconnect sonrası state yenilenmiyordu:** `app/cashier/[branchId]/page.tsx` ve
+`app/pickup/[branchId]/page.tsx`'de `EventSource`'un `"open"` handler'ı yalnızca `connectionStatus`'u
+"live" yapıyordu, veri refetch etmiyordu - bağlantı düşüp (ağ kesintisi, kilitli/arka plana alınmış cihaz)
+native `EventSource` kendiliğinden yeniden bağlandığında, kopukluk sırasında kaçırılan bir durum değişikliği
+(backlog yok - `SseOrderStatusNotifier`'ın kendi Javadoc'unun da söylediği gibi) ekrana hiç yansımıyor, ta ki
+tesadüfen başka bir event tetiklenene kadar. Customer tracking sayfası (`order/track/[token]/page.tsx`) bu
+sorunu zaten `visibilitychange`'de koşulsuz `load()` ile çözmüştü; aynı düzeltme (`"open"` handler'ında da
+`fetchAll()`/`fetchBoard()` çağırmak - hem ilk bağlantıda hem her reconnect'te tetiklenir) her iki staff-web
+sayfasına da uygulandı.
+
+**Doğrulama:** Yeni `OrderLifecycleAuditIntegrationTest` 5/5 geçti; `ordering`+`payment`+`refund` paketlerinin
+tamamı (46 test) `BUILD SUCCESS` ile geçti, regresyon yok. staff-web `npx tsc --noEmit` ve `eslint` (değişen iki
+dosya) hatasız. Commit/push yapılmadı (kullanıcı talebi).
+
+## 2026-08-23 Manuel Gider Yönetimi: Düzenle + Kaydı İptal Et (soft-cancel) — ✅ COMPLETED
+
+**Eksik:** Gider listesinde satır aksiyonları hep "—" placeholder'dı; `updateExpense` API'si zaten vardı ama
+hiçbir UI onu çağırmıyordu, iptal/silme için hiçbir yol yoktu. Hard delete kullanılmadı çünkü finans kaydı
+audit edilebilir kalmalı.
+
+**Backend - soft-cancel:** `Expense`'e `cancelled_at`/`cancelled_by_staff_user_id` eklendi (V31 migration);
+`cancelledAt != null` iptal bayrağı. `ExpenseService#cancelManualExpense` yeni uç
+(`POST /api/staff/expenses/{id}/cancel`) - `requireManualExpense` ile aynı kısıtı kullanıyor (recurring
+şablondan üretilmiş satırlar zaten immutable, cancel de reddediliyor), zaten iptalliyse `IllegalStateException`
+(400). `updateManualExpense` da artık iptal edilmiş bir kaydı reddediyor. `AuditService.record(...,
+"CANCELLED", ...)` çağrılıyor - hard delete yok, satır ve audit trail kalıcı. `ExpenseRepository.sumManualAmount`/
+`sumRecurringAmount`'a `AND e.cancelledAt IS NULL` eklendi - `expenseBreakdown` (Toplam Gider/Net Sonuç'u
+besliyor) otomatik olarak iptal edilmiş kayıtları dışlıyor; `listExpenses` değişmedi, iptal edilmiş kayıt
+listede kalmaya devam ediyor.
+
+**Frontend:** `ExpenseList.tsx`'e Düzenle (mevcut `updateExpense`'i çağıran dialog, `RecurringTemplates`'teki
+edit-dialog deseniyle aynı) ve Kaydı İptal Et (yeni `cancelExpense` + `ConfirmDialog`, "bu işlem geri alınamaz"
+uyarısıyla) eklendi. İptal edilmiş satırda "İptal Edildi" rozeti gösteriliyor, aksiyon butonları kayboluyor.
+
+**Doğrulama:** `ExpenseFlowIntegrationTest`'e 2 yeni test eklendi
+(`cancelledManualExpenseStaysListedAndAuditedButDropsOutOfReports`,
+`systemGeneratedRecurringRealizationCannotBeCancelled`) - toplam 10/10 geçti; `reporting`+`expense`+`dailyclose`
+paketlerinin tamamı da regresyon olmadan geçti. staff-web `npx tsc --noEmit`, `eslint`, `next build` hatasız.
+Docker image'ları (`backend`, `staff-web`) yeniden build edilip container'lar restart edildi, V31 migration
+gerçek dev DB'sine uygulandı; canlı ortamda gerçek bir manuel gider düzenlendi ve iptal edildi - liste "İptal
+Edildi" rozetini gösterdi, Raporlar'da Manuel Giderler ₺300→₺0 ve Toplam Giderler aynı miktarda düştü. Commit/push
+yapılmadı (kullanıcı talebi).
+
+## 2026-08-23 Personel Şifre Yönetimi: Şifremi Değiştir + Admin Şifre Sıfırla — ✅ COMPLETED
+
+**Eksik:** StaffUser şifreleri yalnızca oluşturma anında set edilebiliyordu (`CreateStaffUserRequest`) - ne
+personel kendi şifresini değiştirebiliyordu, ne de STAFF_MANAGE yetkili bir admin unutulan/sızmış bir şifreyi
+sıfırlayabiliyordu.
+
+**Tasarım kararı (kullanıcı onayıyla):** Admin'in "Şifre Sıfırla" akışında yeni geçici şifreyi sistem
+üretmiyor - admin kendisi yazıyor (Personel Ekle formundaki göster/gizle input'un aynısı). Böylece API
+response'una hiçbir zaman bir şifre değeri girmiyor; "log/audit/response'ta plaintext parola olmasın" kuralı
+tasarım gereği hiç ihlal edilemiyor.
+
+**Backend (`StaffAuthService`):** `PasswordPolicy.MIN_LENGTH` (8) tek merkezi sabit oldu -
+`CreateStaffUserRequest`, yeni `ChangePasswordRequest`, yeni `ResetPasswordRequest` üçü de bunu referans
+alıyor, ayrı bir 8 hardcode yok. `StaffUser.updatePasswordHash(...)` eklendi (deactivate'teki gibi
+`updatedAt`'i de günceller, `active`'e dokunmaz). `changePassword(staffUserId, currentSessionId, ...)`:
+mevcut şifreyi doğrular (yanlışsa 401), kendi oturumu hariç `StaffSessionRepository
+.deleteAllByStaffUserIdAndIdNot(...)` ile diğer tüm oturumlarını düşürür. `resetPassword(businessId,
+branchId, actorStaffUserId, targetStaffUserId, ...)`: `deactivateStaffUser`'daki
+`findByIdAndBusinessId`+`hasEffectiveBranchAssignment` deseniyle cross-branch/cross-business reset'i 404'e
+düşürür, PLATFORM_ADMIN hedefini ayrıca reddeder, kendi hesabına reset'i (`actorStaffUserId.equals(target)`)
+400 ile reddeder (kendi şifreni değiştirmek için change-password kullanılmalı), hedefin tüm oturumlarını
+(`deleteAllByStaffUserId`) düşürür. Her iki metot da `AuditService.record(..., "PASSWORD_CHANGED"/
+"PASSWORD_RESET", Map.of())` çağırıyor - details her zaman boş, şifre hiçbir audit satırına yazılmıyor.
+Yeni uçlar: `POST /api/staff/auth/change-password` (sadece geçerli oturum yeter, Permission gerekmez) ve
+`POST /api/staff/staff-users/{id}/reset-password` (Permission.STAFF_MANAGE + aktif branch scoping, mevcut
+`deactivate` ucuyla birebir aynı yetki deseni).
+
+**Frontend:** `AppShell.tsx`'in sol alt kullanıcı kartına (email/rol/çıkış yanına) bir "Şifremi Değiştir"
+ikon butonu + mevcut/yeni/tekrar alanlı Dialog eklendi; 401 hatası "Mevcut şifre yanlış" olarak gösteriliyor.
+`app/staff/page.tsx`'teki her personel satırına (aktif/devre dışı fark etmeksizin) "Şifre Sıfırla" butonu +
+yeni/tekrar alanlı Dialog eklendi. `lib/api.ts`'e `MIN_PASSWORD_LENGTH` sabiti eklendi, Personel Ekle
+formundaki eski `password.length < 8` hardcode'u da bunu kullanacak şekilde güncellendi.
+
+**Doğrulama:** Yeni `StaffPasswordManagementIntegrationTest` (9 test: doğru/yanlış mevcut şifre, eşleşmeyen
+confirm, kendi oturumu hariç diğer oturumların düşmesi, yetkisiz/cross-branch reset 403/404, kendi hesabına
+reset 400, disabled kullanıcıya reset sonrası login'in hâlâ kapalı kalması) + mevcut `StaffAccessFlowIntegrationTest`
+(9) + `CrossTenantBranchAccessIntegrationTest` (5) - staffaccess paketinin tamamı 23/23 geçti, regresyon yok.
+staff-web `npx tsc --noEmit`, `eslint` (üç değişen dosya) ve `next build` hatasız. Commit/push yapılmadı
+(kullanıcı talebi).
+
+## 2026-08-23 media_data için backup/restore (postgres-backup deseninin aynısı) — ✅ COMPLETED
+
+**Eksik:** Go-live checklist'inde tespit edildiği üzere `media_data` volume'ü (ürün görselleri +
+private gider fişleri) hiç yedeklenmiyordu, sadece Postgres yedekleniyordu.
+
+**Uygulama:** `infra/docker/postgres-backup/`'ın birebir aynı deseninde yeni bir `infra/docker/media-backup/`
+sidecar'ı (Dockerfile + entrypoint.sh + backup.sh, alpine tabanlı) eklendi - `media_data`'yı periyodik
+olarak (aynı `BACKUP_INTERVAL_SECONDS`/`BACKUP_RETENTION_DAYS`) `infra/backups/media/`'ye timestamp'li
+`.tar.gz` olarak arşivliyor, retention'ı aynı şekilde uyguluyor. Volume'e `:ro` bağlı - bu container hiçbir
+zaman media_data'ya yazamıyor. Her iki compose dosyasına (`docker-compose.yml`, `docker-compose.prod.yml`)
+`media-backup` servisi eklendi, `depends_on: backend: condition: service_healthy` ile - sadece ilk
+başlangıçta bekliyor (LocalFileMediaStorageAdapter `/data/media`'yı boot'ta oluşturuyor, aksi halde taze
+boş bir volume'de Alpine'in varsayılan `/media` alt dizinleri (`cdrom`/`floppy`/`usb`) ilk arşive
+karışabiliyordu - testte tespit edildi), sonrasında postgres-backup gibi backend'in health'inden bağımsız
+çalışmaya devam ediyor. `scripts/backup.sh` DB dump'ının hemen ardından `media-backup` container'ına
+`exec` ile `media_manual_<timestamp>.tar.gz` üretecek şekilde genişletildi - mevcut Postgres akışına
+dokunulmadı. Yeni `scripts/restore-media.sh` (postgres `restore.sh` ile aynı disiplinde ama volume için
+tek bir "isim" olmadığından `RESTORE MEDIA` sabit metni onayı istiyor): backend+media-backup'ı durdurur,
+`backend` servisinin image/volume'ünü (`media_data:/data/media`) yeniden kullanarak `find -delete` ile
+mevcut içeriği siler, arşivi `tar xzf` ile açar, sonra ikisini yeniden başlatır. `.env.prod.example` ve
+README'deki Backup/restore bölümü minimum güncellendi (ortak retention/interval, iki script, iki
+`.tar.gz`/`.sql.gz` çıktısı); `docs/production-go-live-checklist.md`'deki "media yedeklenmiyor" maddesi
+çözüldü olarak işaretlendi.
+
+**Doğrulama:** Gerçek dev stack'te `media-backup` build edilip ayağa kaldırıldı, backend healthy olduktan
+sonra gerçek `media_data`'dan (`infra_media_data`) hatasız ilk arşivini üretti; `./scripts/backup.sh`
+gerçek DB + media yedeğini aynı anda üretti. `restore-media.sh` yanlış onay metniyle çalıştırıldı - hiçbir
+container'a dokunmadan (backend/media-backup durumu değişmeden) 1 exit code ile iptal ettiği doğrulandı.
+Restore'un dosya bütünlüğü, gerçek dev verisine dokunmadan, izole `test_media_src`/`test_media_dst` docker
+volume'leriyle doğrulandı: gerçek `backup.sh` imajıyla üretilen arşiv, script'in kullandığı birebir aynı
+`find -mindepth 1 -delete` + `tar xzf` komutlarıyla ayrı bir hedef volume'e geri yüklendi, hedefteki eski
+içeriğin silindiği ve geri yüklenen dosyaların (`product-images/burger.jpg`, `receipts/vendor-invoice.pdf`)
+kaynakla `sha256sum` eşleştiği (MATCH) doğrulandı; test volume'leri sonra silindi. Her iki `docker compose
+config` (dev + prod, prod için scratch'te geçici dummy `.env.prod`) sözdizimi hatasız. Commit/push yapılmadı
+(kullanıcı talebi).

@@ -12,9 +12,11 @@ import java.time.YearMonth;
 import java.util.UUID;
 
 /**
- * A persisted row is a real expense. Manually-created rows remain editable; recurring
- * rows are immutable period snapshots so later template changes cannot rewrite history.
- * sourceTemplateId/generatedForPeriod are set only for scheduler-generated rows.
+ * A persisted row is a real expense. Manually-created rows remain editable until
+ * cancelled; recurring rows are immutable period snapshots so later template changes
+ * cannot rewrite history. sourceTemplateId/generatedForPeriod are set only for
+ * scheduler-generated rows. Cancellation is a soft-void (cancelledAt/cancelledByStaffUserId)
+ * rather than a hard delete, so the row and its audit trail survive.
  */
 @Entity
 @Table(name = "expense")
@@ -61,6 +63,12 @@ public class Expense {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
+    @Column(name = "cancelled_at")
+    private Instant cancelledAt;
+
+    @Column(name = "cancelled_by_staff_user_id")
+    private UUID cancelledByStaffUserId;
+
     protected Expense() {
         // JPA
     }
@@ -106,8 +114,17 @@ public class Expense {
         this.receiptImageUrl = receiptImageUrl;
     }
 
+    void cancel(UUID cancelledByStaffUserId) {
+        this.cancelledAt = Instant.now();
+        this.cancelledByStaffUserId = cancelledByStaffUserId;
+    }
+
     public boolean isRecurring() {
         return sourceTemplateId != null;
+    }
+
+    public boolean isCancelled() {
+        return cancelledAt != null;
     }
 
     public UUID getId() {
@@ -160,5 +177,13 @@ public class Expense {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public Instant getCancelledAt() {
+        return cancelledAt;
+    }
+
+    public UUID getCancelledByStaffUserId() {
+        return cancelledByStaffUserId;
     }
 }

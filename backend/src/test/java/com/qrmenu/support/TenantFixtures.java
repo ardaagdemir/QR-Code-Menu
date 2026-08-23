@@ -90,14 +90,28 @@ public final class TenantFixtures {
     public static String createQrToken(
             MockMvc mockMvc, ObjectMapper objectMapper, String adminToken, String businessId, String tableId)
             throws Exception {
-        JsonNode body = perform(
+        return regenerateQrToken(mockMvc, objectMapper, adminToken, businessId, tableId).get("token").asText();
+    }
+
+    /** Rotates the table's QR token (revoking any current ACTIVE one) and returns the full new-token JSON. */
+    public static JsonNode regenerateQrToken(
+            MockMvc mockMvc, ObjectMapper objectMapper, String adminToken, String businessId, String tableId)
+            throws Exception {
+        return perform(
                 mockMvc,
                 post("/internal/businesses/{businessId}/tables/{tableId}/qr-tokens", businessId, tableId)
                         .header("X-Internal-Admin-Token", adminToken),
                 objectMapper,
                 null,
                 201);
-        return body.get("token").asText();
+    }
+
+    public static void revokeQrToken(
+            MockMvc mockMvc, ObjectMapper objectMapper, String adminToken, String businessId, String qrTokenId)
+            throws Exception {
+        mockMvc.perform(post("/internal/businesses/{businessId}/qr-tokens/{qrTokenId}/revoke", businessId, qrTokenId)
+                        .header("X-Internal-Admin-Token", adminToken))
+                .andExpect(status().isNoContent());
     }
 
     public static String createMenuCategory(

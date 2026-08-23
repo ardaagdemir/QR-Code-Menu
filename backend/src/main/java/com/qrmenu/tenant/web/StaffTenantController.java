@@ -19,6 +19,7 @@ import com.qrmenu.tenant.web.dto.BusinessResponse;
 import com.qrmenu.tenant.web.dto.CreateBusinessContactRequest;
 import com.qrmenu.tenant.web.dto.CreateTableRequest;
 import com.qrmenu.tenant.web.dto.QrTokenResponse;
+import com.qrmenu.tenant.web.dto.RenameTableRequest;
 import com.qrmenu.tenant.web.dto.SetAddressRequest;
 import com.qrmenu.tenant.web.dto.SetBranchBusinessHoursRequest;
 import com.qrmenu.tenant.web.dto.SetBranchTimezoneRequest;
@@ -35,6 +36,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -208,6 +210,18 @@ public class StaffTenantController {
         return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(table));
     }
 
+    @PatchMapping({"/tables/{tableId}", "/branches/{branchId}/tables/{tableId}"})
+    public ResponseEntity<TableResponse> renameTable(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
+            @PathVariable(required = false) UUID branchId,
+            @PathVariable UUID tableId,
+            @Valid @RequestBody RenameTableRequest request) {
+        StaffContext context = resolveActiveContext(sessionCookie, Permission.BRANCH_MANAGE, branchId);
+        RestaurantTable table = tenantService.renameTable(
+                context.businessId(), context.activeBranchId(), tableId, request.label(), context.staffUserId());
+        return ResponseEntity.ok(toResponse(table));
+    }
+
     @PostMapping({"/tables/{tableId}/qr-tokens", "/branches/{branchId}/tables/{tableId}/qr-tokens"})
     public ResponseEntity<QrTokenResponse> regenerateQrToken(
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
@@ -255,8 +269,9 @@ public class StaffTenantController {
     }
 
     private BranchResponse toResponse(Branch branch) {
+        boolean openNow = tenantService.isOpenNow(branch.getBusinessId(), branch.getId());
         return new BranchResponse(
-                branch.getId(), branch.getBusinessId(), branch.getName(), branch.isOrderingEnabled(), branch.getAddress(),
+                branch.getId(), branch.getBusinessId(), branch.getName(), branch.isOrderingEnabled(), openNow, branch.getAddress(),
                 branch.getTimezone(), branch.getDeliveryModel().name(), branch.getStoreAcceptanceTimeoutSeconds());
     }
 

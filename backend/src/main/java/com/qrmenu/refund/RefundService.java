@@ -1,6 +1,8 @@
 package com.qrmenu.refund;
 
 import com.qrmenu.audit.AuditService;
+import com.qrmenu.notification.OrderStatusNotifier;
+import com.qrmenu.notification.OrderStatusUpdate;
 import com.qrmenu.ordering.CustomerOrder;
 import com.qrmenu.ordering.OrderItem;
 import com.qrmenu.ordering.OrderTrackingView;
@@ -38,6 +40,7 @@ public class RefundService {
     private final RefundRepository refundRepository;
     private final RefundItemRepository refundItemRepository;
     private final AuditService auditService;
+    private final OrderStatusNotifier orderStatusNotifier;
 
     public RefundService(
             OrderingService orderingService,
@@ -45,13 +48,15 @@ public class RefundService {
             PaymentProviderPort paymentProvider,
             RefundRepository refundRepository,
             RefundItemRepository refundItemRepository,
-            AuditService auditService) {
+            AuditService auditService,
+            OrderStatusNotifier orderStatusNotifier) {
         this.orderingService = orderingService;
         this.paymentService = paymentService;
         this.paymentProvider = paymentProvider;
         this.refundRepository = refundRepository;
         this.refundItemRepository = refundItemRepository;
         this.auditService = auditService;
+        this.orderStatusNotifier = orderStatusNotifier;
     }
 
     public record RefundLineRequest(UUID orderItemId, int quantity) {
@@ -118,6 +123,16 @@ public class RefundService {
                 order.getBusinessId(), actorStaffUserId, "Refund", refund.getId(),
                 refund.getStatus() == RefundStatus.COMPLETED ? "ISSUED" : "FAILED",
                 Map.of("orderId", order.getId().toString(), "totalAmountMinorUnits", totalAmount));
+
+        // The order's own REJECTED_BY_STORE push (OrderingService.rejectOrder) already
+        // reached the customer's SSE stream before this refund was even requested - the
+        // provider call above is synchronous, but nothing guarantees the customer's
+        // subsequent refetch lands after it resolves rather than mid-flight. Re-firing
+        // the same "something changed, refetch" signal now that the refund has a final
+        // COMPLETED/FAILED status closes that race instead of leaving the customer stuck
+        // on a stale "iade başlatılacak" read until their next reload/reconnect.
+        orderStatusNotifier.notifyOrderStatusChanged(
+                new OrderStatusUpdate(order.getId(), order.getBranchId(), order.getStatus().name(), order.getOrderNumber()));
 
         return toView(refund, items);
     }

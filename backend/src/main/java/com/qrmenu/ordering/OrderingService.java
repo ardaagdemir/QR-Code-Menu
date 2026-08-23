@@ -27,7 +27,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -103,7 +102,7 @@ public class OrderingService {
 
     @Transactional
     public CartView addItem(UUID tableVisitId, UUID callerSessionId, AddCartItemRequest request) {
-        TableVisit visit = customerSessionService.getOwnedTableVisit(tableVisitId, callerSessionId);
+        TableVisit visit = customerSessionService.getActiveTableVisitForOrdering(tableVisitId, callerSessionId);
 
         Product product = menuService.getProductForBusiness(visit.getBusinessId(), request.productId());
         if (!product.isActive()) {
@@ -146,7 +145,7 @@ public class OrderingService {
 
     @Transactional
     public CartView removeItem(UUID tableVisitId, UUID callerSessionId, UUID orderItemId) {
-        customerSessionService.getOwnedTableVisit(tableVisitId, callerSessionId);
+        customerSessionService.getActiveTableVisitForOrdering(tableVisitId, callerSessionId);
         CustomerOrder order = orderRepository
                 .findByTableVisitIdAndStatus(tableVisitId, OrderStatus.DRAFT)
                 .orElseThrow(() -> new ResourceNotFoundException("No active cart for this table visit: " + tableVisitId));
@@ -180,7 +179,7 @@ public class OrderingService {
      */
     @Transactional
     public CustomerOrder beginPaymentForDraftOrder(UUID tableVisitId, UUID callerSessionId) {
-        customerSessionService.getOwnedTableVisit(tableVisitId, callerSessionId);
+        customerSessionService.getActiveTableVisitForOrdering(tableVisitId, callerSessionId);
         CustomerOrder order = orderRepository
                 .findFirstByTableVisitIdAndStatusIn(tableVisitId, PAYABLE_STATUSES)
                 .orElseThrow(() -> new ResourceNotFoundException("No payable cart for this table visit: " + tableVisitId));
@@ -222,7 +221,15 @@ public class OrderingService {
         CustomerOrder order =
                 orderRepository.findById(orderId).orElseThrow(() -> new ResourceNotFoundException("Order not found: " + orderId));
         order.markAwaitingStoreAcceptance();
-        int orderNumber = orderNumberGenerator.nextOrderNumber(order.getBranchId(), LocalDate.now(ZoneOffset.UTC));
+        // The daily order-number counter (OrderNumberGenerator: "per-branch, per-day")
+        // must reset at the branch's own local midnight, not UTC's - otherwise the
+        // first orders of a Turkish business day (00:00-03:00 Europe/Istanbul, before
+        // UTC has rolled over) would keep incrementing the *previous* day's sequence
+        // instead of restarting at #1, the exact class of bug getOrderHistory's
+        // colliding-order-number handling exists to tolerate, not one this generator
+        // should be causing on every single business day.
+        com.qrmenu.tenant.Branch branch = tenantService.getBranch(order.getBusinessId(), order.getBranchId());
+        int orderNumber = orderNumberGenerator.nextOrderNumber(order.getBranchId(), LocalDate.now(resolveZone(branch)));
         order.assignOrderNumber(orderNumber);
         orderRepository.save(order);
         outboxEventWriter.write(
@@ -273,10 +280,22 @@ public class OrderingService {
      * avoids the ordering->refund->payment->ordering cycle, same reasoning as the
      * Milestone 7 refund-on-reject decision this supersedes) and so a refund failure is
      * visible as its own state rather than silently rolling back the rejection.
+     *
+     * Uses the same row-locking read as getOrderInBranchForUpdate (not the plain
+     * requireOrderInBranch every other transition here uses): two REJECT clicks fired
+     * at nearly the same instant both start from an in-memory AWAITING_STORE_ACCEPTANCE
+     * order unless one is forced to wait for the other's write. Without the lock, both
+     * could pass rejectByStore()'s in-memory state check and each go on to call
+     * RefundService.requestFullRefund - the FOR UPDATE lock inside that call still
+     * stops it from ever double-refunding, but the second reject would still have
+     * "succeeded" at the ordering layer before failing confusingly at the refund layer.
+     * Locking here instead makes the second concurrent REJECT fail immediately and
+     * clearly ("Cannot reject an order in status REJECTED_BY_STORE"), the same as a
+     * plain sequential double-click already does.
      */
     @Transactional
     public CustomerOrder rejectOrder(UUID branchId, UUID orderId, String reasonCode, String note, UUID actorStaffUserId) {
-        CustomerOrder order = requireOrderInBranch(branchId, orderId);
+        CustomerOrder order = getOrderInBranchForUpdate(branchId, orderId);
         order.rejectByStore(reasonCode, note);
         orderRepository.save(order);
         auditService.record(
@@ -444,8 +463,10 @@ public class OrderingService {
         return buildKitchenQueueViews(orders);
     }
 
-    private static ZoneId resolveZone(com.qrmenu.tenant.Branch branch) {
-        return branch.getTimezone() != null ? ZoneId.of(branch.getTimezone()) : ZoneOffset.UTC;
+    private ZoneId resolveZone(com.qrmenu.tenant.Branch branch) {
+        // TenantService.resolveBranchTimeZone is the single source of truth (branch's
+        // own timezone, else its business's defaultTimeZone - never a bare UTC guess).
+        return tenantService.resolveBranchTimeZone(branch);
     }
 
     /**

@@ -1,0 +1,155 @@
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.title {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+}
+
+.status {
+  font-size: var(--font-size-sm);
+  color: var(--color-fg-muted);
+  text-align: center;
+  padding: var(--space-5) 0;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-height: 60vh;
+  overflow-y: auto;
+  /* Kaydırma çubuğunun kartların üstüne binmemesi için minik bir iç boşluk. */
+  padding: 2px;
+  margin: -2px;
+}
+
+.card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: var(--tap-target-min);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  text-align: left;
+  cursor: default;
+}
+
+button.card {
+  cursor: pointer;
+  transition:
+    border-color var(--transition-fast),
+    background var(--transition-fast);
+}
+
+button.card:hover,
+button.card:active {
+  border-color: var(--color-border-strong);
+}
+
+/* Henüz sonuçlanmamış siparişler (hazırlanıyor/onay bekliyor/hazır vb.) - müşterinin
+   asıl takip etmesi gereken kartlar, bu yüzden görsel olarak öne çıkarılıyor. */
+.cardActive {
+  background: var(--color-badge-bg);
+  border-color: rgba(232, 93, 36, 0.35);
+}
+
+button.cardActive:hover,
+button.cardActive:active {
+  border-color: var(--color-primary);
+}
+
+/* Sonuçlanmış siparişler (tamamlandı/iptal/reddedildi) - geçmiş kaydı olarak kalır ama
+   dikkat çekmemeli. */
+.cardTerminal {
+  opacity: 0.82;
+}
+
+.cardError {
+  border-style: dashed;
+  color: var(--color-fg-muted);
+}
+
+.cardMain {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  flex: 1;
+}
+
+.orderNumber {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-fg);
+}
+
+.timestamp {
+  font-size: var(--font-size-xs);
+  color: var(--color-fg-muted);
+}
+
+.cardRight {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-1);
+  white-space: nowrap;
+}
+
+.amount {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-fg);
+}
+
+.chevron {
+  font-size: var(--font-size-xl);
+  line-height: 1;
+  color: var(--color-fg-muted);
+  flex-shrink: 0;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  white-space: nowrap;
+}
+
+.badge_neutral {
+  background: var(--color-skeleton);
+  color: var(--color-fg-muted);
+}
+
+.badge_warning {
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+}
+
+.badge_success {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.badge_danger {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+}
+
+.itemError {
+  display: block;
+  font-size: var(--font-size-sm);
+  color: var(--color-fg-muted);
+}

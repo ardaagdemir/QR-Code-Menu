@@ -1,6 +1,8 @@
 package com.qrmenu.expense;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.qrmenu.audit.AuditLogEntry;
+import com.qrmenu.audit.repository.AuditLogEntryRepository;
 import com.qrmenu.expense.repository.ExpenseRepository;
 import com.qrmenu.expense.repository.RecurringExpenseTemplateRepository;
 import com.qrmenu.staffaccess.StaffCookieSupport;
@@ -42,6 +44,9 @@ class ExpenseFlowIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private ExpenseRepository expenseRepository;
+
+    @Autowired
+    private AuditLogEntryRepository auditLogEntryRepository;
 
     @Test
     void manualExpenseIsImmediatelyReportedAndRemainsEditable() throws Exception {
@@ -487,6 +492,99 @@ class ExpenseFlowIntegrationTest extends AbstractIntegrationTest {
         mockMvc.perform(get("/api/staff/expenses/{expenseId}/receipt", expenseId)
                         .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, otherAdminCookie)))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void cancelledManualExpenseStaysListedAndAuditedButDropsOutOfReports() throws Exception {
+        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Expense Business 8");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
+        String adminCookie =
+                StaffFixtures.bootstrapBusinessAdminAndLogin(
+                        mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "expense-admin-8@example.com");
+        MockCookie cookie = new MockCookie(StaffCookieSupport.COOKIE_NAME, adminCookie);
+        String categoryId = createCategory(cookie, "Kırtasiye");
+        LocalDate today = LocalDate.now(ZoneOffset.UTC);
+
+        String expenseId = createExpense(cookie, branchId, categoryId, 5000);
+        assertThat(operatingResult(cookie, branchId, YearMonth.from(today)).get("manualExpensesMinorUnits").asLong())
+                .isEqualTo(5000);
+
+        JsonNode cancelled = objectMapper.readTree(mockMvc.perform(post("/api/staff/expenses/{expenseId}/cancel", expenseId)
+                        .cookie(cookie))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString());
+        assertThat(cancelled.get("cancelledAt").isNull()).isFalse();
+
+        // Still listed - a cancelled expense is voided, not deleted.
+        JsonNode expenses = objectMapper.readTree(mockMvc.perform(get("/api/staff/expenses")
+                        .param("branchId", branchId)
+                        .param("from", today.toString())
+                        .param("to", today.toString())
+                        .cookie(cookie))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString());
+        assertThat(expenses.findValuesAsText("id")).contains(expenseId);
+
+        // No longer counted toward Toplam Gider / Net Sonuç.
+        JsonNode resultAfterCancel = operatingResult(cookie, branchId, YearMonth.from(today));
+        assertThat(resultAfterCancel.get("manualExpensesMinorUnits").asLong()).isZero();
+        assertThat(resultAfterCancel.get("totalExpensesMinorUnits").asLong()).isZero();
+
+        // Audit trail records the cancellation (soft-void, not a hard delete).
+        List<AuditLogEntry> auditEntries = auditLogEntryRepository.findAll().stream()
+                .filter(entry -> "Expense".equals(entry.getEntityType()) && expenseId.equals(String.valueOf(entry.getEntityId())))
+                .toList();
+        assertThat(auditEntries).anyMatch(entry -> "CANCELLED".equals(entry.getAction()));
+
+        // A cancelled expense can no longer be edited...
+        mockMvc.perform(post("/api/staff/expenses/{expenseId}", expenseId)
+                        .cookie(cookie)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"categoryId\":\"" + categoryId + "\",\"amountMinorUnits\":999,\"incurredAt\":\"" + today + "\"}"))
+                .andExpect(status().isBadRequest());
+
+        // ...or cancelled a second time.
+        mockMvc.perform(post("/api/staff/expenses/{expenseId}/cancel", expenseId).cookie(cookie))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void systemGeneratedRecurringRealizationCannotBeCancelled() throws Exception {
+        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Expense Business 9");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
+        String adminCookie =
+                StaffFixtures.bootstrapBusinessAdminAndLogin(
+                        mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "expense-admin-9@example.com");
+        MockCookie cookie = new MockCookie(StaffCookieSupport.COOKIE_NAME, adminCookie);
+        String categoryId = createCategory(cookie, "Elektrik");
+        LocalDate today = LocalDate.now(ZoneOffset.UTC);
+
+        // dayOfMonth == today triggers RecurringExpenseGenerator to realize this period's
+        // expense immediately on template creation (see ExpenseService#createTemplate).
+        MvcResult templateResult = mockMvc.perform(post("/api/staff/recurring-expense-templates")
+                        .cookie(cookie)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"branchId\":\"" + branchId + "\",\"categoryId\":\"" + categoryId
+                                + "\",\"amountMinorUnits\":12000,\"dayOfMonth\":" + today.getDayOfMonth()
+                                + ",\"startDate\":\"" + today + "\"}"))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String templateId = objectMapper.readTree(templateResult.getResponse().getContentAsString()).get("id").asText();
+        Expense generatedExpense = expenseRepository.findAll().stream()
+                .filter(expense -> templateId.equals(String.valueOf(expense.getSourceTemplateId())))
+                .findFirst()
+                .orElseThrow();
+
+        mockMvc.perform(post("/api/staff/expenses/{expenseId}/cancel", generatedExpense.getId()).cookie(cookie))
+                .andExpect(status().isBadRequest());
+
+        assertThat(expenseRepository.findById(generatedExpense.getId()).orElseThrow().isCancelled()).isFalse();
+        assertThat(operatingResult(cookie, branchId, YearMonth.from(today)).get("recurringExpensesMinorUnits").asLong())
+                .isEqualTo(12000);
     }
 
     private String createCategory(MockCookie cookie, String name) throws Exception {

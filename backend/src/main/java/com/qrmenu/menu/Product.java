@@ -117,9 +117,23 @@ public class Product {
      * Gap-analysis "Product alanları" - staff-web edit form for the fields not fixed at
      * creation. Gap-analysis #15 added imageUrl here too: it was only settable at
      * creation before, so an already-created product had no UI path to attach an image.
+     * Later widened to also cover name/description/price/taxRate so create and edit
+     * support the same field set - previously those "temel ticari alanlar" were only
+     * ever settable once, at creation.
      */
     public void updateDetails(
-            boolean active, Integer estimatedPreparationMinutes, Set<Allergen> allergens, String imageUrl) {
+            String name,
+            String description,
+            long basePriceMinorUnits,
+            int taxRatePercent,
+            boolean active,
+            Integer estimatedPreparationMinutes,
+            Set<Allergen> allergens,
+            String imageUrl) {
+        this.name = name;
+        this.description = description;
+        this.basePriceMinorUnits = basePriceMinorUnits;
+        this.taxRatePercent = taxRatePercent;
         this.active = active;
         this.estimatedPreparationMinutes = estimatedPreparationMinutes;
         this.allergens = allergens == null ? new LinkedHashSet<>() : new LinkedHashSet<>(allergens);

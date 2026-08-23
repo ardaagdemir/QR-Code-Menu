@@ -196,7 +196,7 @@ export default function BranchSettingsPage() {
                   <div className={pageStyles.togglePanel}>
                     <span className={pageStyles.toggleLabel}>
                       Sipariş alımı
-                      <span className={pageStyles.toggleHint}>Şu anda {branch.orderingEnabled ? "açık" : "kapalı"}</span>
+                      <span className={pageStyles.toggleHint}>Şu anda {branch.openNow ? "açık" : "kapalı"}</span>
                     </span>
                     <label className={pageStyles.switch}>
                       <input

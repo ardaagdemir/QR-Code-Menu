@@ -6,7 +6,10 @@ import com.qrmenu.support.AbstractIntegrationTest;
 import com.qrmenu.support.StaffFixtures;
 import com.qrmenu.support.TenantFixtures;
 import com.qrmenu.support.TenantFixtures.CheckedInVisit;
+import java.sql.Timestamp;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
@@ -105,7 +108,14 @@ class OrderHistoryIntegrationTest extends AbstractIntegrationTest {
         // Order C: stays active (AWAITING_STORE_ACCEPTANCE) - must not show up in history.
         payAndAwaitStoreAcceptance(businessId, branchId, qrToken, "Su", 500, 1);
 
-        LocalDate today = LocalDate.now();
+        // The branch has no configured timezone, so getOrderHistory resolves its
+        // calendar-day range via TenantService.resolveBranchTimeZone, which falls back
+        // to the business's defaultTimeZone ("Europe/Istanbul" - Business's single-arg
+        // constructor). Computing "today" the same way (rather than the JVM/server's
+        // default zone, which may not be Europe/Istanbul at all) keeps this assertion
+        // correct regardless of where the test happens to run - this is the exact bug
+        // that used to make this test flaky for about an hour after local midnight.
+        LocalDate today = LocalDate.now(java.time.ZoneId.of("Europe/Istanbul"));
         JsonNode history = objectMapper.readTree(mockMvc.perform(
                         staffGet(branchId, "/history?from=" + today + "&to=" + today, adminCookie))
                         .andExpect(status().isOk())
@@ -144,6 +154,54 @@ class OrderHistoryIntegrationTest extends AbstractIntegrationTest {
                         .getResponse()
                         .getContentAsString());
         assertThat(empty).isEmpty();
+    }
+
+    /**
+     * Root-cause regression for the original flake: an order created at 01:30
+     * Europe/Istanbul time is 22:30 the PREVIOUS calendar day in UTC (Turkey has had no
+     * DST since 2016, so the +03:00 offset is fixed year-round). Querying
+     * /history?from=to=<Istanbul's today> must still find it - if getOrderHistory ever
+     * regressed back to resolving the branch's calendar day in UTC instead of via
+     * TenantService.resolveBranchTimeZone (branch has no explicit timezone here, so
+     * this exercises the Business.defaultTimeZone "Europe/Istanbul" fallback), the
+     * order's UTC-previous-day created_at would fall outside a UTC-computed window and
+     * silently disappear from "today"'s history. Anchored to a fixed offset from the
+     * real "today" rather than a hardcoded date, so this passes deterministically no
+     * matter when the suite actually runs - it doesn't rely on catching the bug during
+     * the ~1-hour daily window the original flake only failed in.
+     */
+    @Test
+    void historyIncludesAnOrderCreatedJustAfterEuropeIstanbulMidnightEvenThoughItsStillYesterdayInUtc() throws Exception {
+        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Midnight Boundary Business");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
+        String adminCookie = StaffFixtures.bootstrapBusinessAdminAndLogin(
+                mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "midnight-admin@example.com");
+        String tableId = TenantFixtures.createTable(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, "Masa 1");
+        String qrToken = TenantFixtures.createQrToken(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, tableId);
+
+        CheckedInVisit visit = payAndAwaitStoreAcceptance(businessId, branchId, qrToken, "Gece Yarısı Ürünü", 1000, 1);
+        String orderId = pendingOrderId(branchId, adminCookie);
+        mockMvc.perform(post("/api/staff/branches/{branchId}/orders/{orderId}/reject", branchId, orderId)
+                        .cookie(adminCookie(adminCookie))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reasonCode\":\"OUT_OF_STOCK\"}"))
+                .andExpect(status().isOk());
+
+        ZoneId istanbul = ZoneId.of("Europe/Istanbul");
+        LocalDate istanbulToday = LocalDate.now(istanbul);
+        Instant justAfterIstanbulMidnight = istanbulToday.atTime(1, 30).atZone(istanbul).toInstant();
+        jdbcTemplate.update(
+                "UPDATE customer_order SET created_at = ? WHERE id = ?",
+                Timestamp.from(justAfterIstanbulMidnight), java.util.UUID.fromString(orderId));
+
+        JsonNode history = objectMapper.readTree(mockMvc.perform(
+                        staffGet(branchId, "/history?from=" + istanbulToday + "&to=" + istanbulToday, adminCookie))
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString());
+        assertThat(history).hasSize(1);
+        assertThat(history.get(0).get("orderId").asText()).isEqualTo(orderId);
     }
 
     private JsonNode findByOrderId(JsonNode array, String orderId) {

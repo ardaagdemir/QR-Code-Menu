@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useId, useState } from "react";
 import QRCode from "qrcode";
-import { Ban, Download, Plus, Printer, QrCode, RefreshCw, Table2 } from "lucide-react";
+import { Ban, Download, Pencil, Plus, Printer, QrCode, RefreshCw, Table2 } from "lucide-react";
 import {
   createTable,
   getActiveQrToken,
   listTables,
   regenerateQrToken,
+  renameTable,
   revokeQrToken,
   type QrToken,
   type StaffTable,
@@ -40,6 +41,7 @@ function safeFilename(value: string): string {
 export default function TablesPage() {
   const { showToast } = useToast();
   const createTableDialogTitleId = useId();
+  const renameTableDialogTitleId = useId();
 
   const [tables, setTables] = useState<StaffTable[]>([]);
   const [qrTokens, setQrTokens] = useState<Record<string, QrToken | null>>({});
@@ -51,6 +53,9 @@ export default function TablesPage() {
   const [createTableOpen, setCreateTableOpen] = useState(false);
   const [label, setLabel] = useState("");
   const [creating, setCreating] = useState(false);
+  const [renameTarget, setRenameTarget] = useState<{ tableId: string } | null>(null);
+  const [renameLabel, setRenameLabel] = useState("");
+  const [renaming, setRenaming] = useState(false);
 
   const loadTables = useCallback(() => {
     return listTables()
@@ -87,6 +92,24 @@ export default function TablesPage() {
       showToast("Masa oluşturulamadı.", "error");
     } finally {
       setCreating(false);
+    }
+  }
+
+  async function handleRenameTable(event: React.FormEvent) {
+    event.preventDefault();
+    if (!renameTarget || !renameLabel.trim()) {
+      return;
+    }
+    setRenaming(true);
+    try {
+      const updated = await renameTable(renameTarget.tableId, renameLabel.trim());
+      setTables((current) => current.map((table) => (table.id === updated.id ? updated : table)));
+      setRenameTarget(null);
+      showToast("Masa adı güncellendi.", "success");
+    } catch {
+      showToast("Masa adı güncellenemedi.", "error");
+    } finally {
+      setRenaming(false);
     }
   }
 
@@ -225,6 +248,18 @@ export default function TablesPage() {
                               <Table2 size={18} />
                             </span>
                             <span className={tableStyles.primary}>{table.label}</span>
+                            <Button
+                              className={pageStyles.renameButton}
+                              size="md"
+                              variant="ghost"
+                              aria-label={`"${table.label}" masasını yeniden adlandır`}
+                              onClick={() => {
+                                setRenameTarget({ tableId: table.id });
+                                setRenameLabel(table.label);
+                              }}
+                            >
+                              <Pencil size={14} aria-hidden="true" />
+                            </Button>
                           </div>
                         </td>
                         <td>
@@ -294,6 +329,24 @@ export default function TablesPage() {
             </FormField>
             <Button className={pageStyles.createSubmit} type="submit" disabled={creating}>
               <span>{creating ? "Masa ekleniyor…" : "Masa Ekle"}</span>
+            </Button>
+          </form>
+        </Dialog>
+      ) : null}
+
+      {renameTarget ? (
+        <Dialog onClose={() => setRenameTarget(null)} labelledBy={renameTableDialogTitleId}>
+          <h2 id={renameTableDialogTitleId} className={styles.sectionTitle}>
+            Masayı Yeniden Adlandır
+          </h2>
+          <form className={styles.section} onSubmit={handleRenameTable}>
+            <FormField label="Masa adı" required>
+              {(controlProps) => (
+                <Input {...controlProps} value={renameLabel} onChange={(event) => setRenameLabel(event.target.value)} required />
+              )}
+            </FormField>
+            <Button className={pageStyles.createSubmit} type="submit" disabled={renaming}>
+              <span>{renaming ? "Kaydediliyor…" : "Kaydet"}</span>
             </Button>
           </form>
         </Dialog>

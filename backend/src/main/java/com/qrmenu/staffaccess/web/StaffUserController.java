@@ -1,11 +1,14 @@
 package com.qrmenu.staffaccess.web;
 
+import com.qrmenu.common.web.StaffPermissionDeniedException;
 import com.qrmenu.staffaccess.Permission;
 import com.qrmenu.staffaccess.StaffAuthService;
 import com.qrmenu.staffaccess.StaffContext;
 import com.qrmenu.staffaccess.StaffCookieSupport;
+import com.qrmenu.staffaccess.StaffRole;
 import com.qrmenu.staffaccess.StaffUser;
 import com.qrmenu.staffaccess.web.dto.CreateStaffUserRequest;
+import com.qrmenu.staffaccess.web.dto.ResetPasswordRequest;
 import com.qrmenu.staffaccess.web.dto.StaffUserResponse;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -43,6 +46,9 @@ public class StaffUserController {
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
             @Valid @RequestBody CreateStaffUserRequest request) {
         StaffContext context = requireStaffManage(sessionCookie);
+        if (request.role() == StaffRole.PLATFORM_ADMIN) {
+            throw new StaffPermissionDeniedException("Cannot grant PLATFORM_ADMIN through business-scoped staff management");
+        }
         StaffUser created = staffAuthService.createStaffUser(
                 context.businessId(), request.email(), request.password(), request.role(), List.of(context.activeBranchId()));
         return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(created, List.of(context.activeBranchId())));
@@ -61,6 +67,27 @@ public class StaffUserController {
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie, @PathVariable UUID staffUserId) {
         StaffContext context = requireStaffManage(sessionCookie);
         staffAuthService.deactivateStaffUser(context.businessId(), context.activeBranchId(), staffUserId);
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Admin-triggered reset to a new temporary password the admin types themselves (never
+     * system-generated, so it never has to round-trip back through a response body). Blocked
+     * for the caller's own account (self-reset must go through /api/staff/auth/change-password,
+     * which actually verifies the current password) and for staff outside this admin's own
+     * branch - both enforced in StaffAuthService.resetPassword. Does not reactivate a disabled user. */
+    @PostMapping("/{staffUserId}/reset-password")
+    public ResponseEntity<Void> resetPassword(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
+            @PathVariable UUID staffUserId,
+            @Valid @RequestBody ResetPasswordRequest request) {
+        StaffContext context = requireStaffManage(sessionCookie);
+        staffAuthService.resetPassword(
+                context.businessId(),
+                context.activeBranchId(),
+                context.staffUserId(),
+                staffUserId,
+                request.newPassword(),
+                request.confirmNewPassword());
         return ResponseEntity.noContent().build();
     }
 

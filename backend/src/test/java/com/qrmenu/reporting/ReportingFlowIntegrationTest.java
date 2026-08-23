@@ -9,7 +9,7 @@ import com.qrmenu.support.TenantFixtures.CheckedInVisit;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneOffset;
+import java.time.ZoneId;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,6 +32,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * REPORT_VIEW/REPORT_CHAIN_VIEW permission boundaries.
  */
 class ReportingFlowIntegrationTest extends AbstractIntegrationTest {
+
+    // None of these fixtures set an explicit Branch.timezone, so TenantService.
+    // resolveBranchTimeZone falls back to Business.defaultTimeZone - which
+    // TenantFixtures.createBusiness leaves at its own default ("Europe/Istanbul", see
+    // Business's single-arg constructor). "Today"/"this hour" here must be computed in
+    // that same zone, not UTC, or these assertions race the real UTC/Europe-Istanbul
+    // offset near midnight exactly like the original OrderHistoryIntegrationTest flake.
+    private static final ZoneId BUSINESS_DEFAULT_ZONE = ZoneId.of("Europe/Istanbul");
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -75,7 +83,7 @@ class ReportingFlowIntegrationTest extends AbstractIntegrationTest {
         CheckedInVisit visitB = payAndAwaitStoreAcceptance(businessId, productId, qrB, 1);
         rejectOrder(branchId, adminCookie, visitB);
 
-        LocalDate today = LocalDate.now(ZoneOffset.UTC);
+        LocalDate today = LocalDate.now(BUSINESS_DEFAULT_ZONE);
         JsonNode report = objectMapper.readTree(mockMvc.perform(get("/api/staff/reports")
                         .param("from", today.toString())
                         .param("to", today.toString())
@@ -113,8 +121,52 @@ class ReportingFlowIntegrationTest extends AbstractIntegrationTest {
 
         JsonNode hourly = report.get("hourlyDistribution");
         assertThat(hourly).hasSize(24);
-        int currentHour = java.time.Instant.now().atZone(ZoneOffset.UTC).getHour();
+        int currentHour = java.time.Instant.now().atZone(BUSINESS_DEFAULT_ZONE).getHour();
         assertThat(hourly.get(currentHour).get("orderCount").asInt()).isEqualTo(2);
+    }
+
+    /**
+     * Same root-cause bug class as OrderHistoryIntegrationTest's midnight-boundary
+     * regression, exercised through the reports endpoint instead: an order created at
+     * 01:30 Europe/Istanbul is still 22:30 the previous UTC calendar day (Turkey has had
+     * no DST since 2016). getBranchReport must resolve "today" via the branch's own
+     * timezone (here, its business's defaultTimeZone fallback - no explicit branch
+     * timezone is set), not UTC, or this order would silently fall outside a
+     * UTC-computed report window. Anchored to a fixed offset from the real "today"
+     * rather than a hardcoded date, so it's deterministic regardless of when the suite
+     * actually runs.
+     */
+    @Test
+    void reportIncludesAnOrderCreatedJustAfterEuropeIstanbulMidnightEvenThoughItsStillYesterdayInUtc() throws Exception {
+        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Report Midnight Boundary Business");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
+        String adminCookie = StaffFixtures.bootstrapBusinessAdminAndLogin(
+                mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "report-midnight-admin@example.com");
+        String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Kategori");
+        String productId = TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Ürün", 2000, 10);
+        TenantFixtures.upsertBranchProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, productId, "AVAILABLE", null);
+
+        String table = TenantFixtures.createTable(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, "Masa 1");
+        String qr = TenantFixtures.createQrToken(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, table);
+        CheckedInVisit visit = payAndAwaitStoreAcceptance(businessId, productId, qr, 1);
+        String orderId = acceptOrder(branchId, adminCookie, visit);
+
+        LocalDate istanbulToday = LocalDate.now(BUSINESS_DEFAULT_ZONE);
+        Instant justAfterIstanbulMidnight = istanbulToday.atTime(1, 30).atZone(BUSINESS_DEFAULT_ZONE).toInstant();
+        jdbcTemplate.update(
+                "UPDATE customer_order SET created_at = ? WHERE id = ?",
+                Timestamp.from(justAfterIstanbulMidnight), UUID.fromString(orderId));
+
+        JsonNode report = objectMapper.readTree(mockMvc.perform(get("/api/staff/branches/{branchId}/reports", branchId)
+                        .param("from", istanbulToday.toString())
+                        .param("to", istanbulToday.toString())
+                        .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, adminCookie)))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString());
+        assertThat(report.get("grossSalesMinorUnits").asLong()).isEqualTo(2000);
+        assertThat(report.get("orderCount").asInt()).isEqualTo(1);
     }
 
     @Test
@@ -133,7 +185,7 @@ class ReportingFlowIntegrationTest extends AbstractIntegrationTest {
         CheckedInVisit visitA = payAndAwaitStoreAcceptance(businessId, productId, qrA, 1);
         acceptOrder(branchA, adminCookie, visitA);
 
-        LocalDate today = LocalDate.now(ZoneOffset.UTC);
+        LocalDate today = LocalDate.now(BUSINESS_DEFAULT_ZONE);
         String platformCookie = StaffFixtures.bootstrapAndLogin(
                 mockMvc, TEST_ADMIN_TOKEN, businessId, branchA, "report-platform-2@example.com", "PLATFORM_ADMIN");
         JsonNode chain = objectMapper.readTree(mockMvc.perform(get("/api/staff/reports/chain")
@@ -202,7 +254,7 @@ class ReportingFlowIntegrationTest extends AbstractIntegrationTest {
         CheckedInVisit visit = payAndAwaitStoreAcceptance(businessId, productId, qrToken, 1);
         acceptOrder(branchId, adminCookie, visit);
 
-        LocalDate today = LocalDate.now(ZoneOffset.UTC);
+        LocalDate today = LocalDate.now(BUSINESS_DEFAULT_ZONE);
 
         JsonNode summary = objectMapper.readTree(mockMvc.perform(get("/api/staff/branches/{branchId}/reports/kitchen-summary", branchId)
                         .param("from", today.toString())

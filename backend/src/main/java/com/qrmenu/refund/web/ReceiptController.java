@@ -6,8 +6,7 @@ import com.qrmenu.refund.ReceiptView;
 import com.qrmenu.refund.RefundView;
 import com.qrmenu.refund.web.dto.ReceiptItemResponse;
 import com.qrmenu.refund.web.dto.ReceiptResponse;
-import com.qrmenu.refund.web.dto.RefundItemResponse;
-import com.qrmenu.refund.web.dto.RefundResponse;
+import com.qrmenu.refund.web.dto.ReceiptRefundResponse;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -37,7 +36,7 @@ public class ReceiptController {
 
     private static ReceiptResponse toResponse(ReceiptView view) {
         List<ReceiptItemResponse> items = view.items().stream().map(ReceiptController::toItemResponse).toList();
-        List<RefundResponse> refunds = view.refunds().stream().map(ReceiptController::toRefundResponse).toList();
+        List<ReceiptRefundResponse> refunds = view.refunds().stream().map(ReceiptController::toRefundResponse).toList();
         return new ReceiptResponse(
                 view.businessName(),
                 view.branchName(),
@@ -54,10 +53,7 @@ public class ReceiptController {
         return new ReceiptItemResponse(item.productName(), item.quantity(), item.unitPriceMinorUnits(), item.lineTotalMinorUnits());
     }
 
-    private static RefundResponse toRefundResponse(RefundView view) {
-        List<RefundItemResponse> items = view.items().stream()
-                .map(item -> new RefundItemResponse(item.orderItemId(), item.refundedQuantity(), item.refundAmountMinorUnits()))
-                .toList();
-        return new RefundResponse(view.refundId(), view.orderId(), view.status(), view.totalAmountMinorUnits(), view.createdAt(), items);
+    private static ReceiptRefundResponse toRefundResponse(RefundView view) {
+        return new ReceiptRefundResponse(view.status(), view.totalAmountMinorUnits(), view.createdAt());
     }
 }

@@ -53,6 +53,65 @@ class CrossTenantBranchAccessIntegrationTest extends AbstractIntegrationTest {
         mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
                         .post("/api/staff/qr-tokens/{qrTokenId}/revoke", qrTokenB).cookie(cookie))
                 .andExpect(status().isNotFound());
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .patch("/api/staff/tables/{tableId}", tableB)
+                        .cookie(cookie)
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"label\":\"Ele Geçirilmiş Masa\"}"))
+                .andExpect(status().isNotFound());
+    }
+
+    /** True cross-tenant (different businessId, not just a second branch of the same business):
+     * a real branchId/tableId from another business must still be rejected, since a session's
+     * StaffContext.businessId() is what every branchId path/query param gets cross-checked
+     * against (StaffAuthService.resolveStaffContextForBranch). */
+    @Test
+    void businessAdminCannotReachAnotherBusinesssBranchEvenWithItsRealBranchId() throws Exception {
+        String businessAId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "tenant-a");
+        String branchA = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessAId, "A Şube");
+        String businessBId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "tenant-b");
+        String branchB = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessBId, "B Şube");
+        String tableB = TenantFixtures.createTable(
+                mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessBId, branchB, "B Başka İşletme Masası");
+        MockCookie cookie = cookie(StaffFixtures.bootstrapAndLogin(
+                mockMvc, TEST_ADMIN_TOKEN, businessAId, branchA,
+                "tenant-a-admin@example.com", "BUSINESS_ADMIN"));
+
+        mockMvc.perform(get("/api/staff/branches/{branchId}/tables", branchB).cookie(cookie))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/staff/branches/{branchId}/orders/pending-acceptance", branchB).cookie(cookie))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/staff/branches/{branchId}/reports", branchB)
+                        .param("from", "2026-08-01").param("to", "2026-08-14").cookie(cookie))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .patch("/api/staff/tables/{tableId}", tableB)
+                        .cookie(cookie)
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"label\":\"Ele Geçirilmiş Masa\"}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void businessAdminCanRenameATableInTheirOwnBranchAndTheChangePersists() throws Exception {
+        BranchFixture fixture = createTwoBranchFixture("rename-admin");
+        String tableId = TenantFixtures.createTable(
+                mockMvc, objectMapper, TEST_ADMIN_TOKEN, fixture.businessId(), fixture.branchA(), "Eski Ad");
+        MockCookie cookie = cookie(StaffFixtures.bootstrapAndLogin(
+                mockMvc, TEST_ADMIN_TOKEN, fixture.businessId(), fixture.branchA(),
+                "rename-admin@example.com", "BUSINESS_ADMIN"));
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .patch("/api/staff/tables/{tableId}", tableId)
+                        .cookie(cookie)
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"label\":\"Yeni Ad\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.label").value("Yeni Ad"));
+
+        mockMvc.perform(get("/api/staff/tables").cookie(cookie))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].label").value("Yeni Ad"));
     }
 
     @Test

@@ -10,15 +10,17 @@ import org.springframework.stereotype.Component;
 
 /**
  * Gap-analysis #13 (docs/gap-analysis.md Section 2 "Session/TableVisit TTL"): closes any
- * TableVisit whose last_activity_at has passed {@link CustomerSessionService#VISIT_TTL}
- * without one ever doing so before. checkIn() already treats a stale visit as over by
- * starting a new one instead of continuing it, but a caller who kept using an old
- * tableVisitId+cookie past the TTL could otherwise still act on it forever via
- * getOwnedTableVisit; this job closes the gap for that path too. Each visit is closed via
- * {@link TableVisitCleanupCloser} and isolated with a try/catch here - one visit that
- * fails to save is logged and skipped instead of rolling back the close() already
- * committed for other visits earlier in the same poll cycle, or blocking the rest of the
- * batch from being closed.
+ * TableVisit that has passed its {@link CustomerSessionService#INACTIVITY_TIMEOUT} or its
+ * {@link CustomerSessionService#ABSOLUTE_LIFETIME} without one ever doing so before.
+ * checkIn() already treats such a visit as over by starting a new one instead of
+ * continuing it, and OrderingService's order-mutating calls reject it synchronously via
+ * CustomerSessionService.getActiveTableVisitForOrdering regardless of this job - this
+ * scheduler only closes the gap for callers who keep polling a read-only endpoint
+ * (getOwnedTableVisit) on an old tableVisitId+cookie past both clocks. Each visit is
+ * closed via {@link TableVisitCleanupCloser} and isolated with a try/catch here - one
+ * visit that fails to save is logged and skipped instead of rolling back the close()
+ * already committed for other visits earlier in the same poll cycle, or blocking the
+ * rest of the batch from being closed.
  */
 @Component
 class TableVisitCleanupScheduler {
@@ -35,8 +37,10 @@ class TableVisitCleanupScheduler {
 
     @Scheduled(fixedDelayString = "PT15M", initialDelayString = "PT1M")
     void closeStaleTableVisits() {
-        Instant cutoff = Instant.now().minus(CustomerSessionService.VISIT_TTL);
-        List<TableVisit> staleVisits = tableVisitRepository.findAllByClosedAtIsNullAndLastActivityAtBefore(cutoff);
+        Instant now = Instant.now();
+        Instant inactivityCutoff = now.minus(CustomerSessionService.INACTIVITY_TIMEOUT);
+        Instant absoluteLifetimeCutoff = now.minus(CustomerSessionService.ABSOLUTE_LIFETIME);
+        List<TableVisit> staleVisits = tableVisitRepository.findAllExpiredAndOpen(inactivityCutoff, absoluteLifetimeCutoff);
         for (TableVisit visit : staleVisits) {
             try {
                 tableVisitCleanupCloser.closeVisit(visit.getId());

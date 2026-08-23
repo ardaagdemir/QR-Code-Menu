@@ -33,6 +33,7 @@ import {
   getDailyCloseReports,
   getOperatingResult,
   getOwnerNotifications,
+  me,
   resendOwnerNotifications,
   type BranchSalesReport,
   type BranchBusinessHoursEntry,
@@ -41,7 +42,7 @@ import {
   type OperatingResult,
   type OwnerNotificationLog,
 } from "@/lib/api";
-import { localIsoDate as todayIsoDate } from "@/lib/time";
+import { branchIsoDate } from "@/lib/time";
 import AppShell from "@/components/layout/AppShell";
 import PageHeader from "@/components/ui/PageHeader";
 import BarList from "@/components/ui/BarList";
@@ -121,7 +122,10 @@ export default function LegacyBranchReportPage() {
 }
 
 function BranchReportPage() {
+  // Placeholder until `me()` resolves the active branch's real timezone below - branchIsoDate
+  // falls back to the device's own date for this brief instant (see lib/time.ts).
   const [range, setRange] = useState<DateRange>(() => presetRange("today"));
+  const [branchTimeZone, setBranchTimeZone] = useState<string | null>(null);
   const [report, setReport] = useState<BranchSalesReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -179,9 +183,23 @@ function BranchReportPage() {
   }
 
   useEffect(() => {
-    loadReport(range);
-    reloadDailyClose(range);
-    reloadOperatingResult(range);
+    // Özet/Kasa/Raporlar must all resolve "today" the same way: from the active branch's
+    // own timezone (StaffContext.activeBranchTimeZone), not the device's. Re-anchor the
+    // initial "today" preset to it once known, then load everything for that corrected range.
+    me()
+      .then((context) => {
+        setBranchTimeZone(context.activeBranchTimeZone);
+        const branchToday = presetRange("today", context.activeBranchTimeZone);
+        setRange(branchToday);
+        loadReport(branchToday);
+        reloadDailyClose(branchToday);
+        reloadOperatingResult(branchToday);
+      })
+      .catch(() => {
+        loadReport(range);
+        reloadDailyClose(range);
+        reloadOperatingResult(range);
+      });
     getBusinessHours().then(setBusinessHours).catch(() => setBusinessHours(null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -197,7 +215,7 @@ function BranchReportPage() {
   function handleCloseToday() {
     setClosingToday(true);
     setDailyCloseError(null);
-    generateDailyCloseFinal(todayIsoDate())
+    generateDailyCloseFinal(branchIsoDate(branchTimeZone))
       .then(() => reloadDailyClose(range))
       .catch(() => setDailyCloseError("Gün sonu kapatılamadı."))
       .finally(() => setClosingToday(false));
@@ -213,7 +231,7 @@ function BranchReportPage() {
   }
 
   const todayAlreadyFinal = dailyCloseReports.some(
-    (row) => row.businessDate === todayIsoDate() && row.status === "FINAL",
+    (row) => row.businessDate === branchIsoDate(branchTimeZone) && row.status === "FINAL",
   );
 
   const revenueTrend = [...dailyCloseReports].sort((a, b) => a.businessDate.localeCompare(b.businessDate));
@@ -249,7 +267,7 @@ function BranchReportPage() {
             <span>Tarih Aralığı</span>
           </div>
           <div className={styles.filterControls}>
-            <DateRangePresets value={range} onChange={handleRangeChange} />
+            <DateRangePresets value={range} onChange={handleRangeChange} timeZone={branchTimeZone} />
           </div>
         </section>
 

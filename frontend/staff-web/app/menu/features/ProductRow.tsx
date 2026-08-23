@@ -57,6 +57,22 @@ export default function ProductRow({ product, branchProduct, onProductUpdated, o
   }
 
   async function handleSaveDetails() {
+    if (!formValues.name.trim()) {
+      showToast("Ürün adı zorunludur.", "error");
+      return;
+    }
+    const priceMinorUnits = Math.round(Number(formValues.price.replace(",", ".")) * 100);
+    const taxRatePercent = Number(formValues.taxRate);
+    if (
+      formValues.price.trim() === "" ||
+      !Number.isFinite(priceMinorUnits) ||
+      priceMinorUnits < 0 ||
+      !Number.isInteger(taxRatePercent) ||
+      taxRatePercent < 0
+    ) {
+      showToast("Geçerli bir fiyat ve KDV oranı girin.", "error");
+      return;
+    }
     const prepTimeValue = formValues.preparationMinutes.trim() === "" ? null : Number(formValues.preparationMinutes);
     if (prepTimeValue !== null && (!Number.isInteger(prepTimeValue) || prepTimeValue < 0)) {
       showToast("Geçerli bir hazırlık süresi girin.", "error");
@@ -64,7 +80,16 @@ export default function ProductRow({ product, branchProduct, onProductUpdated, o
     }
     setBusy(true);
     try {
-      const updated = await updateProductDetails(product.id, product.active, prepTimeValue, formValues.allergens, formValues.imageUrl);
+      const updated = await updateProductDetails(product.id, {
+        name: formValues.name.trim(),
+        description: formValues.description.trim() || null,
+        basePriceMinorUnits: priceMinorUnits,
+        taxRatePercent,
+        active: product.active,
+        estimatedPreparationMinutes: prepTimeValue,
+        allergens: formValues.allergens,
+        imageUrl: formValues.imageUrl,
+      });
       onProductUpdated(updated);
       setPanel("none");
       showToast("Ürün detayları güncellendi.", "success");
@@ -104,7 +129,7 @@ export default function ProductRow({ product, branchProduct, onProductUpdated, o
         <tr className={tableStyles.expandedRow}>
           <td colSpan={5}>
             <div className={styles.section}>
-              <ProductFormFields values={formValues} onChange={setFormValues} mode="edit" />
+              <ProductFormFields values={formValues} onChange={setFormValues} />
               <div className={menuStyles.productFormActions}>
                 <Button size="md" variant="secondary" disabled={busy} onClick={() => setPanel("none")}>
                   Vazgeç

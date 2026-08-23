@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import {
   addCartItem,
   ApiError,
@@ -21,17 +21,18 @@ import {
 import DishPlaceholderIcon from "@/components/ui/DishPlaceholderIcon";
 import EmptyState from "@/components/ui/EmptyState";
 import ErrorState from "@/components/ui/ErrorState";
-import { useToast } from "@/components/ui/ToastProvider";
 import CartDrawer from "./CartDrawer";
 import CategoryNav from "./CategoryNav";
 import GuestCountSheet from "./GuestCountSheet";
 import MenuSection from "./MenuSection";
 import MenuSkeleton from "./MenuSkeleton";
+import OrdersSheet from "./OrdersSheet";
 import PaymentSheet from "./PaymentSheet";
 import ProductOptionsSheet from "./ProductOptionsSheet";
 import ProductRowSection from "./ProductRowSection";
 import SearchBar from "./SearchBar";
 import { useFavorites } from "./useFavorites";
+import { useOrderHistory } from "./useOrderHistory";
 import VisitHeader from "./VisitHeader";
 import styles from "./page.module.css";
 
@@ -65,7 +66,21 @@ function isStaleVisitError(error: unknown): boolean {
   return error instanceof ApiError && error.status === 404;
 }
 
+// The backend's synchronous, authoritative TableVisit expiry gate (60dk inactivity /
+// 4 saat absolute lifetime - CustomerSessionService.getActiveTableVisitForOrdering)
+// returns 410 Gone specifically for "visit still exists but can't order anymore",
+// distinct from the 404 handled by isStaleVisitError (visit/cart genuinely gone) and
+// from the 409s ProductNotOrderableException/OrderingNotAllowedException already use.
+const VISIT_EXPIRED_MESSAGE = "Oturumunuz sona erdi. Yeni sipariş için masadaki QR kodunu tekrar okutun.";
+
+function isVisitExpiredForOrderingError(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 410;
+}
+
 function cartActionErrorMessage(error: unknown): string {
+  if (isVisitExpiredForOrderingError(error)) {
+    return VISIT_EXPIRED_MESSAGE;
+  }
   if (error instanceof ApiError) {
     if (error.status === 409) {
       return "Bu ürün şu anda sipariş alınamıyor (tükenmiş ya da bu şubede satışta değil).";
@@ -80,6 +95,9 @@ function cartActionErrorMessage(error: unknown): string {
 function checkoutErrorMessage(error: unknown): string {
   // 404 (no payable cart / stale visit) is handled separately via isStaleVisitError before
   // this is called - it never reaches here.
+  if (isVisitExpiredForOrderingError(error)) {
+    return VISIT_EXPIRED_MESSAGE;
+  }
   if (error instanceof ApiError && error.status === 409) {
     return "Bu şube şu anda sipariş kabul etmiyor (kapalı ya da çalışma saatleri dışında).";
   }
@@ -95,8 +113,6 @@ function checkoutErrorMessage(error: unknown): string {
 export default function TableVisitPage() {
   const params = useParams<{ token: string }>();
   const token = params.token;
-  const router = useRouter();
-  const { showToast } = useToast();
 
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [cart, setCart] = useState<Cart | null>(null);
@@ -113,6 +129,7 @@ export default function TableVisitPage() {
   // order (Section 2) - captured here so it's still available after later cart/payment
   // responses stop including it, for the post-payment shareable tracking link.
   const [trackingToken, setTrackingToken] = useState<string | null>(null);
+  const [ordersSheetOpen, setOrdersSheetOpen] = useState(false);
   const [guestCountSheetOpen, setGuestCountSheetOpen] = useState(false);
   const [guestCountSubmitting, setGuestCountSubmitting] = useState(false);
   const [guestCountError, setGuestCountError] = useState<string | null>(null);
@@ -132,6 +149,14 @@ export default function TableVisitPage() {
     [menuForFavorites],
   );
   const { favoriteIds, toggleFavorite } = useFavorites(branchIdForFavorites, validProductIds);
+  // Siparişlerim: geçmiş orderTrackingToken'lar MASA (tableId) bazlı localStorage'da
+  // kalıcı - branchId DEĞİL, çünkü aynı branch'teki farklı masaların sipariş geçmişi
+  // birbirinden izole olmalı (Masa 8'de verilen sipariş Masa 9'da görünmemeli). Bu
+  // component her (yeniden) mount'ta (ör. "Menüye Dön" navigasyonu) geçici React state'i
+  // sıfırlansa da güncel listeyi doğrudan localStorage'dan okur.
+  const tableIdForOrderHistory = state.status === "ready" ? state.visit.tableId : "";
+  const { entries: orderHistoryEntries, addToken: addOrderHistoryToken, removeToken: removeOrderHistoryToken } =
+    useOrderHistory(tableIdForOrderHistory);
 
   const retry = useCallback(() => {
     setState({ status: "loading" });
@@ -270,11 +295,7 @@ export default function TableVisitPage() {
   }
 
   function handleOpenTracking() {
-    if (trackingToken) {
-      router.push(`/order/track/${trackingToken}`);
-      return;
-    }
-    showToast("Henüz bir siparişiniz yok.", "info");
+    setOrdersSheetOpen(true);
   }
 
   async function handleAddToCart(selectedOptionIds: string[], quantity: number) {
@@ -292,6 +313,7 @@ export default function TableVisitPage() {
       setCart(updatedCart);
       if (updatedCart.orderTrackingToken) {
         setTrackingToken(updatedCart.orderTrackingToken);
+        addOrderHistoryToken(updatedCart.orderTrackingToken);
       }
       setActiveProduct(null);
     } catch (error) {
@@ -471,6 +493,14 @@ export default function TableVisitPage() {
           trackingToken={trackingToken}
           onClose={() => setPaymentIntent(null)}
           onOrderPaid={handleOrderPaid}
+        />
+      ) : null}
+
+      {ordersSheetOpen ? (
+        <OrdersSheet
+          entries={orderHistoryEntries}
+          onPrune={removeOrderHistoryToken}
+          onClose={() => setOrdersSheetOpen(false)}
         />
       ) : null}
 

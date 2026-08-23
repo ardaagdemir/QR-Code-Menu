@@ -24,8 +24,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Covers Gap-Analysis #13: the scheduled job that closes a TableVisit once
- * CustomerSessionService.VISIT_TTL has elapsed, and that a closed visit can no longer be
- * acted on (getOwnedTableVisit surfaces it as 404, exercised here via the cart endpoint).
+ * CustomerSessionService.INACTIVITY_TIMEOUT has elapsed, and that a closed visit can no
+ * longer be acted on (getOwnedTableVisit surfaces it as 404, exercised here via the cart endpoint).
  * Backdates last_activity_at directly via SQL (no production code ages a visit that fast)
  * and invokes the scheduled method directly rather than waiting for its real trigger. Not
  * @Transactional at the test-method level: TableVisitCleanupCloser uses REQUIRES_NEW per
@@ -58,7 +58,7 @@ class TableVisitCleanupSchedulerIntegrationTest extends AbstractIntegrationTest 
         TableFixture staleFixture =
                 TenantFixtures.createTableWithActiveQrToken(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Stale Visit");
         String staleVisitId = checkInAndGetVisitId(staleFixture.qrToken());
-        backdateLastActivity(staleVisitId, Instant.now().minus(CustomerSessionService.VISIT_TTL).minusSeconds(60));
+        backdateLastActivity(staleVisitId, Instant.now().minus(CustomerSessionService.INACTIVITY_TIMEOUT).minusSeconds(60));
 
         TableFixture freshFixture =
                 TenantFixtures.createTableWithActiveQrToken(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Fresh Visit");
@@ -90,7 +90,7 @@ class TableVisitCleanupSchedulerIntegrationTest extends AbstractIntegrationTest 
         String sessionCookieValue =
                 checkInResult.getResponse().getCookie(SESSION_COOKIE).getValue();
 
-        backdateLastActivity(visitId, Instant.now().minus(CustomerSessionService.VISIT_TTL).minusSeconds(60));
+        backdateLastActivity(visitId, Instant.now().minus(CustomerSessionService.INACTIVITY_TIMEOUT).minusSeconds(60));
         scheduler.closeStaleTableVisits();
 
         String categoryId = TenantFixtures.createMenuCategory(
@@ -118,7 +118,7 @@ class TableVisitCleanupSchedulerIntegrationTest extends AbstractIntegrationTest 
         TableFixture fixture =
                 TenantFixtures.createTableWithActiveQrToken(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Isolation Visit");
         String visitId = checkInAndGetVisitId(fixture.qrToken());
-        backdateLastActivity(visitId, Instant.now().minus(CustomerSessionService.VISIT_TTL).minusSeconds(60));
+        backdateLastActivity(visitId, Instant.now().minus(CustomerSessionService.INACTIVITY_TIMEOUT).minusSeconds(60));
 
         UUID vanishedVisitId = UUID.randomUUID();
         assertThatThrownBy(() -> tableVisitCleanupCloser.closeVisit(vanishedVisitId))

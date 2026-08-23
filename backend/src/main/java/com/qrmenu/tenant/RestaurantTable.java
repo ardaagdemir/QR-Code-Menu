@@ -50,6 +50,11 @@ public class RestaurantTable {
         this.updatedAt = now;
     }
 
+    public void rename(String label) {
+        this.label = label;
+        this.updatedAt = Instant.now();
+    }
+
     public UUID getId() {
         return id;
     }

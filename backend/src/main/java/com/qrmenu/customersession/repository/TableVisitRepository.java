@@ -14,8 +14,15 @@ public interface TableVisitRepository extends JpaRepository<TableVisit, UUID> {
     Optional<TableVisit> findFirstByAnonymousCustomerSessionIdAndTableIdOrderByStartedAtDesc(
             UUID anonymousCustomerSessionId, UUID tableId);
 
-    /** Gap-analysis #13: TTL-stale visits still open, for the closing scheduler. */
-    List<TableVisit> findAllByClosedAtIsNullAndLastActivityAtBefore(Instant cutoff);
+    /**
+     * Gap-analysis #13: visits still open despite having passed either expiry clock -
+     * inactivity (lastActivityAt) or absolute lifetime (startedAt) - for the closing
+     * scheduler.
+     */
+    @Query("SELECT t FROM TableVisit t WHERE t.closedAt IS NULL "
+            + "AND (t.lastActivityAt < :inactivityCutoff OR t.startedAt < :absoluteLifetimeCutoff)")
+    List<TableVisit> findAllExpiredAndOpen(
+            @Param("inactivityCutoff") Instant inactivityCutoff, @Param("absoluteLifetimeCutoff") Instant absoluteLifetimeCutoff);
 
     /** Gap-analysis #7 chain comparison: table-visit volume per branch since a fixed cutoff. */
     long countByBranchIdAndStartedAtAfter(UUID branchId, Instant since);

@@ -51,6 +51,9 @@ export type StaffContext = {
   branches: StaffBranchSummary[];
   activeBranchId: string | null;
   activeBranchName: string | null;
+  /** Backend's already-resolved TenantService.resolveBranchTimeZone result - use this for
+   *  "today", never the device/browser clock (see lib/time.ts's branchIsoDate). */
+  activeBranchTimeZone: string | null;
 };
 
 export async function login(email: string, password: string): Promise<StaffContext> {
@@ -254,6 +257,7 @@ export type Branch = {
   businessId: string;
   name: string;
   orderingEnabled: boolean;
+  openNow: boolean;
   address: string | null;
   timezone: string | null;
   deliveryModel: DeliveryModel;
@@ -334,6 +338,13 @@ export async function listTables(): Promise<StaffTable[]> {
 export async function createTable(label: string): Promise<StaffTable> {
   return apiFetch("/api/staff/tables", {
     method: "POST",
+    body: JSON.stringify({ label }),
+  });
+}
+
+export async function renameTable(tableId: string, label: string): Promise<StaffTable> {
+  return apiFetch(`/api/staff/tables/${encodeURIComponent(tableId)}`, {
+    method: "PATCH",
     body: JSON.stringify({ label }),
   });
 }
@@ -442,16 +453,21 @@ export async function createProduct(input: CreateProductInput): Promise<ProductA
   });
 }
 
-export async function updateProductDetails(
-  productId: string,
-  active: boolean,
-  estimatedPreparationMinutes: number | null,
-  allergens: Allergen[],
-  imageUrl: string | null,
-): Promise<ProductAdmin> {
+export type UpdateProductDetailsInput = {
+  name: string;
+  description: string | null;
+  basePriceMinorUnits: number;
+  taxRatePercent: number;
+  active: boolean;
+  estimatedPreparationMinutes: number | null;
+  allergens: Allergen[];
+  imageUrl: string | null;
+};
+
+export async function updateProductDetails(productId: string, input: UpdateProductDetailsInput): Promise<ProductAdmin> {
   return apiFetch(`/api/staff/products/${encodeURIComponent(productId)}`, {
     method: "PATCH",
-    body: JSON.stringify({ active, estimatedPreparationMinutes, allergens, imageUrl }),
+    body: JSON.stringify(input),
   });
 }
 
@@ -519,6 +535,30 @@ export async function createStaffUser(email: string, password: string, role: Sta
 
 export async function deactivateStaffUser(staffUserId: string): Promise<void> {
   await apiFetch(`/api/staff/staff-users/${encodeURIComponent(staffUserId)}/deactivate`, { method: "POST" });
+}
+
+/** Backend's PasswordPolicy.MIN_LENGTH - kept as one constant so create/change/reset forms never drift. */
+export const MIN_PASSWORD_LENGTH = 8;
+
+/** Self-service: requires the caller's own current password. Ends every other session of theirs. */
+export async function changePassword(currentPassword: string, newPassword: string, confirmNewPassword: string): Promise<void> {
+  await apiFetch("/api/staff/auth/change-password", {
+    method: "POST",
+    body: JSON.stringify({ currentPassword, newPassword, confirmNewPassword }),
+  });
+}
+
+/** Admin-triggered: sets a new temporary password the admin types themselves. Never resets your
+ * own account (use changePassword for that) - the backend rejects that case with a 400. */
+export async function resetStaffUserPassword(
+  staffUserId: string,
+  newPassword: string,
+  confirmNewPassword: string,
+): Promise<void> {
+  await apiFetch(`/api/staff/staff-users/${encodeURIComponent(staffUserId)}/reset-password`, {
+    method: "POST",
+    body: JSON.stringify({ newPassword, confirmNewPassword }),
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -852,6 +892,7 @@ export type Expense = {
   description: string | null;
   receiptImageUrl: string | null;
   createdAt: string;
+  cancelledAt: string | null;
 };
 
 export type ExpenseInput = {
@@ -879,6 +920,11 @@ export async function uploadReceiptImage(file: File): Promise<string> {
 
 export async function updateExpense(expenseId: string, input: Omit<ExpenseInput, "branchId">): Promise<Expense> {
   return apiFetch(`/api/staff/expenses/${encodeURIComponent(expenseId)}`, { method: "POST", body: JSON.stringify(input) });
+}
+
+/** Soft-void: keeps the record and its audit trail, just drops it out of report totals. */
+export async function cancelExpense(expenseId: string): Promise<Expense> {
+  return apiFetch(`/api/staff/expenses/${encodeURIComponent(expenseId)}/cancel`, { method: "POST" });
 }
 
 export type RecurringExpenseTemplate = {

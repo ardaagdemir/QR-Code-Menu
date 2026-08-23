@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { ApiError, buildOrderTrackingStreamUrl, formatPriceMinorUnits, getOrderTracking, type OrderTracking } from "@/lib/api";
 import ErrorState from "@/components/ui/ErrorState";
@@ -28,8 +28,12 @@ const DELIVERY_MODEL_MESSAGES: Record<string, Record<string, string>> = {
   },
 };
 
+// Acceptance is order-level, not item-level (Bölüm 6: sipariş tek bir ACCEPT/REJECT
+// kararıyla ilerler) - PENDING_REVIEW kasıtlı olarak burada yok, aksi halde her kalem
+// ayrı ayrı onay bekliyormuş gibi yanlış bir izlenim verir. Sipariş kabul edilene kadar
+// kalemler için hiçbir durum rozeti gösterilmez, yalnızca üstteki timeline "İşletme onayı"
+// adımını taşır.
 const ITEM_STATUS_LABELS: Record<string, string> = {
-  PENDING_REVIEW: "Onay bekliyor",
   PREPARING: "Hazırlanıyor",
   REJECTED: "Reddedildi",
   READY: "Hazır",
@@ -47,6 +51,7 @@ type LoadState = { status: "loading" } | { status: "error"; message: string } | 
 export default function OrderTrackingPage() {
   const params = useParams<{ token: string }>();
   const token = params.token;
+  const router = useRouter();
   const [state, setState] = useState<LoadState>({ status: "loading" });
 
   useEffect(() => {
@@ -78,25 +83,54 @@ export default function OrderTrackingPage() {
       }
     }
 
-    void load();
+    function connect(): EventSource {
+      const source = new EventSource(buildOrderTrackingStreamUrl(token));
+      source.addEventListener("order-status", () => load());
+      return source;
+    }
 
-    const eventSource = new EventSource(buildOrderTrackingStreamUrl(token));
-    eventSource.addEventListener("order-status", () => load());
+    let eventSource = connect();
+
+    // A locked/backgrounded phone can silently drop the SSE connection without the
+    // EventSource's own auto-reconnect kicking in promptly on resume - reload fresh
+    // state unconditionally, and explicitly reopen the stream if it's actually closed.
+    function handleVisibilityChange() {
+      if (document.visibilityState !== "visible") {
+        return;
+      }
+      void load();
+      if (eventSource.readyState === EventSource.CLOSED) {
+        eventSource = connect();
+      }
+    }
+
+    void load();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       cancelled = true;
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       eventSource.close();
     };
   }, [token]);
 
+  const backLink = (
+    <button type="button" className={styles.backLink} onClick={() => router.back()}>
+      ← Menüye Dön
+    </button>
+  );
+
   if (state.status === "loading") {
     return (
       <main className={styles.page}>
-        <div className={styles.header}>
-          <Skeleton width="140px" height="2rem" className={styles.skeletonBlock} />
+        {backLink}
+        <div className={styles.card}>
+          <div className={styles.header}>
+            <Skeleton width="140px" height="2rem" className={styles.skeletonBlock} />
+          </div>
+          <Skeleton height="3rem" className={styles.skeletonBlock} />
+          <Skeleton height="3rem" className={styles.skeletonBlock} />
         </div>
-        <Skeleton height="3rem" className={styles.skeletonBlock} />
-        <Skeleton height="3rem" className={styles.skeletonBlock} />
       </main>
     );
   }
@@ -104,6 +138,7 @@ export default function OrderTrackingPage() {
   if (state.status === "error") {
     return (
       <main className={styles.page}>
+        {backLink}
         <div className={styles.centeredState}>
           <ErrorState title="Sipariş bulunamadı" message={state.message} />
         </div>
@@ -115,39 +150,44 @@ export default function OrderTrackingPage() {
 
   return (
     <main className={styles.page}>
-      <div className={styles.header}>
-        <h1 className={styles.orderNumber}>{tracking.orderNumber !== null ? `Sipariş No: #${tracking.orderNumber}` : "Siparişiniz"}</h1>
-        <p className={styles.total}>{formatPriceMinorUnits(tracking.totalMinorUnits)}</p>
+      {backLink}
+      <div className={styles.card}>
+        <div className={styles.header}>
+          <h1 className={styles.orderNumber}>{tracking.orderNumber !== null ? `Sipariş No: #${tracking.orderNumber}` : "Siparişiniz"}</h1>
+          <p className={styles.total}>{formatPriceMinorUnits(tracking.totalMinorUnits)}</p>
+        </div>
+
+        <OrderStatusTimeline status={tracking.status} />
+
+        {tracking.status === "IN_KITCHEN" || tracking.status === "READY" ? (
+          <p className={styles.deliveryNote}>
+            {DELIVERY_MODEL_MESSAGES[tracking.deliveryModel]?.[tracking.status] ??
+              DELIVERY_MODEL_MESSAGES[tracking.deliveryModel]?.default}
+          </p>
+        ) : null}
+        {tracking.latestRefundStatus ? (
+          <p className={styles.deliveryNote}>{REFUND_STATUS_MESSAGES[tracking.latestRefundStatus] ?? tracking.latestRefundStatus}</p>
+        ) : tracking.status === "REJECTED_BY_STORE" ? (
+          <p className={styles.deliveryNote}>Ödemeniz iade edilecek.</p>
+        ) : null}
+
+        <div className={styles.itemList}>
+          {tracking.items.map((item, index) => (
+            <div key={index} className={styles.item}>
+              <span className={styles.itemName}>
+                {item.orderedQuantity}× {item.productName}
+              </span>
+              {ITEM_STATUS_LABELS[item.status] ? (
+                <span className={styles.itemStatus}>{ITEM_STATUS_LABELS[item.status]}</span>
+              ) : null}
+            </div>
+          ))}
+        </div>
+
+        <Link href={`/order/track/${token}/receipt`} className={styles.receiptLink}>
+          Makbuzu Görüntüle
+        </Link>
       </div>
-
-      <OrderStatusTimeline status={tracking.status} />
-
-      {tracking.status === "IN_KITCHEN" || tracking.status === "READY" ? (
-        <p className={styles.deliveryNote}>
-          {DELIVERY_MODEL_MESSAGES[tracking.deliveryModel]?.[tracking.status] ??
-            DELIVERY_MODEL_MESSAGES[tracking.deliveryModel]?.default}
-        </p>
-      ) : null}
-      {tracking.latestRefundStatus ? (
-        <p className={styles.deliveryNote}>{REFUND_STATUS_MESSAGES[tracking.latestRefundStatus] ?? tracking.latestRefundStatus}</p>
-      ) : tracking.status === "REJECTED_BY_STORE" ? (
-        <p className={styles.deliveryNote}>Ödemeniz iade edilecek.</p>
-      ) : null}
-
-      <div className={styles.itemList}>
-        {tracking.items.map((item, index) => (
-          <div key={index} className={styles.item}>
-            <span className={styles.itemName}>
-              {item.orderedQuantity}× {item.productName}
-            </span>
-            <span className={styles.itemStatus}>{ITEM_STATUS_LABELS[item.status] ?? item.status}</span>
-          </div>
-        ))}
-      </div>
-
-      <Link href={`/order/track/${token}/receipt`} className={styles.receiptLink}>
-        Makbuzu Görüntüle
-      </Link>
     </main>
   );
 }

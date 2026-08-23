@@ -36,7 +36,7 @@ import {
   type KitchenFinancialSummary,
   type OrderControlOrder,
 } from "@/lib/api";
-import { formatElapsedMinutes, localIsoDate, waitingUrgency } from "@/lib/time";
+import { branchIsoDate, formatElapsedMinutes, waitingUrgency } from "@/lib/time";
 import { playCriticalOrderAlert } from "@/lib/alertSound";
 import AppShell from "@/components/layout/AppShell";
 import Button from "@/components/ui/Button";
@@ -148,6 +148,37 @@ function CashierDashboardPage() {
     }
   }, [pendingOrders, now]);
 
+  // Gap-analysis #14: REPORT_FINANCIAL_SUMMARY_VIEW is only granted to
+  // BUSINESS_ADMIN/BRANCH_MANAGER (see StaffRole) - checking the role here just
+  // avoids a call that would 403 for CASHIER; the backend enforces this regardless.
+  const refreshMetrics = useCallback(async () => {
+    try {
+      const context = await me();
+      // Branch-local "today", not the device's - agrees with the backend's own
+      // TenantService.resolveBranchTimeZone-based day boundary (see lib/time.ts).
+      const today = branchIsoDate(context.activeBranchTimeZone);
+      const operationalRequest = getBranchSalesReport(today, today).then((report) => {
+        setOperationalMetrics({
+          averagePreparationSeconds: report.averagePreparationSeconds,
+          completedOrderCount: report.completedOrderCount,
+        });
+      });
+      if (context.role !== "BUSINESS_ADMIN" && context.role !== "BRANCH_MANAGER") {
+        await operationalRequest;
+        return;
+      }
+      await Promise.all([
+        operationalRequest,
+        getKitchenFinancialSummary(today, today).then((summary) => {
+          setFinancialSummary(summary);
+        }),
+      ]);
+    } catch {
+      // Best-effort KPI refresh - the order-control lists above are the source of truth
+      // for the board and already surface their own errors.
+    }
+  }, []);
+
   const reloadAll = useCallback(async () => {
     const requestId = ++latestRequestIdRef.current;
     try {
@@ -174,7 +205,8 @@ function CashierDashboardPage() {
       setError("Sipariş listesi yüklenemedi.");
       setLoading(false);
     }
-  }, [router]);
+    void refreshMetrics();
+  }, [router, refreshMetrics]);
 
   useEffect(() => {
     let cancelled = false;
@@ -208,54 +240,32 @@ function CashierDashboardPage() {
     }
 
     const eventSource = new EventSource(buildOrderStreamUrl(), { withCredentials: true });
-    eventSource.addEventListener("open", () => setConnectionStatus("live"));
+    // The stream itself never replays a backlog (Section 2: "initial connect delivers no
+    // backlog") - a status change that lands while the connection is down/reconnecting
+    // (network blip, laptop sleep) would otherwise never reach this board until some later,
+    // unrelated event happens to trigger a refetch. Refetching on "open" (fired both for the
+    // first connect and every reconnect) closes that gap - same fix as the customer tracking
+    // page's unconditional reload on visibilitychange/reconnect.
+    eventSource.addEventListener("open", () => {
+      setConnectionStatus("live");
+      void fetchAll();
+    });
     eventSource.addEventListener("error", () => setConnectionStatus("reconnecting"));
-    eventSource.addEventListener("order-status", () => fetchAll());
+    eventSource.addEventListener("order-status", () => {
+      void fetchAll();
+      void refreshMetrics();
+    });
     void fetchAll();
 
     return () => {
       cancelled = true;
       eventSource.close();
     };
-  }, [router]);
+  }, [router, refreshMetrics]);
 
   useEffect(() => {
-    let cancelled = false;
-    // Gap-analysis #14: REPORT_FINANCIAL_SUMMARY_VIEW is only granted to
-    // BUSINESS_ADMIN/BRANCH_MANAGER (see StaffRole) - checking the role here just
-    // avoids a call that would 403 for CASHIER; the backend enforces this regardless.
-    me()
-      .then(async (context) => {
-        if (cancelled) {
-          return;
-        }
-        const today = localIsoDate(new Date());
-        const operationalRequest = getBranchSalesReport(today, today).then((report) => {
-          if (!cancelled) {
-            setOperationalMetrics({
-              averagePreparationSeconds: report.averagePreparationSeconds,
-              completedOrderCount: report.completedOrderCount,
-            });
-          }
-        });
-        if (context.role !== "BUSINESS_ADMIN" && context.role !== "BRANCH_MANAGER") {
-          await operationalRequest;
-          return;
-        }
-        await Promise.all([
-          operationalRequest,
-          getKitchenFinancialSummary(today, today).then((summary) => {
-            if (!cancelled) {
-              setFinancialSummary(summary);
-            }
-          }),
-        ]);
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    void refreshMetrics();
+  }, [refreshMetrics]);
 
   async function handleAccept(orderId: string) {
     setPendingOrderId(orderId);

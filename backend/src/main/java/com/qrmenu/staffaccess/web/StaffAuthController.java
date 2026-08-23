@@ -4,9 +4,11 @@ import com.qrmenu.staffaccess.StaffAuthService;
 import com.qrmenu.staffaccess.StaffAuthService.LoginResult;
 import com.qrmenu.staffaccess.StaffContext;
 import com.qrmenu.staffaccess.StaffCookieSupport;
+import com.qrmenu.staffaccess.web.dto.ChangePasswordRequest;
 import com.qrmenu.staffaccess.web.dto.LoginRequest;
 import com.qrmenu.staffaccess.web.dto.StaffContextResponse;
 import com.qrmenu.staffaccess.web.dto.StaffContextResponse.BranchSummary;
+import com.qrmenu.tenant.Branch;
 import com.qrmenu.tenant.TenantService;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -61,6 +63,19 @@ public class StaffAuthController {
         return toResponse(context);
     }
 
+    /** Self-service only - any authenticated staff user may change their own password, no
+     * Permission required. Requires the current password, ends every other session of theirs. */
+    @PostMapping("/change-password")
+    public ResponseEntity<Void> changePassword(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
+            @Valid @RequestBody ChangePasswordRequest request) {
+        UUID sessionId = StaffCookieSupport.parseSessionId(sessionCookie);
+        StaffContext context = staffAuthService.resolveStaffContext(sessionId);
+        staffAuthService.changePassword(
+                context.staffUserId(), sessionId, request.currentPassword(), request.newPassword(), request.confirmNewPassword());
+        return ResponseEntity.noContent().build();
+    }
+
     /**
      * businessName/branches back the top bar's "active business/branch context"
      * (Section 19.3) - GET /business and GET /branches are permission-gated
@@ -70,11 +85,13 @@ public class StaffAuthController {
      */
     private StaffContextResponse toResponse(StaffContext context) {
         String businessName = tenantService.getBusiness(context.businessId()).getName();
-        List<BranchSummary> branches = tenantService.listBranches(context.businessId()).stream()
+        List<Branch> accessibleBranches = tenantService.listBranches(context.businessId()).stream()
                 .filter(branch -> context.canAccessBranch(branch.getId()))
+                .toList();
+        List<BranchSummary> branches = accessibleBranches.stream()
                 .map(branch -> new BranchSummary(branch.getId(), branch.getName()))
                 .toList();
-        BranchSummary activeBranch = branches.size() == 1 ? branches.getFirst() : null;
+        Branch activeBranch = accessibleBranches.size() == 1 ? accessibleBranches.getFirst() : null;
         return new StaffContextResponse(
                 context.staffUserId(),
                 context.businessId(),
@@ -83,8 +100,9 @@ public class StaffAuthController {
                 context.branchIds().stream().toList(),
                 businessName,
                 branches,
-                activeBranch == null ? null : activeBranch.id(),
-                activeBranch == null ? null : activeBranch.name());
+                activeBranch == null ? null : activeBranch.getId(),
+                activeBranch == null ? null : activeBranch.getName(),
+                activeBranch == null ? null : tenantService.resolveBranchTimeZone(activeBranch).getId());
     }
 
     private ResponseCookie sessionCookie(UUID sessionId, Duration maxAge) {

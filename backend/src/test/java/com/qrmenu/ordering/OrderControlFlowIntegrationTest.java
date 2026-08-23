@@ -1,19 +1,31 @@
 package com.qrmenu.ordering;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.qrmenu.payment.MockPaymentProviderAdapter;
 import com.qrmenu.staffaccess.StaffCookieSupport;
 import com.qrmenu.support.AbstractIntegrationTest;
 import com.qrmenu.support.StaffFixtures;
 import com.qrmenu.support.TenantFixtures;
 import com.qrmenu.support.TenantFixtures.CheckedInVisit;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockCookie;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 import static com.qrmenu.support.AbstractIntegrationTest.TEST_ADMIN_TOKEN;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -26,6 +38,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * full refund without ever touching the kitchen queue.
  */
 class OrderControlFlowIntegrationTest extends AbstractIntegrationTest {
+
+    @MockitoSpyBean
+    private MockPaymentProviderAdapter paymentProvider;
 
     @Test
     void aPaidOrderWaitsForCashierAcceptanceThenReachesTheKitchenQueue() throws Exception {
@@ -160,6 +175,152 @@ class OrderControlFlowIntegrationTest extends AbstractIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"reasonCode\":\"OUT_OF_STOCK\"}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    /**
+     * Two REJECT clicks fired at (as close as a test can get to) the same instant -
+     * e.g. a cashier double-tapping, or two staff devices both open on the same
+     * pending order. OrderingService.rejectOrder now reads the order row with the same
+     * FOR UPDATE lock RefundService.requestFullRefund already used, so the second
+     * request has to wait for the first's whole reject+refund sequence to finish
+     * before it even re-reads the order status - it then fails immediately and
+     * cleanly (400, "already rejected"), never getting far enough to attempt a second
+     * refund. Money-safety itself (never refunding more than was paid) is also
+     * independently guaranteed one layer down by Payment.applyRefund's own row lock
+     * (see RefundFlowIntegrationTest's concurrent-refund coverage) - this test proves
+     * the ordering-level race is closed too, not just the payment-level invariant.
+     */
+    @Test
+    void concurrentDoubleRejectIssuesExactlyOneFullRefundAndTheSecondAttemptFailsCleanly() throws Exception {
+        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Concurrent Reject Business");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
+        String cashierCookie = bootstrapCashier(businessId, branchId, "cashier-reject-concurrent");
+        String tableId = TenantFixtures.createTable(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, "Masa 1");
+        String qrToken = TenantFixtures.createQrToken(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, tableId);
+        payAndAwaitStoreAcceptance(businessId, branchId, qrToken, "Poğaça", 1500, 2);
+        String trackingToken = lastTrackingToken;
+
+        String orderId = objectMapper.readTree(mockMvc.perform(pendingGet(branchId, cashierCookie))
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString())
+                .get(0)
+                .get("orderId")
+                .asText();
+
+        String rejectBody = "{\"reasonCode\":\"OUT_OF_STOCK\"}";
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<Integer> first = executor.submit(() -> performConcurrentReject(start, branchId, orderId, rejectBody, cashierCookie));
+            Future<Integer> second = executor.submit(() -> performConcurrentReject(start, branchId, orderId, rejectBody, cashierCookie));
+            start.countDown();
+
+            List<Integer> statuses = List.of(first.get(10, TimeUnit.SECONDS), second.get(10, TimeUnit.SECONDS));
+            assertThat(statuses).containsExactlyInAnyOrder(200, 400);
+        } finally {
+            executor.shutdownNow();
+        }
+
+        // Exactly one refund, fully completed, for exactly the paid amount (3000) -
+        // never double-refunded regardless of which request "won".
+        JsonNode receipt = objectMapper.readTree(mockMvc.perform(get("/api/order-tracking/{token}/receipt", trackingToken))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString());
+        assertThat(receipt.get("totalRefundedMinorUnits").asLong()).isEqualTo(3000);
+        assertThat(receipt.get("netPaidMinorUnits").asLong()).isEqualTo(0);
+        assertThat(receipt.get("refunds")).hasSize(1);
+        assertThat(receipt.get("refunds").get(0).get("status").asText()).isEqualTo("COMPLETED");
+    }
+
+    /**
+     * Section 6: "Refund başarısız olursa ... sipariş sessizce 'iptal edildi'
+     * sayılmaz" - a provider-side refund failure must not roll back or hide the
+     * rejection itself. The order stays REJECTED_BY_STORE (never silently reverted to
+     * AWAITING_STORE_ACCEPTANCE or masked as CANCELLED), the refund is recorded as its
+     * own FAILED row rather than dropped, the payment's refunded total stays exactly 0
+     * (the failed attempt released its reservation), and both the customer's tracking
+     * view and the staff order-history/latestRefundStatus surface FAILED - never
+     * COMPLETED - so nobody is misled into thinking the money already moved.
+     */
+    @Test
+    void refundProviderFailureOnRejectKeepsTheOrderRejectedWithAFailedRefundStatus() throws Exception {
+        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Refund Failure Business");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
+        String cashierCookie = bootstrapCashier(businessId, branchId, "cashier-reject-failure");
+        String tableId = TenantFixtures.createTable(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, "Masa 1");
+        String qrToken = TenantFixtures.createQrToken(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, tableId);
+        payAndAwaitStoreAcceptance(businessId, branchId, qrToken, "Ayran", 1000, 4);
+        String trackingToken = lastTrackingToken;
+
+        String orderId = objectMapper.readTree(mockMvc.perform(pendingGet(branchId, cashierCookie))
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString())
+                .get(0)
+                .get("orderId")
+                .asText();
+
+        doThrow(new IllegalStateException("Provider rejected refund"))
+                .when(paymentProvider)
+                .refund(anyString(), eq(4000L));
+
+        mockMvc.perform(post("/api/staff/branches/{branchId}/orders/{orderId}/reject", branchId, orderId)
+                        .cookie(cashierCookie(cashierCookie))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reasonCode\":\"OUT_OF_STOCK\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("REJECTED_BY_STORE"));
+
+        JsonNode tracking = objectMapper.readTree(mockMvc.perform(get("/api/order-tracking/{token}", trackingToken))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString());
+        assertThat(tracking.get("status").asText()).isEqualTo("REJECTED_BY_STORE");
+        assertThat(tracking.get("latestRefundStatus").asText()).isEqualTo("FAILED");
+
+        JsonNode receipt = objectMapper.readTree(mockMvc.perform(get("/api/order-tracking/{token}/receipt", trackingToken))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString());
+        assertThat(receipt.get("totalRefundedMinorUnits").asLong()).isZero();
+        assertThat(receipt.get("netPaidMinorUnits").asLong()).isEqualTo(4000);
+        assertThat(receipt.get("refunds").get(0).get("status").asText()).isEqualTo("FAILED");
+
+        // The branch has no configured timezone, so getOrderHistory resolves its
+        // calendar-day range via TenantService.resolveBranchTimeZone, which falls back
+        // to the business's defaultTimeZone ("Europe/Istanbul" - see TenantFixtures.
+        // createBusiness / Business's single-arg constructor), never a bare UTC guess.
+        // Matching that here keeps this assertion correct regardless of what the local
+        // wall-clock date happens to be relative to Europe/Istanbul's.
+        LocalDate today = LocalDate.now(java.time.ZoneId.of("Europe/Istanbul"));
+        JsonNode history = objectMapper.readTree(mockMvc.perform(get(
+                                "/api/staff/branches/{branchId}/orders/history?from=" + today + "&to=" + today, branchId)
+                        .cookie(cashierCookie(cashierCookie)))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString());
+        assertThat(history).hasSize(1);
+        assertThat(history.get(0).get("orderId").asText()).isEqualTo(orderId);
+        assertThat(history.get(0).get("status").asText()).isEqualTo("REJECTED_BY_STORE");
+        assertThat(history.get(0).get("latestRefundStatus").asText()).isEqualTo("FAILED");
+    }
+
+    private int performConcurrentReject(CountDownLatch start, String branchId, String orderId, String body, String staffCookie)
+            throws Exception {
+        assertThat(start.await(5, TimeUnit.SECONDS)).isTrue();
+        return mockMvc.perform(post("/api/staff/branches/{branchId}/orders/{orderId}/reject", branchId, orderId)
+                        .cookie(cashierCookie(staffCookie))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andReturn()
+                .getResponse()
+                .getStatus();
     }
 
     private String lastTrackingToken;

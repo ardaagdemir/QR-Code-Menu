@@ -125,6 +125,15 @@ public class StaffExpenseController {
         return toResponse(expense, categoryNameMap(context.businessId()));
     }
 
+    @PostMapping("/api/staff/expenses/{expenseId}/cancel")
+    public ExpenseResponse cancelExpense(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
+            @PathVariable UUID expenseId) {
+        StaffContext context = requireManage(sessionCookie);
+        Expense expense = expenseService.cancelManualExpense(context, expenseId);
+        return toResponse(expense, categoryNameMap(context.businessId()));
+    }
+
     /**
      * The only way to read a receipt's bytes back - not exposed on any public /media/**
      * path (see MediaResourceConfig). Scoped to the caller's own
@@ -254,7 +263,8 @@ public class StaffExpenseController {
                 expense.getVendor(),
                 expense.getDescription(),
                 expense.getReceiptImageUrl(),
-                expense.getCreatedAt());
+                expense.getCreatedAt(),
+                expense.getCancelledAt());
     }
 
     private static RecurringExpenseTemplateResponse toResponse(

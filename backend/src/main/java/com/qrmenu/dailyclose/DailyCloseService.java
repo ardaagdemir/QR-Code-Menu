@@ -9,7 +9,6 @@ import com.qrmenu.tenant.TenantService;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -122,7 +121,9 @@ public class DailyCloseService {
         return repository.findAllByBusinessIdAndBusinessDateBetweenOrderByBranchIdAscBusinessDateAsc(businessId, from, to);
     }
 
-    private static ZoneId resolveZone(Branch branch) {
-        return branch.getTimezone() != null ? ZoneId.of(branch.getTimezone()) : ZoneOffset.UTC;
+    private ZoneId resolveZone(Branch branch) {
+        // TenantService.resolveBranchTimeZone is the single source of truth (branch's
+        // own timezone, else its business's defaultTimeZone - never a bare UTC guess).
+        return tenantService.resolveBranchTimeZone(branch);
     }
 }

@@ -10,7 +10,7 @@ import jakarta.persistence.EntityManager;
 import java.io.ByteArrayInputStream;
 import java.time.LocalDate;
 import java.time.LocalTime;
-import java.time.ZoneOffset;
+import java.time.ZoneId;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.Test;
@@ -34,6 +34,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 class DailyCloseFlowIntegrationTest extends AbstractIntegrationTest {
 
+    // None of these fixtures set an explicit Branch.timezone, so TenantService.
+    // resolveBranchTimeZone falls back to Business.defaultTimeZone - which
+    // TenantFixtures.createBusiness leaves at its own default ("Europe/Istanbul", see
+    // Business's single-arg constructor), never a bare UTC guess.
+    private static final ZoneId BUSINESS_DEFAULT_ZONE = ZoneId.of("Europe/Istanbul");
+
     @Autowired
     private DailyCloseScheduler scheduler;
 
@@ -42,6 +48,9 @@ class DailyCloseFlowIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private EntityManager entityManager;
+
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
 
     @Test
     void manualFinalComputesFromOrdersAndStaysImmutableAfterward() throws Exception {
@@ -55,7 +64,7 @@ class DailyCloseFlowIntegrationTest extends AbstractIntegrationTest {
 
         payAndAcceptOneOrder(businessId, branchId, adminCookie, productId, 2);
 
-        LocalDate today = LocalDate.now(ZoneOffset.UTC);
+        LocalDate today = LocalDate.now(BUSINESS_DEFAULT_ZONE);
         MockCookie cookie = new MockCookie(StaffCookieSupport.COOKIE_NAME, adminCookie);
         JsonNode first = objectMapper.readTree(mockMvc.perform(
                         post("/api/staff/branches/{branchId}/daily-close/final", branchId)
@@ -87,6 +96,55 @@ class DailyCloseFlowIntegrationTest extends AbstractIntegrationTest {
         assertThat(second.get("generatedAt").asText()).isEqualTo(first.get("generatedAt").asText());
     }
 
+    /**
+     * Same root-cause bug class as OrderHistoryIntegrationTest's/ReportingFlowIntegrationTest's
+     * midnight-boundary regressions, exercised through daily close (Kasa gün sonu) instead:
+     * an order created at 01:30 Europe/Istanbul is still 22:30 the previous UTC calendar
+     * day (Turkey has had no DST since 2016). generateFinal(businessDate=today) must
+     * still capture it - DailyCloseService delegates to ReportingService.getBranchReport,
+     * which resolves the branch's calendar day via the branch's own timezone (here, its
+     * business's defaultTimeZone fallback), never UTC. Anchored to a fixed offset from
+     * the real "today" so it's deterministic regardless of when the suite runs.
+     */
+    @Test
+    void generateFinalIncludesAnOrderCreatedJustAfterEuropeIstanbulMidnightEvenThoughItsStillYesterdayInUtc() throws Exception {
+        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Close Midnight Boundary Business");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
+        String adminCookie = StaffFixtures.bootstrapBusinessAdminAndLogin(
+                mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "close-midnight-admin@example.com");
+        String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Kategori");
+        String productId = TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Ürün", 2500, 10);
+        TenantFixtures.upsertBranchProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, productId, "AVAILABLE", null);
+
+        payAndAcceptOneOrder(businessId, branchId, adminCookie, productId, 1);
+        MockCookie cookie = new MockCookie(StaffCookieSupport.COOKIE_NAME, adminCookie);
+        JsonNode inProgress = objectMapper.readTree(mockMvc.perform(
+                        get("/api/staff/branches/{branchId}/orders/in-progress", branchId).cookie(cookie))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString());
+        String orderId = inProgress.get(0).get("orderId").asText();
+
+        LocalDate istanbulToday = LocalDate.now(BUSINESS_DEFAULT_ZONE);
+        java.time.Instant justAfterIstanbulMidnight = istanbulToday.atTime(1, 30).atZone(BUSINESS_DEFAULT_ZONE).toInstant();
+        jdbcTemplate.update(
+                "UPDATE customer_order SET created_at = ? WHERE id = ?",
+                java.sql.Timestamp.from(justAfterIstanbulMidnight), java.util.UUID.fromString(orderId));
+
+        JsonNode report = objectMapper.readTree(mockMvc.perform(
+                        post("/api/staff/branches/{branchId}/daily-close/final", branchId)
+                                .param("businessDate", istanbulToday.toString())
+                                .cookie(cookie))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString());
+        assertThat(report.get("status").asText()).isEqualTo("FINAL");
+        assertThat(report.get("grossSalesMinorUnits").asLong()).isEqualTo(2500);
+        assertThat(report.get("orderCount").asInt()).isEqualTo(1);
+    }
+
     /** BRANCH_MANAGER has REPORT_VIEW (branch-scoped) but not REPORT_CHAIN_VIEW - the chain export must still reject it. */
     @Test
     void branchManagerCannotExportChainDailyCloseExcel() throws Exception {
@@ -100,7 +158,7 @@ class DailyCloseFlowIntegrationTest extends AbstractIntegrationTest {
                                 + "\",\"role\":\"BRANCH_MANAGER\",\"branchIds\":[\"" + branchId + "\"]}"))
                 .andExpect(status().isCreated());
         String managerCookie = StaffFixtures.login(mockMvc, managerEmail);
-        LocalDate today = LocalDate.now(ZoneOffset.UTC);
+        LocalDate today = LocalDate.now(BUSINESS_DEFAULT_ZONE);
 
         mockMvc.perform(get("/api/staff/daily-close/chain/excel")
                         .param("from", today.toString())
@@ -116,7 +174,7 @@ class DailyCloseFlowIntegrationTest extends AbstractIntegrationTest {
         String adminCookie =
                 StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "close-admin-3@example.com");
         MockCookie cookie = new MockCookie(StaffCookieSupport.COOKIE_NAME, adminCookie);
-        LocalDate today = LocalDate.now(ZoneOffset.UTC);
+        LocalDate today = LocalDate.now(BUSINESS_DEFAULT_ZONE);
 
         mockMvc.perform(post("/api/staff/branches/{branchId}/daily-close/final", branchId)
                         .param("businessDate", today.toString())
@@ -151,15 +209,16 @@ class DailyCloseFlowIntegrationTest extends AbstractIntegrationTest {
         String finalAdminCookie = StaffFixtures.bootstrapAndLogin(
                 mockMvc, TEST_ADMIN_TOKEN, businessId, finalBranchId, "close-admin-4b@example.com", "BUSINESS_ADMIN");
 
-        // Branches default to UTC (no timezone configured) - hours must be set in UTC wall-clock time to match.
+        // Branches default to the business's Europe/Istanbul timezone (no branch-level
+        // override configured) - hours must be set in that same wall-clock time to match.
         // Closing in 3 minutes: inside the 10-minute preview lead, but not yet past the 5-minute final grace.
-        setTodayHours(previewBranchId, previewAdminCookie, LocalTime.now(ZoneOffset.UTC).plusMinutes(3));
+        setTodayHours(previewBranchId, previewAdminCookie, LocalTime.now(BUSINESS_DEFAULT_ZONE).plusMinutes(3));
         // Closed 6 minutes ago: already past closing + 5-minute grace -> should go straight to FINAL.
-        setTodayHours(finalBranchId, finalAdminCookie, LocalTime.now(ZoneOffset.UTC).minusMinutes(6));
+        setTodayHours(finalBranchId, finalAdminCookie, LocalTime.now(BUSINESS_DEFAULT_ZONE).minusMinutes(6));
 
         scheduler.generateDueSnapshots();
 
-        LocalDate today = LocalDate.now(ZoneOffset.UTC);
+        LocalDate today = LocalDate.now(BUSINESS_DEFAULT_ZONE);
         var previewReports = dailyCloseService.listForBranch(java.util.UUID.fromString(previewBranchId), today, today);
         assertThat(previewReports).hasSize(1);
         assertThat(previewReports.get(0).getStatus()).isEqualTo(DailyCloseStatus.PREVIEW);
@@ -188,14 +247,14 @@ class DailyCloseFlowIntegrationTest extends AbstractIntegrationTest {
         String healthyAdminCookie = StaffFixtures.bootstrapAndLogin(
                 mockMvc, TEST_ADMIN_TOKEN, businessId, healthyBranchId, "close-admin-5b@example.com", "BUSINESS_ADMIN");
 
-        // Both branches close 6 minutes ago (UTC wall-clock, matching schedulerRespectsPreviewLeadAndFinalGraceThresholds).
-        setTodayHours(brokenBranchId, brokenAdminCookie, LocalTime.now(ZoneOffset.UTC).minusMinutes(6));
-        setTodayHours(healthyBranchId, healthyAdminCookie, LocalTime.now(ZoneOffset.UTC).minusMinutes(6));
+        // Both branches close 6 minutes ago (business-default wall-clock, matching schedulerRespectsPreviewLeadAndFinalGraceThresholds).
+        setTodayHours(brokenBranchId, brokenAdminCookie, LocalTime.now(BUSINESS_DEFAULT_ZONE).minusMinutes(6));
+        setTodayHours(healthyBranchId, healthyAdminCookie, LocalTime.now(BUSINESS_DEFAULT_ZONE).minusMinutes(6));
         corruptBranchTimezone(brokenBranchId, "Not/ARealZone");
 
         scheduler.generateDueSnapshots();
 
-        LocalDate today = LocalDate.now(ZoneOffset.UTC);
+        LocalDate today = LocalDate.now(BUSINESS_DEFAULT_ZONE);
         var healthyReports = dailyCloseService.listForBranch(java.util.UUID.fromString(healthyBranchId), today, today);
         assertThat(healthyReports).hasSize(1);
         assertThat(healthyReports.get(0).getStatus()).isEqualTo(DailyCloseStatus.FINAL);
@@ -214,7 +273,7 @@ class DailyCloseFlowIntegrationTest extends AbstractIntegrationTest {
     }
 
     private void setTodayHours(String branchId, String staffCookie, LocalTime closingTime) throws Exception {
-        String dayOfWeek = LocalDate.now(ZoneOffset.UTC).getDayOfWeek().name();
+        String dayOfWeek = LocalDate.now(BUSINESS_DEFAULT_ZONE).getDayOfWeek().name();
         mockMvc.perform(post("/api/staff/branches/{branchId}/business-hours", branchId)
                         .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, staffCookie))
                         .contentType(MediaType.APPLICATION_JSON)

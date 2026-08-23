@@ -32,7 +32,7 @@ class TableVisitCleanupSchedulerTest {
         TableVisit healthyVisit = mock(TableVisit.class);
         when(failingVisit.getId()).thenReturn(failingVisitId);
         when(healthyVisit.getId()).thenReturn(healthyVisitId);
-        when(repository.findAllByClosedAtIsNullAndLastActivityAtBefore(any(Instant.class)))
+        when(repository.findAllExpiredAndOpen(any(Instant.class), any(Instant.class)))
                 .thenReturn(List.of(failingVisit, healthyVisit));
         doThrow(new IllegalStateException("simulated close failure"))
                 .when(closer)

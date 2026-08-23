@@ -1,6 +1,6 @@
 "use client";
 
-import { localIsoDate } from "@/lib/time";
+import { branchCalendarDate, localIsoDate } from "@/lib/time";
 import FormField from "./FormField";
 import Input from "./Input";
 import styles from "./DateRangePresets.module.css";
@@ -17,9 +17,14 @@ function startOfWeek(today: Date): Date {
   return monday;
 }
 
-/** Bölüm 19.3 "Raporlama": "hızlı tarih presetleri: Bugün / Dün / Bu Hafta / Bu Ay / Özel". */
-export function presetRange(preset: "today" | "yesterday" | "week" | "month"): DateRange {
-  const today = new Date();
+/**
+ * Bölüm 19.3 "Raporlama": "hızlı tarih presetleri: Bugün / Dün / Bu Hafta / Bu Ay / Özel".
+ * `timeZone` should be the active branch's own timezone (StaffContext.activeBranchTimeZone)
+ * so these agree with the branch-timezone-based reporting endpoints they feed - omitting it
+ * falls back to the device's own local date (see lib/time.ts's branchIsoDate).
+ */
+export function presetRange(preset: "today" | "yesterday" | "week" | "month", timeZone?: string | null): DateRange {
+  const today = branchCalendarDate(timeZone);
   if (preset === "today") {
     return { from: toIsoDate(today), to: toIsoDate(today) };
   }
@@ -44,11 +49,13 @@ const PRESETS: Array<{ key: "today" | "yesterday" | "week" | "month"; label: str
 type Props = {
   value: DateRange;
   onChange: (range: DateRange) => void;
+  /** Active branch's timezone (StaffContext.activeBranchTimeZone) - see presetRange. */
+  timeZone?: string | null;
 };
 
-export default function DateRangePresets({ value, onChange }: Props) {
+export default function DateRangePresets({ value, onChange, timeZone }: Props) {
   const activePreset = PRESETS.find((preset) => {
-    const range = presetRange(preset.key);
+    const range = presetRange(preset.key, timeZone);
     return range.from === value.from && range.to === value.to;
   });
 
@@ -60,7 +67,7 @@ export default function DateRangePresets({ value, onChange }: Props) {
             key={preset.key}
             type="button"
             className={[styles.presetButton, activePreset?.key === preset.key ? styles.active : ""].join(" ")}
-            onClick={() => onChange(presetRange(preset.key))}
+            onClick={() => onChange(presetRange(preset.key, timeZone))}
           >
             {preset.label}
           </button>

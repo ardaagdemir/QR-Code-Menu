@@ -58,7 +58,7 @@ export default function ExpensesPage() {
           />
         </div>
 
-        <ExpenseList refreshToken={expenseRefreshToken} />
+        <ExpenseList categories={categories} refreshToken={expenseRefreshToken} />
 
         <RecurringTemplates categories={categories} />
       </main>

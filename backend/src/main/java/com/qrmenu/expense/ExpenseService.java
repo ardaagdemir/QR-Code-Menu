@@ -108,9 +108,36 @@ public class ExpenseService {
             String description,
             String receiptImageUrl) {
         Expense expense = requireManualExpense(context, expenseId);
+        if (expense.isCancelled()) {
+            throw new IllegalStateException("Cancelled expenses cannot be edited: " + expenseId);
+        }
         requireCategory(context.businessId(), categoryId);
         expense.applyManualEdit(categoryId, amountMinorUnits, incurredAt, vendor, description, receiptImageUrl);
         return expenseRepository.save(expense);
+    }
+
+    /**
+     * Soft-void rather than a hard delete so the row and its audit trail survive
+     * (product requirement: cancelled expenses must remain auditable). Restricted to
+     * manual expenses via requireManualExpense, same as updateManualExpense, so
+     * scheduler-generated recurring realizations are never touched by this path.
+     */
+    @Transactional
+    public Expense cancelManualExpense(StaffContext context, UUID expenseId) {
+        Expense expense = requireManualExpense(context, expenseId);
+        if (expense.isCancelled()) {
+            throw new IllegalStateException("Expense is already cancelled: " + expenseId);
+        }
+        expense.cancel(context.staffUserId());
+        Expense saved = expenseRepository.save(expense);
+        auditService.record(
+                context.businessId(),
+                context.staffUserId(),
+                "Expense",
+                expenseId,
+                "CANCELLED",
+                Map.of("amountMinorUnits", expense.getAmountMinorUnits()));
+        return saved;
     }
 
     @Transactional(readOnly = true)
