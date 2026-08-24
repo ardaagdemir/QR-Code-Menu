@@ -18,7 +18,7 @@
   padding: 26px 30px 36px;
   max-width: var(--container-width-kiosk);
   margin: 0 auto;
-  color: #28231f;
+  color: var(--color-fg);
 }
 
 /* Mockup'ın üst araç çubuğu (arama/tarih/yenile) - global AppShell topbar'ı değil,
@@ -30,34 +30,16 @@
   margin-bottom: var(--space-6);
 }
 
-.searchBar {
+.searchBarWrap {
   flex: 1;
   min-width: 200px;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 0 var(--space-4);
+}
+
+.searchBarWrap :global(input) {
   height: 46px;
   border-radius: 10px;
-  border: 1px solid #e8e3df;
-  background: #ffffff;
-  color: #7b746f;
+  border-color: var(--color-panel-border);
   box-shadow: 0 2px 8px rgba(66, 43, 28, 0.03);
-}
-
-.searchInput {
-  flex: 1;
-  min-width: 0;
-  border: none;
-  outline: none;
-  background: none;
-  font: inherit;
-  font-size: var(--font-size-sm);
-  color: #28231f;
-}
-
-.searchInput::placeholder {
-  color: #958e89;
 }
 
 .dateChip {
@@ -68,11 +50,11 @@
   height: 46px;
   padding: 0 var(--space-4);
   border-radius: 10px;
-  border: 1px solid #e8e3df;
-  background: #ffffff;
+  border: 1px solid var(--color-panel-border);
+  background: var(--color-surface-raised);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
-  color: #4f4945;
+  color: var(--color-fg);
   white-space: nowrap;
 }
 
@@ -86,7 +68,7 @@
   border: none;
   border-radius: 9px;
   background: var(--kasa-accent);
-  color: #fff;
+  color: var(--color-primary-fg);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
   cursor: pointer;
@@ -95,6 +77,19 @@
 
 .refreshButton:not(:disabled):hover {
   background: var(--kasa-accent-strong);
+}
+
+.spinning {
+  animation: kasa-spin 0.8s linear infinite;
+}
+
+@keyframes kasa-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .refreshButton:disabled {
@@ -130,10 +125,10 @@
   gap: var(--space-2);
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
-  color: #77706b;
+  color: var(--color-fg-muted);
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-full);
-  background: #f4f1ee;
+  background: var(--color-surface);
 }
 
 .connectionDot {
@@ -178,12 +173,12 @@
   gap: 6px;
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
-  color: #706964;
+  color: var(--color-fg-muted);
   text-decoration: none;
   padding: var(--space-2) var(--space-4);
   border-radius: 9px;
-  border: 1px solid #e5dfdb;
-  background: #ffffff;
+  border: 1px solid var(--color-panel-border);
+  background: var(--color-surface-raised);
   transition:
     color var(--transition-fast),
     border-color var(--transition-fast);
@@ -228,8 +223,8 @@
   gap: var(--space-4);
   min-height: 104px;
   padding: 18px 20px;
-  background: #ffffff;
-  border: 1px solid #e9e4e0;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-panel-border);
   border-radius: 11px;
   box-shadow: 0 5px 14px rgba(64, 42, 27, 0.06);
 }
@@ -242,7 +237,7 @@
   width: 52px;
   height: 52px;
   border-radius: var(--radius-full);
-  background: #fff4ed;
+  background: var(--kasa-accent-tint);
   color: var(--kasa-accent);
 }
 
@@ -255,7 +250,7 @@
 
 .kpiLabel {
   font-size: var(--font-size-sm);
-  color: #716a65;
+  color: var(--color-fg-muted);
 }
 
 .kpiValue {
@@ -272,7 +267,7 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0;
   align-items: start;
-  border-top: 1px solid #ebe6e2;
+  border-top: 1px solid var(--color-panel-border);
 }
 
 .column {
@@ -282,7 +277,7 @@
   min-width: 0;
   background: transparent;
   border: none;
-  border-right: 1px solid #ebe6e2;
+  border-right: 1px solid var(--color-panel-border);
   border-radius: 0;
   padding: var(--space-4) var(--space-3) 0;
 }
@@ -324,7 +319,7 @@
   width: 30px;
   height: 30px;
   border-radius: 8px;
-  background: color-mix(in srgb, var(--column-accent) 12%, #ffffff);
+  background: color-mix(in srgb, var(--column-accent) 12%, var(--color-surface-raised));
   color: var(--column-accent);
 }
 
@@ -361,16 +356,16 @@
  * süre metni/nokta/buton rengiyle ayrışıyor (mockup'taki gibi). */
 .card {
   position: relative;
-  background: #ffffff;
-  border: 1px solid #e8e3df;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-panel-border);
   border-radius: 10px;
   padding: 13px 14px 14px;
   box-shadow: 0 3px 10px rgba(62, 40, 25, 0.045);
 }
 
 .card--pending {
-  background: #fffafa;
-  border-color: #f2cccc;
+  background: var(--kasa-rose-tint);
+  border-color: color-mix(in srgb, var(--kasa-rose) 30%, var(--color-panel-border));
   border-left: 3px solid var(--kasa-rose);
 }
 
@@ -398,7 +393,7 @@
   gap: 10px;
   padding-bottom: 10px;
   margin-bottom: 9px;
-  border-bottom: 1px solid #eee9e5;
+  border-bottom: 1px solid var(--color-panel-border);
 }
 
 .tableChip {
@@ -409,8 +404,8 @@
   width: 34px;
   height: 34px;
   border-radius: 8px;
-  background: #fff0df;
-  color: #4d4037;
+  background: var(--kasa-accent-tint);
+  color: var(--kasa-accent-strong);
 }
 
 .cardTopMain {
@@ -430,7 +425,7 @@
 .orderNumber {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: var(--font-size-xs);
-  color: #837b76;
+  color: var(--color-fg-muted);
   letter-spacing: 0.02em;
 }
 
@@ -466,7 +461,7 @@
 
 .timeSub {
   font-size: var(--font-size-xs);
-  color: #817a75;
+  color: var(--color-fg-muted);
   white-space: nowrap;
 }
 
@@ -508,12 +503,12 @@
 
 .itemOptions {
   font-size: var(--font-size-xs);
-  color: #817a75;
+  color: var(--color-fg-muted);
 }
 
 .cardFooter {
   padding-top: 10px;
-  border-top: 1px solid #eee9e5;
+  border-top: 1px solid var(--color-panel-border);
 }
 
 .totalRow {
@@ -525,7 +520,7 @@
 
 .totalLabel {
   font-size: var(--font-size-sm);
-  color: #77706b;
+  color: var(--color-fg-muted);
 }
 
 .totalValue {
@@ -593,7 +588,7 @@
   .column:last-child {
     padding: var(--space-4) 0;
     border-right: none;
-    border-bottom: 1px solid #ebe6e2;
+    border-bottom: 1px solid var(--color-panel-border);
   }
 
   .column:last-child {
@@ -618,7 +613,7 @@
     order: 2;
   }
 
-  .searchBar {
+  .searchBarWrap {
     order: 0;
     flex-basis: 100%;
   }

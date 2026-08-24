@@ -5,6 +5,7 @@ import { Clock3, MapPin, Settings2 } from "lucide-react";
 import {
   getBusinessHours,
   listBranches,
+  me,
   setAddress,
   setBranchTimezone,
   setBusinessHours,
@@ -15,6 +16,7 @@ import {
   type BranchBusinessHoursEntry,
   type DayOfWeek,
   type DeliveryModel,
+  type StaffContext,
 } from "@/lib/api";
 import AppShell from "@/components/layout/AppShell";
 import Button from "@/components/ui/Button";
@@ -85,11 +87,17 @@ export default function BranchSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
+  const [role, setRole] = useState<StaffContext["role"] | null>(null);
+
+  // BRANCH_MANAGER holds Permission.ORDERING_TOGGLE for its own branch (backend,
+  // StaffRole.java) but not BRANCH_MANAGE, so it can read this screen but only ever
+  // touch the ordering toggle - every other section here stays BUSINESS_ADMIN-only.
+  const canManageBranch = role === "BUSINESS_ADMIN";
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([listBranches(), getBusinessHours()])
-      .then(([branches, hoursList]) => {
+    Promise.all([listBranches(), getBusinessHours(), me()])
+      .then(([branches, hoursList, staffContext]) => {
         if (cancelled) return;
         const current = branches[0] ?? null;
         setBranch(current);
@@ -99,6 +107,7 @@ export default function BranchSettingsPage() {
         setDeliveryModelInput(current?.deliveryModel ?? "WAITER_DELIVERY");
         const byDay = Object.fromEntries(hoursList.map((entry) => [entry.dayOfWeek, entry]));
         setHours(DAYS_OF_WEEK.map((day) => byDay[day] ?? defaultHoursForDay(day)));
+        setRole(staffContext.role);
         setError(null);
       })
       .catch(() => {
@@ -210,27 +219,33 @@ export default function BranchSettingsPage() {
                       <span className={pageStyles.switchTrack} aria-hidden="true" />
                     </label>
                   </div>
-                  <FormField label="Teslimat modeli">
-                    {(controlProps) => (
-                      <Select
-                        {...controlProps}
-                        value={deliveryModel}
-                        onChange={(event) => setDeliveryModelInput(event.target.value as DeliveryModel)}
-                      >
-                        <option value="WAITER_DELIVERY">Garson servisi</option>
-                        <option value="CUSTOMER_PICKUP">Müşteri kendi alır (pickup)</option>
-                      </Select>
-                    )}
-                  </FormField>
+                  {canManageBranch ? (
+                    <FormField label="Teslimat modeli">
+                      {(controlProps) => (
+                        <Select
+                          {...controlProps}
+                          value={deliveryModel}
+                          onChange={(event) => setDeliveryModelInput(event.target.value as DeliveryModel)}
+                        >
+                          <option value="WAITER_DELIVERY">Garson servisi</option>
+                          <option value="CUSTOMER_PICKUP">Müşteri kendi alır (pickup)</option>
+                        </Select>
+                      )}
+                    </FormField>
+                  ) : null}
                 </div>
-                <div className={pageStyles.cardFooter}>
-                  <Button type="submit" disabled={saving !== null}>
-                    {saving === "delivery" ? "Kaydediliyor…" : "Operasyonu Kaydet"}
-                  </Button>
-                </div>
+                {canManageBranch ? (
+                  <div className={pageStyles.cardFooter}>
+                    <Button type="submit" disabled={saving !== null}>
+                      {saving === "delivery" ? "Kaydediliyor…" : "Operasyonu Kaydet"}
+                    </Button>
+                  </div>
+                ) : null}
               </form>
             </section>
 
+            {canManageBranch ? (
+            <>
             <section className={`${styles.section} ${styles.panel} ${pageStyles.card}`}>
               <div className={pageStyles.cardHeader}>
                 <span className={pageStyles.cardIcon} aria-hidden="true"><MapPin size={19} /></span>
@@ -337,6 +352,8 @@ export default function BranchSettingsPage() {
                 </Button>
               </div>
             </section>
+            </>
+            ) : null}
           </>
         ) : null}
       </main>

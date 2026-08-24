@@ -20,7 +20,6 @@ import {
   Timer,
 } from "lucide-react";
 import {
-  ApiError,
   acceptOrder,
   buildOrderStreamUrl,
   completeOrder,
@@ -30,6 +29,8 @@ import {
   getKitchenFinancialSummary,
   getPendingAcceptanceOrders,
   getReadyOrders,
+  isAccessDenied,
+  isSessionExpired,
   markOrderReady,
   me,
   rejectOrder,
@@ -42,6 +43,7 @@ import AppShell from "@/components/layout/AppShell";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import ErrorState from "@/components/ui/ErrorState";
+import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import Textarea from "@/components/ui/Textarea";
 import styles from "./page.module.css";
@@ -101,6 +103,7 @@ function CashierDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [connectionStatus, setConnectionStatus] = useState<"connecting" | "live" | "reconnecting">("connecting");
   const [error, setError] = useState<string | null>(null);
+  const [accessDenied, setAccessDenied] = useState(false);
   const [pendingOrderId, setPendingOrderId] = useState<string | null>(null);
   const [rejectingOrderId, setRejectingOrderId] = useState<string | null>(null);
   const [readyingOrderId, setReadyingOrderId] = useState<string | null>(null);
@@ -111,6 +114,7 @@ function CashierDashboardPage() {
     completedOrderCount: number;
   } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const reasonCodeRef = useRef<Record<string, string>>({});
   const noteRef = useRef<Record<string, string>>({});
@@ -198,8 +202,13 @@ function CashierDashboardPage() {
       if (requestId !== latestRequestIdRef.current) {
         return;
       }
-      if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+      if (isSessionExpired(err)) {
         router.replace("/");
+        return;
+      }
+      if (isAccessDenied(err)) {
+        setAccessDenied(true);
+        setLoading(false);
         return;
       }
       setError("Sipariş listesi yüklenemedi.");
@@ -230,8 +239,13 @@ function CashierDashboardPage() {
         if (cancelled || requestId !== latestRequestIdRef.current) {
           return;
         }
-        if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+        if (isSessionExpired(err)) {
           router.replace("/");
+          return;
+        }
+        if (isAccessDenied(err)) {
+          setAccessDenied(true);
+          setLoading(false);
           return;
         }
         setError("Sipariş listesi yüklenemedi.");
@@ -266,6 +280,15 @@ function CashierDashboardPage() {
   useEffect(() => {
     void refreshMetrics();
   }, [refreshMetrics]);
+
+  async function handleManualRefresh() {
+    setRefreshing(true);
+    try {
+      await reloadAll();
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   async function handleAccept(orderId: string) {
     setPendingOrderId(orderId);
@@ -327,27 +350,30 @@ function CashierDashboardPage() {
   const searchActive = normalizedQuery.length > 0;
 
   return (
-    <AppShell>
+    <AppShell accessDenied={accessDenied}>
       <main className={styles.page}>
         <div className={styles.toolbar}>
           <span className={styles.dateChip}>
             <CalendarDays size={15} aria-hidden="true" />
             {todayLabel}
           </span>
-          <label className={styles.searchBar}>
-            <Search size={16} aria-hidden="true" />
-            <input
-              type="text"
-              className={styles.searchInput}
-              placeholder="Sipariş veya masa ara..."
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              aria-label="Sipariş veya masa ara"
-            />
-          </label>
-          <button type="button" className={styles.refreshButton} onClick={() => reloadAll()} disabled={loading}>
-            <RefreshCw size={15} aria-hidden="true" />
-            Yenile
+          <Input
+            wrapperClassName={styles.searchBarWrap}
+            icon={<Search size={16} />}
+            type="text"
+            placeholder="Sipariş veya masa ara..."
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            aria-label="Sipariş veya masa ara"
+          />
+          <button
+            type="button"
+            className={styles.refreshButton}
+            onClick={handleManualRefresh}
+            disabled={loading || refreshing}
+          >
+            <RefreshCw size={15} aria-hidden="true" className={refreshing ? styles.spinning : undefined} />
+            {refreshing ? "Yenileniyor…" : "Yenile"}
           </button>
         </div>
 

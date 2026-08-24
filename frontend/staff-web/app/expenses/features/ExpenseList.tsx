@@ -11,7 +11,7 @@ import {
   type Expense,
   type ExpenseCategory,
 } from "@/lib/api";
-import { localIsoDate } from "@/lib/time";
+import { branchIsoDate } from "@/lib/time";
 import PageHeader from "@/components/ui/PageHeader";
 import Table from "@/components/ui/Table";
 import EmptyState from "@/components/ui/EmptyState";
@@ -31,13 +31,13 @@ import tableStyles from "@/components/ui/Table.module.css";
 import styles from "@/styles/admin.module.css";
 import expenseStyles from "../expenses.module.css";
 
-function todayIsoDate(): string {
-  return localIsoDate();
+function todayIsoDate(timeZone: string | null): string {
+  return branchIsoDate(timeZone);
 }
 
-function firstDayOfMonthIsoDate(): string {
-  const now = new Date();
-  return localIsoDate(new Date(now.getFullYear(), now.getMonth(), 1));
+function firstDayOfMonthIsoDate(timeZone: string | null): string {
+  const [year, month] = branchIsoDate(timeZone).split("-");
+  return `${year}-${month}-01`;
 }
 
 function formatExpenseDate(isoDate: string): string {
@@ -53,10 +53,11 @@ function formatExpenseDate(isoDate: string): string {
 type Props = {
   categories: ExpenseCategory[];
   refreshToken: number;
+  branchTimeZone: string | null;
 };
 
 /** Gider Yönetimi'nin manuel gider listesi (product-requirements.md Section 16). */
-export default function ExpenseList({ categories, refreshToken }: Props) {
+export default function ExpenseList({ categories, refreshToken, branchTimeZone }: Props) {
   const { showToast } = useToast();
   const dialogTitleId = useId();
 
@@ -64,14 +65,18 @@ export default function ExpenseList({ categories, refreshToken }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [from, setFrom] = useState(firstDayOfMonthIsoDate());
-  const [to, setTo] = useState(todayIsoDate());
-  const [appliedFilters, setAppliedFilters] = useState({ from: firstDayOfMonthIsoDate(), to: todayIsoDate() });
+  const [from, setFrom] = useState(firstDayOfMonthIsoDate(branchTimeZone));
+  const [to, setTo] = useState(todayIsoDate(branchTimeZone));
+  const [appliedFilters, setAppliedFilters] = useState({
+    from: firstDayOfMonthIsoDate(branchTimeZone),
+    to: todayIsoDate(branchTimeZone),
+  });
+  const [filtersAnchoredToBranch, setFiltersAnchoredToBranch] = useState(branchTimeZone !== null);
 
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [categoryId, setCategoryId] = useState("");
   const [amount, setAmount] = useState("");
-  const [date, setDate] = useState(todayIsoDate());
+  const [date, setDate] = useState(todayIsoDate(branchTimeZone));
   const [vendor, setVendor] = useState("");
   const [receiptImageUrl, setReceiptImageUrl] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -91,6 +96,22 @@ export default function ExpenseList({ categories, refreshToken }: Props) {
   }
 
   useEffect(load, [appliedFilters, refreshToken]);
+
+  // Placeholder filters above render with the device's own date (see lib/time.ts) for an
+  // instant first paint; once `me()` resolves the active branch's real timezone, re-anchor
+  // the default range to it exactly once - matching Özet/Kasa/Raporlar - so an expense dated
+  // "today" here means the same calendar day the report screen uses.
+  useEffect(() => {
+    if (filtersAnchoredToBranch || branchTimeZone === null) {
+      return;
+    }
+    setFiltersAnchoredToBranch(true);
+    const branchFrom = firstDayOfMonthIsoDate(branchTimeZone);
+    const branchTo = todayIsoDate(branchTimeZone);
+    setFrom(branchFrom);
+    setTo(branchTo);
+    setAppliedFilters({ from: branchFrom, to: branchTo });
+  }, [branchTimeZone, filtersAnchoredToBranch]);
 
   function handleFilterSubmit(event: React.FormEvent) {
     event.preventDefault();

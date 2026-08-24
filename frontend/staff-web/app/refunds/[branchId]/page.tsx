@@ -3,7 +3,16 @@
 import { useState } from "react";
 import { redirect, useParams, useRouter } from "next/navigation";
 import { AlertTriangle, PackageOpen, ReceiptText, RotateCcw, Search } from "lucide-react";
-import { ApiError, completeOrder, createRefund, formatPriceMinorUnits, searchOrderByNumber, type StaffOrderLookup } from "@/lib/api";
+import {
+  ApiError,
+  completeOrder,
+  createRefund,
+  formatPriceMinorUnits,
+  isAccessDenied,
+  isSessionExpired,
+  searchOrderByNumber,
+  type StaffOrderLookup,
+} from "@/lib/api";
 import AppShell from "@/components/layout/AppShell";
 import PageHeader from "@/components/ui/PageHeader";
 import Button from "@/components/ui/Button";
@@ -81,6 +90,7 @@ function RefundsPage() {
   const [searchError, setSearchError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [completing, setCompleting] = useState(false);
+  const [accessDenied, setAccessDenied] = useState(false);
   const [confirmingRefundQuantity, setConfirmingRefundQuantity] = useState<number | null>(null);
   const [quantityInputs, setQuantityInputs] = useState<Record<string, number>>({});
 
@@ -104,8 +114,12 @@ function RefundsPage() {
       ));
     } catch (err) {
       setOrder(null);
-      if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+      if (isSessionExpired(err)) {
         router.replace("/");
+        return;
+      }
+      if (isAccessDenied(err)) {
+        setAccessDenied(true);
         return;
       }
       setSearchError(err instanceof ApiError && err.status === 404 ? "Bu numarada bir sipariş bulunamadı." : "Sipariş aranırken bir sorun oluştu.");
@@ -206,7 +220,7 @@ function RefundsPage() {
   const partiallyRefunded = totalRefundedQuantity > 0 && !fullyRefunded;
 
   return (
-    <AppShell>
+    <AppShell accessDenied={accessDenied}>
       <main className={styles.page}>
         <PageHeader
           title="İade İşlemleri"
@@ -224,17 +238,14 @@ function RefundsPage() {
           <form className={styles.searchRow} onSubmit={handleSearch}>
             <div className={styles.searchField}>
               <label className={styles.searchLabel} htmlFor="refund-order-number">Sipariş numarası</label>
-              <div className={styles.searchInputWrap}>
-                <Search size={17} aria-hidden="true" />
-                <Input
-                  id="refund-order-number"
-                  className={styles.searchInput}
-                  placeholder="Örn. 1042"
-                  inputMode="numeric"
-                  value={orderNumberInput}
-                  onChange={(event) => setOrderNumberInput(event.target.value)}
-                />
-              </div>
+              <Input
+                id="refund-order-number"
+                icon={<Search size={17} />}
+                placeholder="Örn. 1042"
+                inputMode="numeric"
+                value={orderNumberInput}
+                onChange={(event) => setOrderNumberInput(event.target.value)}
+              />
             </div>
             <Button className={styles.searchButton} type="submit" disabled={searching}>
               {searching ? "Aranıyor…" : "Siparişi Ara"}

@@ -12,8 +12,11 @@ import styles from "./page.module.css";
  * Real StaffUser login (Section 4, staff-web screen #1 - Milestone 8 replaces the
  * Milestone 6 "branch id + shared token" kiosk entry screen). On success the backend
  * sets the HttpOnly qrmenu_staff_session cookie itself; there is nothing for the
- * client to store. Every role lands on /dashboard - AppShell's sidebar shows only what
- * the role's permissions allow (enforced server-side regardless of what the nav shows).
+ * client to store. Every normal-staff role lands on /dashboard - AppShell's sidebar
+ * shows only what the role's permissions allow (enforced server-side regardless of what
+ * the nav shows). PLATFORM_ADMIN holds no normal-staff Permission at all (StaffRole.java)
+ * and would just hit a wall of 403s on /dashboard, so it lands on the platform admin
+ * panel instead.
  */
 export default function LoginPage() {
   const router = useRouter();
@@ -28,8 +31,8 @@ export default function LoginPage() {
     setError(null);
     setSubmitting(true);
     try {
-      await login(email.trim(), password);
-      router.push("/dashboard");
+      const context = await login(email.trim(), password);
+      router.push(context.role === "PLATFORM_ADMIN" ? "/platform-admin/businesses" : "/dashboard");
     } catch {
       setError("E-posta veya şifre hatalı.");
     } finally {

@@ -26,3 +26,22 @@
 .invalid {
   border-color: var(--color-danger);
 }
+
+.iconWrap {
+  position: relative;
+  min-width: 0;
+}
+
+.icon {
+  position: absolute;
+  left: var(--space-3);
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  color: var(--color-fg-muted);
+  pointer-events: none;
+}
+
+.hasIcon {
+  padding-left: 40px;
+}

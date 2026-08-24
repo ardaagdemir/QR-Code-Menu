@@ -15,6 +15,18 @@ async function parseErrorOrThrow(response: Response): Promise<never> {
   throw new ApiError(`İstek başarısız oldu (HTTP ${response.status}).`, response.status);
 }
 
+/** 401: session missing/expired - caller should redirect to login. Kept distinct from
+ *  isAccessDenied so a valid-session-but-wrong-role 403 doesn't bounce the user out. */
+export function isSessionExpired(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 401;
+}
+
+/** 403: session is valid but the role lacks permission - caller should show an inline
+ *  "not allowed" state (see AppShell's accessDenied prop), not redirect to login. */
+export function isAccessDenied(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 403;
+}
+
 /**
  * Every call carries the qrmenu_staff_session cookie (credentials: 'include') - the
  * real StaffUser login introduced in Milestone 8, replacing the shared
@@ -256,6 +268,7 @@ export type Branch = {
   id: string;
   businessId: string;
   name: string;
+  active: boolean;
   orderingEnabled: boolean;
   openNow: boolean;
   address: string | null;
@@ -1002,5 +1015,116 @@ export type OperatingResult = {
 export async function getOperatingResult(from: string, to: string): Promise<OperatingResult> {
   return apiFetch(
     `/api/staff/reports/operating-result?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Platform Admin Panel (/api/platform-admin/**) - PLATFORM_ADMIN role only,
+// session-authenticated (never /internal/**), cross-business (not scoped to the
+// caller's own StaffUser.businessId). Can only assign the existing
+// BUSINESS_ADMIN/BRANCH_MANAGER/CASHIER roles - never creates or manages
+// another PLATFORM_ADMIN account.
+// ---------------------------------------------------------------------------
+
+export async function listPlatformBusinesses(): Promise<Business[]> {
+  return apiFetch("/api/platform-admin/businesses");
+}
+
+export async function createPlatformBusiness(name: string): Promise<Business> {
+  return apiFetch("/api/platform-admin/businesses", { method: "POST", body: JSON.stringify({ name }) });
+}
+
+export async function getPlatformBusiness(businessId: string): Promise<Business> {
+  return apiFetch(`/api/platform-admin/businesses/${encodeURIComponent(businessId)}`);
+}
+
+export async function activatePlatformBusiness(businessId: string): Promise<Business> {
+  return apiFetch(`/api/platform-admin/businesses/${encodeURIComponent(businessId)}/activate`, { method: "POST" });
+}
+
+export async function deactivatePlatformBusiness(businessId: string): Promise<Business> {
+  return apiFetch(`/api/platform-admin/businesses/${encodeURIComponent(businessId)}/deactivate`, { method: "POST" });
+}
+
+export async function listPlatformBranches(businessId: string): Promise<Branch[]> {
+  return apiFetch(`/api/platform-admin/businesses/${encodeURIComponent(businessId)}/branches`);
+}
+
+export async function updatePlatformBranchInfo(businessId: string, branchId: string, name: string, address: string | null): Promise<Branch> {
+  return apiFetch(`/api/platform-admin/businesses/${encodeURIComponent(businessId)}/branches/${encodeURIComponent(branchId)}`, {
+    method: "PUT",
+    body: JSON.stringify({ name, address }),
+  });
+}
+
+export async function activatePlatformBranch(businessId: string, branchId: string): Promise<Branch> {
+  return apiFetch(
+    `/api/platform-admin/businesses/${encodeURIComponent(businessId)}/branches/${encodeURIComponent(branchId)}/activate`,
+    { method: "POST" },
+  );
+}
+
+/** Rejected (409) if the branch still has an order in progress - see PlatformAdminBranchService. */
+export async function deactivatePlatformBranch(businessId: string, branchId: string): Promise<Branch> {
+  return apiFetch(
+    `/api/platform-admin/businesses/${encodeURIComponent(businessId)}/branches/${encodeURIComponent(branchId)}/deactivate`,
+    { method: "POST" },
+  );
+}
+
+export async function createPlatformBranch(businessId: string, name: string): Promise<Branch> {
+  return apiFetch(`/api/platform-admin/businesses/${encodeURIComponent(businessId)}/branches`, {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function listPlatformStaffUsers(businessId: string): Promise<StaffUser[]> {
+  return apiFetch(`/api/platform-admin/businesses/${encodeURIComponent(businessId)}/staff-users`);
+}
+
+export async function createPlatformStaffUser(
+  businessId: string,
+  email: string,
+  password: string,
+  role: StaffRole,
+  branchIds: string[],
+): Promise<StaffUser> {
+  return apiFetch(`/api/platform-admin/businesses/${encodeURIComponent(businessId)}/staff-users`, {
+    method: "POST",
+    body: JSON.stringify({ email, password, role, branchIds }),
+  });
+}
+
+export async function activatePlatformStaffUser(businessId: string, staffUserId: string): Promise<void> {
+  await apiFetch(
+    `/api/platform-admin/businesses/${encodeURIComponent(businessId)}/staff-users/${encodeURIComponent(staffUserId)}/activate`,
+    { method: "POST" },
+  );
+}
+
+export async function deactivatePlatformStaffUser(businessId: string, staffUserId: string): Promise<void> {
+  await apiFetch(
+    `/api/platform-admin/businesses/${encodeURIComponent(businessId)}/staff-users/${encodeURIComponent(staffUserId)}/deactivate`,
+    { method: "POST" },
+  );
+}
+
+export async function changePlatformStaffUserRole(businessId: string, staffUserId: string, role: StaffRole): Promise<void> {
+  await apiFetch(
+    `/api/platform-admin/businesses/${encodeURIComponent(businessId)}/staff-users/${encodeURIComponent(staffUserId)}/role`,
+    { method: "POST", body: JSON.stringify({ role }) },
+  );
+}
+
+export async function resetPlatformStaffUserPassword(
+  businessId: string,
+  staffUserId: string,
+  newPassword: string,
+  confirmNewPassword: string,
+): Promise<void> {
+  await apiFetch(
+    `/api/platform-admin/businesses/${encodeURIComponent(businessId)}/staff-users/${encodeURIComponent(staffUserId)}/reset-password`,
+    { method: "POST", body: JSON.stringify({ newPassword, confirmNewPassword }) },
   );
 }

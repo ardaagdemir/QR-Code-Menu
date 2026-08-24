@@ -1,18 +1,18 @@
 .page {
-  --tables-accent: #e85d24;
-  --tables-accent-strong: #c74716;
-  --tables-border: #e9e4e0;
-  --tables-muted: #77706b;
+  --tables-accent: var(--color-primary);
+  --tables-accent-strong: var(--color-primary-strong);
+  --tables-border: var(--color-panel-border);
+  --tables-muted: var(--color-fg-muted);
 
   width: 100%;
   max-width: 1380px;
-  color: #28231f;
+  color: var(--color-fg);
 }
 
 .primaryButton {
   background: var(--tables-accent) !important;
   border-color: var(--tables-accent) !important;
-  color: #ffffff !important;
+  color: var(--color-primary-fg) !important;
   border-radius: 9px !important;
   box-shadow: 0 4px 10px rgba(232, 93, 36, 0.18);
 }
@@ -25,7 +25,7 @@
   overflow: hidden;
   border: 1px solid var(--tables-border);
   border-radius: 12px;
-  background: #ffffff;
+  background: var(--color-surface-raised);
   box-shadow: 0 5px 16px rgba(64, 42, 27, 0.055);
 }
 
@@ -41,7 +41,7 @@
 .panelTitle {
   font-size: var(--font-size-lg);
   font-weight: var(--font-weight-bold);
-  color: #28231f;
+  color: var(--color-fg);
 }
 
 .panelDescription {
@@ -54,7 +54,7 @@
   flex-shrink: 0;
   padding: 5px 11px;
   border-radius: var(--radius-full);
-  background: #fff1e9;
+  background: var(--color-primary-soft);
   color: var(--tables-accent-strong);
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-bold);
@@ -72,8 +72,8 @@
 .panelBody :global(th) {
   padding-top: 14px;
   padding-bottom: 14px;
-  background: #faf8f6;
-  color: #716a65;
+  background: var(--color-surface-soft);
+  color: var(--color-fg-muted);
   font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.055em;
@@ -85,7 +85,7 @@
 }
 
 .panelBody :global(tbody tr:hover) {
-  background: #fffaf7;
+  background: var(--color-surface-soft);
   box-shadow: inset 3px 0 0 var(--tables-accent);
 }
 
@@ -103,7 +103,7 @@
   height: 38px;
   flex-shrink: 0;
   border-radius: 9px;
-  background: #fff1e5;
+  background: var(--color-primary-soft);
   color: var(--tables-accent);
 }
 
@@ -120,12 +120,12 @@
 }
 
 .statusActive {
-  background: #eef8ef;
-  color: #34743a;
+  background: var(--color-success-bg);
+  color: var(--color-success);
 }
 
 .statusEmpty {
-  background: #f3f1ef;
+  background: var(--color-surface);
   color: var(--tables-muted);
 }
 
@@ -145,25 +145,25 @@
 }
 
 .secondaryButton {
-  background: #fff7f2 !important;
-  border-color: #ffd9c5 !important;
+  background: var(--color-primary-soft) !important;
+  border-color: color-mix(in srgb, var(--tables-accent) 30%, transparent) !important;
   color: var(--tables-accent-strong) !important;
 }
 
 .actionButton {
-  color: #625b56 !important;
+  color: var(--color-fg-muted) !important;
 }
 
 .actionButton:hover {
-  background: #f7f4f2 !important;
+  background: var(--color-surface) !important;
 }
 
 .revokeButton {
-  color: #b83b34 !important;
+  color: var(--color-danger) !important;
 }
 
 .revokeButton:hover {
-  background: #fff0ef !important;
+  background: var(--color-danger-bg) !important;
 }
 
 .renameButton {
@@ -175,7 +175,7 @@
 }
 
 .renameButton:hover {
-  background: #f7f4f2 !important;
+  background: var(--color-surface) !important;
   color: var(--tables-accent-strong) !important;
 }
 

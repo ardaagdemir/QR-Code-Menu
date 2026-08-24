@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { ContactRound, Plus } from "lucide-react";
 import {
   createBusinessContact,
@@ -109,6 +109,12 @@ export default function BusinessSettingsPage() {
   const [timeZoneOptions, setTimeZoneOptions] = useState<string[]>(COMMON_TIMEZONE_OPTIONS);
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
+  // `disabled={savingSettings}` only takes effect after React commits the next render, so a
+  // second submit event that lands before that repaint (fast double-click, or Enter + click)
+  // still reaches this handler with savingSettings still false in its closure and fires a
+  // second POST - one of the two then 400s on the backend's own duplicate-update handling.
+  // A ref is checked/set synchronously, closing that gap regardless of render timing.
+  const savingSettingsRef = useRef(false);
 
   const [contacts, setContacts] = useState<BusinessContact[]>([]);
   const [loadingContacts, setLoadingContacts] = useState(true);
@@ -144,6 +150,10 @@ export default function BusinessSettingsPage() {
 
   async function handleSaveSettings(event: React.FormEvent) {
     event.preventDefault();
+    if (savingSettingsRef.current) {
+      return;
+    }
+    savingSettingsRef.current = true;
     setSavingSettings(true);
     try {
       const updated = await updateBusinessSettings(currencyInput.trim(), timeZoneInput.trim());
@@ -154,6 +164,7 @@ export default function BusinessSettingsPage() {
     } catch {
       showToast("Ayarlar kaydedilemedi. Geçerli bir ISO 4217 para birimi kodu (ör. TRY) ve IANA saat dilimi kimliği (ör. Europe/Istanbul) girin.", "error");
     } finally {
+      savingSettingsRef.current = false;
       setSavingSettings(false);
     }
   }

@@ -34,6 +34,7 @@ export default function ExpensesPage() {
   }, []);
 
   const isBusinessAdmin = context?.role === "BUSINESS_ADMIN" || context?.role === "PLATFORM_ADMIN";
+  const branchTimeZone = context?.activeBranchTimeZone ?? null;
 
   return (
     <AppShell>
@@ -54,13 +55,14 @@ export default function ExpensesPage() {
 
           <ExpenseForm
             categories={categories}
+            branchTimeZone={branchTimeZone}
             onCreated={() => setExpenseRefreshToken((current) => current + 1)}
           />
         </div>
 
-        <ExpenseList categories={categories} refreshToken={expenseRefreshToken} />
+        <ExpenseList categories={categories} refreshToken={expenseRefreshToken} branchTimeZone={branchTimeZone} />
 
-        <RecurringTemplates categories={categories} />
+        <RecurringTemplates categories={categories} branchTimeZone={branchTimeZone} />
       </main>
     </AppShell>
   );

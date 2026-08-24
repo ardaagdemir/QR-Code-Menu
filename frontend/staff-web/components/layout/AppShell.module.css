@@ -12,12 +12,12 @@
  * "güçlü sidebar hiyerarşisi" katmanı kuruyor; nav linkleri de kendi zeminlerinden
  * (hover/active) bu sayede daha net ayrışıyor. */
 .sidebar {
-  --sidebar-accent: #e85d24;
-  --sidebar-accent-strong: #c74716;
-  --sidebar-accent-tint: #fff3ed;
-  --sidebar-fg: #25211f;
-  --sidebar-muted: #756f6a;
-  --sidebar-border: #eee9e5;
+  --sidebar-accent: var(--color-primary);
+  --sidebar-accent-strong: var(--color-primary-strong);
+  --sidebar-accent-tint: var(--color-primary-soft);
+  --sidebar-fg: var(--color-fg);
+  --sidebar-muted: var(--color-fg-muted);
+  --sidebar-border: var(--color-panel-border);
 
   width: 248px;
   flex-shrink: 0;
@@ -25,13 +25,14 @@
   flex-direction: column;
   gap: var(--space-6);
   padding: var(--space-6) var(--space-4) var(--space-5);
-  background: #ffffff;
+  background: var(--color-surface);
   color: var(--sidebar-fg);
   border-right: 1px solid var(--sidebar-border);
   position: sticky;
   top: 0;
   height: 100vh;
   overflow-y: auto;
+  transition: width var(--transition-base);
 }
 
 .sidebar button {
@@ -45,6 +46,17 @@
   padding: 0 var(--space-3) var(--space-2);
 }
 
+/* !important here beats IconButton's own `.button { display: inline-flex }` - cross-module
+ * CSS cascade order between AppShell.module.css and IconButton.module.css isn't guaranteed
+ * by import order in this build, so equal-specificity display rules aren't reliable (same
+ * class of bug the shared Input icon fix worked around by keeping everything in one module -
+ * not an option here since IconButton is a separate shared component). */
+.sidebarToggle {
+  display: none !important;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
 .brandMark {
   display: flex;
   align-items: center;
@@ -54,7 +66,7 @@
   height: 34px;
   border-radius: 10px;
   background: var(--sidebar-accent);
-  color: #ffffff;
+  color: var(--color-primary-fg);
   font-family: var(--font-family-display);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-bold);
@@ -83,7 +95,7 @@
 .groupTitle {
   font-size: 0.6875rem;
   font-weight: var(--font-weight-bold);
-  color: #9a938e;
+  color: var(--sidebar-muted);
   text-transform: uppercase;
   letter-spacing: 0.07em;
   padding: 0 var(--space-3);
@@ -109,13 +121,19 @@
 
 .link:hover {
   color: var(--sidebar-fg);
-  background: #faf7f5;
+  background: var(--color-surface-raised);
 }
 
 .linkIcon {
   flex-shrink: 0;
-  color: #8b847f;
+  color: var(--sidebar-muted);
   transition: color var(--transition-fast);
+}
+
+.linkLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .link:hover .linkIcon {
@@ -136,7 +154,7 @@
 
 .active:hover {
   color: var(--sidebar-accent-strong);
-  background: #fbe8df;
+  background: var(--color-primary-soft-strong);
 }
 
 .active .linkIcon {
@@ -159,7 +177,7 @@
   padding: var(--space-3);
   border: 1px solid var(--sidebar-border);
   border-radius: 10px;
-  background: #ffffff;
+  background: var(--color-surface-raised);
   box-shadow: 0 2px 8px rgba(68, 48, 36, 0.04);
 }
 
@@ -171,7 +189,7 @@
   width: 32px;
   height: 32px;
   border-radius: var(--radius-full);
-  background: #fcebe3;
+  background: var(--sidebar-accent-tint);
   color: var(--sidebar-accent-strong);
   font-family: var(--font-family-display);
   font-size: var(--font-size-xs);
@@ -208,10 +226,16 @@
   padding: 0 var(--space-4);
   border: 1px solid var(--sidebar-border);
   border-radius: 10px;
-  background: #ffffff;
+  background: var(--color-surface-raised);
   color: var(--sidebar-accent-strong);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
+}
+
+.supportLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .main {
@@ -227,12 +251,12 @@
   justify-content: space-between;
   gap: var(--space-4);
   padding: var(--space-3) var(--space-6);
-  border-bottom: 1px solid #eee9e5;
-  background: rgba(255, 255, 255, 0.96);
+  border-bottom: 1px solid var(--color-panel-border);
+  background: color-mix(in srgb, var(--color-surface-raised) 96%, transparent);
   position: sticky;
   top: 0;
   z-index: var(--z-sticky-header);
-  color: #25211f;
+  color: var(--color-fg);
 }
 
 .topbarLeft {
@@ -242,20 +266,22 @@
   min-width: 0;
 }
 
+/* !important - see the comment on .sidebarToggle above; same cross-module cascade-order
+ * issue against IconButton's own `display: inline-flex`. */
 .hamburger {
-  display: none;
+  display: none !important;
 }
 
 .context {
   font-size: var(--font-size-sm);
-  color: #756f6a;
+  color: var(--color-fg-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .contextBusiness {
-  color: #25211f;
+  color: var(--color-fg);
   font-weight: var(--font-weight-semibold);
 }
 
@@ -352,6 +378,54 @@
   }
 
   .hamburger {
-    display: inline-flex;
+    display: inline-flex !important;
+  }
+}
+
+/* Desktop-only collapsed rail: the sidebar stays statically positioned here (no
+ * transform/off-canvas), so its own toggle (in .brand, near the logo) can drive this
+ * directly - unlike the mobile drawer, which needs a topbar-level trigger instead. */
+@media (min-width: 1024px) {
+  .sidebarToggle {
+    display: inline-flex !important;
+  }
+
+  .sidebar.collapsed {
+    width: 76px;
+    padding-left: var(--space-2);
+    padding-right: var(--space-2);
+  }
+
+  .sidebar.collapsed .brand {
+    flex-direction: column;
+    align-items: center;
+    padding: 0 0 var(--space-2);
+  }
+
+  .sidebar.collapsed .brandWordmark,
+  .sidebar.collapsed .groupTitle,
+  .sidebar.collapsed .linkLabel,
+  .sidebar.collapsed .userMeta,
+  .sidebar.collapsed .supportLabel {
+    display: none;
+  }
+
+  .sidebar.collapsed .link {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .sidebar.collapsed .userCard {
+    flex-direction: column;
+    padding: var(--space-2);
+  }
+
+  .sidebar.collapsed .supportCard {
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    margin: 0 auto;
   }
 }

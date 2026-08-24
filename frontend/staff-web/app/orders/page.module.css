@@ -38,24 +38,6 @@
   font-weight: var(--font-weight-semibold);
 }
 
-.searchInputWrap {
-  position: relative;
-}
-
-.searchInputWrap > svg {
-  position: absolute;
-  left: var(--space-3);
-  top: 50%;
-  z-index: 1;
-  color: var(--color-fg-muted);
-  pointer-events: none;
-  transform: translateY(-50%);
-}
-
-.searchInput {
-  padding-left: 40px;
-}
-
 .searchError {
   margin-top: var(--space-3);
   padding: var(--space-2) var(--space-3);

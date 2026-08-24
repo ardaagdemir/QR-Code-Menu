@@ -91,25 +91,6 @@
   font-weight: var(--font-weight-semibold);
 }
 
-.searchInputWrap {
-  position: relative;
-  min-width: 0;
-}
-
-.searchInputWrap > svg {
-  position: absolute;
-  left: var(--space-3);
-  top: 50%;
-  z-index: 1;
-  color: var(--color-fg-muted);
-  pointer-events: none;
-  transform: translateY(-50%);
-}
-
-.searchInput {
-  padding-left: 40px;
-}
-
 .searchButton {
   min-width: 128px;
 }

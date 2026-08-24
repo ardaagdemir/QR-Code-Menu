@@ -13,7 +13,7 @@ import {
   type ExpenseCategory,
   type RecurringExpenseTemplate,
 } from "@/lib/api";
-import { localIsoDate } from "@/lib/time";
+import { branchIsoDate } from "@/lib/time";
 import PageHeader from "@/components/ui/PageHeader";
 import Table from "@/components/ui/Table";
 import EmptyState from "@/components/ui/EmptyState";
@@ -39,10 +39,6 @@ const trDateFormatter = new Intl.DateTimeFormat("tr-TR", {
   timeZone: "UTC",
 });
 
-function todayIsoDate(): string {
-  return localIsoDate();
-}
-
 function formatIsoDate(value: string): string {
   return trDateFormatter.format(new Date(`${value}T00:00:00Z`));
 }
@@ -57,12 +53,11 @@ function toIsoDate(year: number, monthIndex: number, dayOfMonth: number): string
   return new Date(Date.UTC(year, monthIndex, Math.min(dayOfMonth, lastDay))).toISOString().slice(0, 10);
 }
 
-function nextDueDate(template: RecurringExpenseTemplate): string | null {
+function nextDueDate(template: RecurringExpenseTemplate, today: string): string | null {
   if (!template.active) {
     return null;
   }
 
-  const today = todayIsoDate();
   const [todayYear, todayMonth] = dateParts(today);
   const [startYear, startMonth] = dateParts(template.startDate);
   let year = todayYear;
@@ -93,10 +88,11 @@ function templateName(template: RecurringExpenseTemplate): string {
 
 type Props = {
   categories: ExpenseCategory[];
+  branchTimeZone: string | null;
 };
 
 /** Gider Yönetimi'nin tekrarlayan gider şablonu paneli (product-requirements.md Section 16). */
-export default function RecurringTemplates({ categories }: Props) {
+export default function RecurringTemplates({ categories, branchTimeZone }: Props) {
   const { showToast } = useToast();
   const dialogTitleId = useId();
 
@@ -110,7 +106,7 @@ export default function RecurringTemplates({ categories }: Props) {
   const [categoryId, setCategoryId] = useState("");
   const [amount, setAmount] = useState("");
   const [dayOfMonth, setDayOfMonth] = useState("1");
-  const [startDate, setStartDate] = useState(todayIsoDate());
+  const [startDate, setStartDate] = useState(branchIsoDate(branchTimeZone));
   const [endDate, setEndDate] = useState("");
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -139,7 +135,7 @@ export default function RecurringTemplates({ categories }: Props) {
     setCategoryId("");
     setAmount("");
     setDayOfMonth("1");
-    setStartDate(todayIsoDate());
+    setStartDate(branchIsoDate(branchTimeZone));
     setEndDate("");
     setFormError(null);
     setFormOpen(true);
@@ -298,7 +294,7 @@ export default function RecurringTemplates({ categories }: Props) {
             </thead>
             <tbody>
               {templates.map((template) => {
-                const nextDate = nextDueDate(template);
+                const nextDate = nextDueDate(template, branchIsoDate(branchTimeZone));
                 return (
                   <tr key={template.id}>
                     <td className={`${tableStyles.primary} ${expenseStyles.templateName}`} title={templateName(template)}>

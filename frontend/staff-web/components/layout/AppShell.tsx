@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useState, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { CircleHelp, Eye, EyeOff, KeyRound, LogOut } from "lucide-react";
+import { CircleHelp, Eye, EyeOff, KeyRound, LogOut, Menu, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { ApiError, changePassword, logout, me, MIN_PASSWORD_LENGTH, type StaffContext } from "@/lib/api";
 import { NAV_GROUPS, ROLE_LABELS } from "@/lib/staffNav";
 import IconButton from "@/components/ui/IconButton";
@@ -14,6 +14,12 @@ import Input from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
 import ErrorState from "@/components/ui/ErrorState";
 import { useToast } from "@/components/ui/ToastProvider";
+import {
+  getServerSidebarCollapsedSnapshot,
+  getSidebarCollapsedSnapshot,
+  setSidebarCollapsed,
+  subscribeSidebarCollapsed,
+} from "@/lib/sidebarCollapse";
 import ThemeToggle from "./ThemeToggle";
 import styles from "./AppShell.module.css";
 
@@ -26,6 +32,10 @@ function initialsFromEmail(email: string): string {
 
 type Props = {
   children: ReactNode;
+  /** Set by a page after a 403 (valid session, insufficient role) on one of its own API
+   *  calls - shows an inline message in place of the page content instead of bouncing to
+   *  login, which is reserved for 401 (see isSessionExpired/isAccessDenied in lib/api). */
+  accessDenied?: boolean;
 };
 
 /**
@@ -36,9 +46,14 @@ type Props = {
  * (Bölüm 19.3/19.4). Every screen (Kasa included) shares one visual identity - see
  * development-progress.md "staff-web Görsel Yön Değişikliği".
  */
-export default function AppShell({ children }: Props) {
+export default function AppShell({ children, accessDenied = false }: Props) {
   const [context, setContext] = useState<StaffContext | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const collapsed = useSyncExternalStore(
+    subscribeSidebarCollapsed,
+    getSidebarCollapsedSnapshot,
+    getServerSidebarCollapsedSnapshot,
+  );
   const router = useRouter();
   const pathname = usePathname();
   const { showToast } = useToast();
@@ -115,6 +130,16 @@ export default function AppShell({ children }: Props) {
     return pathname?.startsWith(matchPrefix) ?? false;
   }
 
+  /* One button drives two different toggles: the mobile drawer (drawerOpen) and the
+   * desktop collapsed rail (collapsed, persisted via lib/sidebarCollapse). Both flip on
+   * every click - which one has any visible effect is decided purely by the existing
+   * @media (max-width: 1023px) breakpoint in AppShell.module.css, so no matchMedia/JS
+   * viewport check is needed here. */
+  function toggleSidebar() {
+    setDrawerOpen((open) => !open);
+    setSidebarCollapsed(!collapsed);
+  }
+
   const navContent = (
     <>
       <div className={styles.brand}>
@@ -122,6 +147,14 @@ export default function AppShell({ children }: Props) {
           Q
         </span>
         <span className={styles.brandWordmark}>QR Menü</span>
+        <IconButton
+          aria-label={collapsed ? "Kenar çubuğunu genişlet" : "Kenar çubuğunu daralt"}
+          size="sm"
+          className={styles.sidebarToggle}
+          onClick={toggleSidebar}
+        >
+          {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+        </IconButton>
       </div>
       <nav className={styles.nav}>
         {NAV_GROUPS.map((group) => {
@@ -142,9 +175,10 @@ export default function AppShell({ children }: Props) {
                     href={item.href(context as StaffContext) as string}
                     className={isActive(item.matchPrefix) ? `${styles.link} ${styles.active}` : styles.link}
                     onClick={() => setDrawerOpen(false)}
+                    title={item.label}
                   >
                     <Icon size={17} className={styles.linkIcon} aria-hidden="true" />
-                    {item.label}
+                    <span className={styles.linkLabel}>{item.label}</span>
                   </Link>
                 );
               })}
@@ -171,7 +205,7 @@ export default function AppShell({ children }: Props) {
           </div>
           <div className={styles.supportCard}>
             <CircleHelp size={17} aria-hidden="true" />
-            <span>Yardım &amp; Destek</span>
+            <span className={styles.supportLabel}>Yardım &amp; Destek</span>
           </div>
         </div>
       ) : null}
@@ -181,16 +215,22 @@ export default function AppShell({ children }: Props) {
   return (
     <div className={styles.shell}>
       {drawerOpen ? <div className={styles.backdrop} onClick={() => setDrawerOpen(false)} /> : null}
-      <aside className={drawerOpen ? `${styles.sidebar} ${styles.sidebarOpen}` : styles.sidebar}>{navContent}</aside>
+      <aside
+        className={[styles.sidebar, drawerOpen ? styles.sidebarOpen : null, collapsed ? styles.collapsed : null]
+          .filter(Boolean)
+          .join(" ")}
+      >
+        {navContent}
+      </aside>
       <div className={styles.main}>
         <header className={styles.topbar}>
           <div className={styles.topbarLeft}>
-            <IconButton
-              aria-label="Menüyü aç"
-              className={styles.hamburger}
-              onClick={() => setDrawerOpen((open) => !open)}
-            >
-              ☰
+            {/* Mobile-only: the sidebar itself is off-canvas until opened, so its own
+             *  toggle (near the logo) can't be the thing that opens it on this breakpoint -
+             *  this stays as the mobile drawer trigger, upgraded from the old plain "☰"
+             *  glyph to a proper icon. Hidden on desktop via CSS (see .hamburger). */}
+            <IconButton aria-label="Menüyü aç" className={styles.hamburger} onClick={toggleSidebar}>
+              <Menu size={18} />
             </IconButton>
             {context ? (
               <span className={styles.context}>
@@ -203,7 +243,13 @@ export default function AppShell({ children }: Props) {
             <ThemeToggle />
           </div>
         </header>
-        <div className={styles.content}>{children}</div>
+        <div className={styles.content}>
+          {accessDenied ? (
+            <ErrorState title="Erişim Engellendi" message="Bu sayfaya erişim yetkiniz yok." />
+          ) : (
+            children
+          )}
+        </div>
       </div>
 
       {changePasswordOpen ? (

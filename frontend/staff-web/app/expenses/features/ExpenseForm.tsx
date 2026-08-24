@@ -3,7 +3,7 @@
 import { useId, useState } from "react";
 import { Plus } from "lucide-react";
 import { createExpense, uploadReceiptImage, type Expense, type ExpenseCategory } from "@/lib/api";
-import { localIsoDate as todayIsoDate } from "@/lib/time";
+import { branchIsoDate } from "@/lib/time";
 import PageHeader from "@/components/ui/PageHeader";
 import Button from "@/components/ui/Button";
 import Dialog from "@/components/ui/Dialog";
@@ -19,18 +19,19 @@ import expenseStyles from "../expenses.module.css";
 
 type Props = {
   categories: ExpenseCategory[];
+  branchTimeZone: string | null;
   onCreated: (expense: Expense) => void;
 };
 
 /** Gider Yönetimi'nin yeni gider ekleme paneli (product-requirements.md Section 16). */
-export default function ExpenseForm({ categories, onCreated }: Props) {
+export default function ExpenseForm({ categories, branchTimeZone, onCreated }: Props) {
   const { showToast } = useToast();
   const dialogTitleId = useId();
 
   const [open, setOpen] = useState(false);
   const [categoryId, setCategoryId] = useState("");
   const [amount, setAmount] = useState("");
-  const [date, setDate] = useState(todayIsoDate());
+  const [date, setDate] = useState(branchIsoDate(branchTimeZone));
   const [vendor, setVendor] = useState("");
   const [receiptImageUrl, setReceiptImageUrl] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -85,6 +86,7 @@ export default function ExpenseForm({ categories, onCreated }: Props) {
           <Button
             onClick={() => {
               setFormError(null);
+              setDate(branchIsoDate(branchTimeZone));
               setOpen(true);
             }}
           >

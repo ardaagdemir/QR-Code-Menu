@@ -10,6 +10,8 @@ import {
   getOrderHistory,
   getPendingAcceptanceOrders,
   getReadyOrders,
+  isAccessDenied,
+  isSessionExpired,
   searchOrderByNumber,
   type OrderControlItem,
   type OrderControlOrder,
@@ -161,6 +163,7 @@ export default function OrdersPage() {
   const [rows, setRows] = useState<OrderRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [accessDenied, setAccessDenied] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<OrderRow | null>(null);
 
   const [searchInput, setSearchInput] = useState("");
@@ -194,8 +197,12 @@ export default function OrdersPage() {
         setError(null);
       })
       .catch((err) => {
-        if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+        if (isSessionExpired(err)) {
           router.replace("/");
+          return;
+        }
+        if (isAccessDenied(err)) {
+          setAccessDenied(true);
           return;
         }
         setError("Siparişler yüklenirken bir sorun oluştu.");
@@ -234,8 +241,12 @@ export default function OrdersPage() {
       setSearchResult(fromLookup(found));
     } catch (err) {
       setSearchResult(null);
-      if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+      if (isSessionExpired(err)) {
         router.replace("/");
+        return;
+      }
+      if (isAccessDenied(err)) {
+        setAccessDenied(true);
         return;
       }
       setSearchError(err instanceof ApiError && err.status === 404 ? "Bu numarada bir sipariş bulunamadı." : "Sipariş aranırken bir sorun oluştu.");
@@ -253,7 +264,7 @@ export default function OrdersPage() {
   const displayedRows = useMemo(() => (searchResult ? [searchResult] : rows), [searchResult, rows]);
 
   return (
-    <AppShell>
+    <AppShell accessDenied={accessDenied}>
       <main className={styles.page}>
         <PageHeader title="Siparişler" description="Aktif, tamamlanan, reddedilen ve iade edilen siparişleri sipariş numarasıyla görüntüleyin." />
 
@@ -261,17 +272,14 @@ export default function OrdersPage() {
           <form className={styles.searchRow} onSubmit={handleSearch}>
             <div className={styles.searchField}>
               <label className={styles.searchLabel} htmlFor="orders-search-input">Sipariş numarası ile ara</label>
-              <div className={styles.searchInputWrap}>
-                <Search size={17} aria-hidden="true" />
-                <Input
-                  id="orders-search-input"
-                  className={styles.searchInput}
-                  placeholder="Örn. 1042"
-                  inputMode="numeric"
-                  value={searchInput}
-                  onChange={(event) => setSearchInput(event.target.value)}
-                />
-              </div>
+              <Input
+                id="orders-search-input"
+                icon={<Search size={17} />}
+                placeholder="Örn. 1042"
+                inputMode="numeric"
+                value={searchInput}
+                onChange={(event) => setSearchInput(event.target.value)}
+              />
             </div>
             <Button type="submit" disabled={searching}>{searching ? "Aranıyor…" : "Ara"}</Button>
             {searchResult ? <Button type="button" variant="secondary" onClick={clearSearch}>Aramayı Temizle</Button> : null}
