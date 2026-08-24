@@ -3534,3 +3534,668 @@ içeriğin silindiği ve geri yüklenen dosyaların (`product-images/burger.jpg`
 kaynakla `sha256sum` eşleştiği (MATCH) doğrulandı; test volume'leri sonra silindi. Her iki `docker compose
 config` (dev + prod, prod için scratch'te geçici dummy `.env.prod`) sözdizimi hatasız. Commit/push yapılmadı
 (kullanıcı talebi).
+
+## 2026-08-23 Platform Admin Panel — ✅ COMPLETED
+
+**Amaç:** PLATFORM_ADMIN rolü bugüne kadar sadece `/internal/**` bootstrap API'siyle (shared-secret
+token) kullanılıyordu; gerçek bir tarayıcı paneli yoktu. Hedef: işletme/şube/kullanıcı yönetimini
+session-authenticated bir PLATFORM_ADMIN'in kendi staff-web login'i üzerinden yapabildiği yeni bir
+`/api/platform-admin/**` API yüzeyi + staff-web ekranları. Onaylanan kararlar: (1) panelden yeni
+PLATFORM_ADMIN oluşturulamaz veya kimse bu role yükseltilemez — PLATFORM_ADMIN oluşturma yalnız
+`/internal/**` üzerinde kalır; (2) panelin rol seçenekleri sadece BUSINESS_ADMIN/BRANCH_MANAGER/CASHIER;
+(3) mevcut PLATFORM_ADMIN gerçek cross-business rol olarak ele alınır — kendi `StaffUser.businessId`
+değerine göre filtrelenmez, `/api/platform-admin/**` tüm işletmeleri yönetebilir; (4) normal
+`/api/staff/**` branch/business isolation kurallarına dokunulmadı; (5) PLATFORM_ADMIN kendi şifresini
+mevcut `/api/staff/auth/change-password` ile değiştirir, panelde başka PLATFORM_ADMIN yönetimi yok;
+(6) audit log eklendi, internal token frontend'e hiç taşınmadı (browser sadece session cookie kullanır).
+
+**Backend (tamamlandı):** `TenantService.listBusinesses()` (yeni `BusinessRepository
+.findAllByOrderByNameAsc()`), `Business.activate()/deactivate()` + `TenantService.activateBusiness/
+deactivateBusiness` (audit'li). `StaffUser.activate()` (reaktivasyon) ve `StaffUser.changeRole()` yeni
+mutatorlar. `StaffAuthService`'e platform-admin'e özel dört metot eklendi — hepsi ortak
+`requireNonPlatformAdminTarget(businessId, staffUserId)` private helper'ından geçiyor (hedef
+PLATFORM_ADMIN ise `StaffPermissionDeniedException`): `activateStaffUserAsPlatformAdmin`,
+`deactivateStaffUserAsPlatformAdmin` (var olan branch-scoped 2-arg overload'la isim çakışması nedeniyle
+`AsPlatformAdmin` soneki zorunlu oldu — Java aynı erasure'a sahip iki overload'a izin vermiyor),
+`changeStaffUserRole` (yeni rol PLATFORM_ADMIN ise de reddeder), `resetPasswordAsPlatformAdmin`
+(branch şartı yok, mevcut branch-scoped `resetPassword`in aksine). Yeni `com.qrmenu.platformadmin.web`
+paketi (ayrı bir modül değil - sadece `TenantService`/`StaffAuthService` public facade'lerini kullanıyor,
+`ModuleBoundaryTest` bunu zaten izin veriyor çünkü sadece `.repository` paketlerine doğrudan erişimi
+yasaklıyor): `PlatformAdminBusinessController` (`/api/platform-admin/businesses/**` — list/create/get/
+activate/deactivate + branches list/create) ve `PlatformAdminStaffController`
+(`/api/platform-admin/businesses/{businessId}/staff-users/**` — list/create/activate/deactivate/role/
+reset-password). Her iki controller'da paylaşılan private `requirePlatformAdmin(sessionCookie)` guard'ı
+`StaffAuthService.resolveStaffContext(sessionId)` + `context.role() != PLATFORM_ADMIN` kontrolü yapıyor
+(mevcut `REPORT_CHAIN_VIEW` permission'ını "de facto platform-admin" gate'i olarak reuse etmek yerine
+bilinçli olarak açık rol kontrolü seçildi — Permission enum'u business-domain aksiyonları için, panel
+erişimi rol kontrolü için ayrı bir kavram). Businesses/branches DTO'ları `tenant.web.dto`'dan,
+staff-user DTO'ları `staffaccess.web.dto`'dan reuse edildi (`CreateStaffUserRequest`, `ResetPasswordRequest`,
+`StaffUserResponse` zaten public record); tek yeni DTO `platformadmin.web.dto.ChangeStaffUserRoleRequest`.
+
+**Doğrulama:** Yeni `PlatformAdminFlowIntegrationTest` (6 test — businesses create/list/activate/
+deactivate; PLATFORM_ADMIN'in kendi `StaffUser.businessId`'sinden başka bir işletmeyi (şube+personel
+create/role-change/activate-deactivate/reset-password, gerçek login round-trip'iyle) yönetebildiği;
+panelden PLATFORM_ADMIN oluşturma/yükseltme denemesinin 403 ile reddi; panelin var olan bir
+PLATFORM_ADMIN hesabını hedefleyememesi (deactivate/reset-password 403); normal BUSINESS_ADMIN
+oturumunun panele erişememesi 403; oturumsuz isteğin 401) + tüm proje test suite'i (43 test sınıfı,
+`ModuleBoundaryTest` dahil) sıfır regresyonla yeşil. Commit/push yapılmadı (kullanıcı talebi).
+
+**Frontend (tamamlandı):** `lib/api.ts`'e platform-admin bölümü - businesses/branches/staff-users için
+`listPlatformBusinesses/createPlatformBusiness/getPlatformBusiness/activatePlatformBusiness/
+deactivatePlatformBusiness/listPlatformBranches/createPlatformBranch/listPlatformStaffUsers/
+createPlatformStaffUser/activatePlatformStaffUser/deactivatePlatformStaffUser/
+changePlatformStaffUserRole/resetPlatformStaffUserPassword` - mevcut `Business`/`Branch`/`StaffUser`/
+`StaffRole` tipleri reuse edildi (backend response şekilleri zaten birebir aynı). İki yeni sayfa:
+`app/platform-admin/businesses/page.tsx` (liste + oluşturma dialog'u + satır bazlı aktif/pasif) ve
+`app/platform-admin/businesses/[businessId]/page.tsx` (tek sayfada özet + şubeler + kullanıcılar -
+task 5/6 ayrı ekran yerine tek detay sayfasında birleştirildi, gereksiz gezinme yaratmamak için).
+Kullanıcı satırındaki "Rol Değiştir/Şifre Sıfırla/Devre Dışı Bırak" aksiyonları `user.role ===
+"PLATFORM_ADMIN"` olduğunda gizlenip yerine "Bu panelden yönetilemez" metni gösteriliyor (browser
+testinde backend'in zaten 403 ile reddettiği ama UI'da hâlâ tıklanabilir duran bir buton tespit edildi
+- bkz. Doğrulama). `staffNav.ts`'e yeni "Platform" nav grubu (tek item: "İşletmeler" →
+`/platform-admin/businesses`, `roles: ["PLATFORM_ADMIN"]`) eklendi - `Building2` ikonu (lucide-react).
+Ayrı bir CSS modülü yerine mevcut `styles/admin.module.css` + `app/staff/page.module.css` deseninden
+kopyalanan küçük bir paylaşımlı `app/platform-admin/platform-admin.module.css` kullanıldı.
+
+**Doğrulama (backend):** `PlatformAdminFlowIntegrationTest` (6 test) + tüm proje test suite'i (43 sınıf,
+`ModuleBoundaryTest` dahil) sıfır regresyonla yeşil.
+
+**Doğrulama (frontend + gerçek tarayıcı):** `npx tsc --noEmit`, `eslint`, `next build` hatasız (her iki
+sayfa da route tablosunda görünüyor). Docker image'ları (`backend`, `staff-web`) yeniden build edilip
+`infra` stack'inde ayağa kaldırıldı. `/internal/**` ile geçici bir test PLATFORM_ADMIN (kendi
+`StaffUser.businessId`'si "Browser Test Seed Business") bootstrap edilip gerçek Chrome'da uçtan uca
+test edildi: (1) işletme listesi hem kendi işletmesini hem de ona ait olmayan "Meydan Bistro"yu
+gösterdi (cross-business onaylandı); (2) yeni işletme oluşturma, şube ekleme, kullanıcı (CASHIER)
+oluşturma, rol değiştirme (CASHIER→BRANCH_MANAGER, dropdown'da sadece BUSINESS_ADMIN/BRANCH_MANAGER/
+CASHIER olduğu `read_page` ile doğrulandı - PLATFORM_ADMIN seçeneği yok), şifre sıfırlama, kullanıcı
+devre dışı bırak/aktifleştir, işletme aktif/pasif toggle - hepsi gerçek tıklamalarla çalıştı; (3)
+"Meydan Bistro"ya (standing PLATFORM_ADMIN `arda@qrmenu.local`'in kendi işletmesi) girildiğinde o
+hesabın satırında PLATFORM_ADMIN yönetim aksiyonlarının gizlendiği (düzeltme sonrası) doğrulandı; (4)
+oturum kapatıldığında `/platform-admin/businesses`'e direkt URL ile gidiş login'e yönlendirdi (401);
+(5) BRANCH_MANAGER (PLATFORM_ADMIN olmayan) girişinde sol navda "Platform" grubu hiç görünmedi, aynı
+hesapla direkt URL denemesi backend'den 403 alıp ErrorState + "Tekrar Dene" gösterdi, sayfa çökmedi.
+Test için oluşturulan iki işletme (`Browser Test Seed Business`, `Yeni Test Şubeler A.Ş.`) panel
+üzerinden pasifleştirildi (silme uç noktası yok - ürün tasarımı gereği hiçbir varlık hard-delete
+edilmiyor); test PLATFORM_ADMIN hesabı (`browser-test-pa@example.com`) ve test personeli
+(`test-cashier@example.com`) devre dışı bırakılmadı (panel PLATFORM_ADMIN'i deaktive edemiyor, personel
+düşük risk). Commit/push yapılmadı (kullanıcı talebi).
+
+## 2026-08-23 Platform Admin Panel — Final Smoke Test ve Gerçek Bug Düzeltmesi
+
+**Kapsam:** Panelin uçtan uca son doğrulaması - sıfırdan işletme/şube/BUSINESS_ADMIN oluşturma, yeni
+kullanıcının gerçek staff-web login'i, rol değiştirme/şifre sıfırlama/aktif-pasif (hem işletme hem
+kullanıcı seviyesinde), işletme pasifleştirmenin mevcut erişimi ve yeni operasyonları gerçekten
+engelleyip engellemediği, audit kaydı doğrulaması. Gerçek Chrome + curl ile test edildi.
+
+**Bulunan ve düzeltilen gerçek bug:** `business.isActive()` hiçbir yerde (login, session resolution,
+public menu) kontrol edilmiyordu - işletmeyi panelden pasifleştirmek sadece UI badge'ini değiştiriyordu,
+mevcut personel oturumları, yeni personel login'leri ve public müşteri menü uç noktası tamamen normal
+çalışmaya devam ediyordu. `StaffAuthService.login()` ve `StaffAuthService.resolveStaffContext(UUID)`'a
+yeni bir `requireBusinessActive(StaffUser)` kontrolü eklendi (pasif işletme için
+`StaffAuthenticationRequiredException`, "Business is deactivated"); PLATFORM_ADMIN bu kontrolden muaf
+tutuldu - aksi halde bir platform admin kendi ana işletmesini pasifleştirerek paneli tekrar
+aktifleştiremeyecek şekilde kendini kilitleyebilirdi. Canlı doğrulandı: pasif işletmenin personeli için
+hem yeni login hem var olan bir session cookie'siyle `/api/staff/auth/me` artık 401 dönüyor, işletme
+tekrar aktifleştirilince normale dönüyor. İlgili mevcut entegrasyon testleri (`StaffAccessFlowIntegrationTest`,
+`StaffPasswordManagementIntegrationTest`, `CrossTenantBranchAccessIntegrationTest`) sıfır regresyonla
+yeşil; backend Docker image'ı yeniden build edilip container restart edildi.
+
+**Bilinçli olarak düzeltilmeyen, kapsam dışı bırakılan yan:** Public müşteri tarafı (menü görüntüleme,
+sipariş verme - `PublicMenuController`, ordering/cart akışı) hâlâ işletmenin aktiflik durumunu kontrol
+etmiyor; pasif bir işletmenin şubesi için public menu uç noktası hâlâ 200 dönüyor. Bunun nasıl davranması
+gerektiği (QR taramasını tamamen mi engellemeli, "kapalı" sayfası mı göstermeli, var olan sepetlere mi
+izin vermeli) ürün kararı gerektiriyor - bu oturumda dokunulmadı, sadece raporlandı.
+
+**Raporlanan, düzeltilmeyen iki eksik (ürün kararı/kapsam gerektiriyor):**
+1. Şube düzenleme veya pasifleştirme hiçbir yerde yok - ne UI'da ne backend'de (`PlatformAdminBusinessController`
+   sadece şube list/create içeriyor). Bu günlük operasyonel bir ihtiyaç olarak eksik kaldı.
+2. `TenantService.createBusiness/createBranch` ve `StaffAuthService.createStaffUser` hiç audit kaydı
+   yazmıyor - sadece durum değişikliği aksiyonları (aktif/pasif, rol, şifre) audit'e düşüyor, oluşturma
+   olayları audit trail'de tamamen görünmez.
+
+**Test verisi:** "Smoke Test İşletmesi" + "Merkez Şube" + `smoketest-ba@example.com` oluşturuldu, oturum
+sonunda üçü de pasif/devre dışı bırakıldı (var olan diğer test işletmeleriyle tutarlı). Commit/push
+yapılmadı (kullanıcı talebi).
+
+## 2026-08-23 Platform Admin — kalan 3 eksiğin kapatılması (şube yönetimi, pasif işletme/şube müşteri
+davranışı, audit genişletme)
+
+**Kapsam:** Bir önceki oturumda raporlanıp bilinçli olarak ertelenen 3 eksik: (1) şube düzenleme +
+aktif/pasif (aktif siparişi olan şube pasife alınamaz), (2) pasif işletme/şube'nin yeni QR check-in,
+yeni sipariş ve ödemeyi 503 ile engellemesi (geçmiş sipariş tracking/receipt etkilenmeden), (3)
+işletme/şube/kullanıcı oluşturma + şube düzenleme/aktif-pasif'in audit'e yazılması. Kullanıcı onayı
+sonrası iki düzeltme uygulanarak devam edildi: (a) aktif sipariş tanımı `OrderingService` içinde tek bir
+`ACTIVE_ORDER_STATUSES` sabitinde (AWAITING_PAYMENT/AWAITING_STORE_ACCEPTANCE/IN_KITCHEN/READY) toplandı,
+başka yerde hardcode edilmedi; (b) "aktif sipariş kontrolü + deactivate" ile "yeni ödeme" arasındaki race
+condition, `Branch` satırında `PESSIMISTIC_WRITE` kilidi paylaştırılarak (yeni
+`BranchRepository.findByIdAndBusinessIdForUpdate`, hem `TenantService.assertOrderingCurrentlyAllowed` hem
+de yeni `PlatformAdminBranchService.deactivateBranch` bu kilidi alıyor) transactionally güvenli hale
+getirildi - iki taraf da aynı satırda serialize olduğu için ikisinin de "başarılı" olduğu tutarsız bir
+durum imkansız.
+
+**Backend - şube yönetimi:** `Branch`'e `orderingEnabled`'dan bağımsız yeni bir `active` alanı (migration
+`V32__branch_active.sql`), `rename/activate/deactivate` metodları. `TenantService`: `updateBranchInfo`,
+`activateBranch` (kilitsiz - reaktivasyonun hiçbir çakışma riski yok), `getBranchForUpdate` +
+`deactivateLockedBranch` (kilitli çift, sadece orkestratör tarafından kullanılıyor). Yeni
+`PlatformAdminBranchService` (platformadmin modülünde - tenant modülü ordering'e bağımlı olamaz, mevcut
+"OrderControlController ordering+refund'u orkestre eder" desenindeki gibi cross-module orkestrasyon
+burada yapılıyor): branch'i kilitler → `OrderingService.hasActiveOrders` kontrolü → aktif sipariş varsa
+yeni `BranchHasActiveOrdersException` (409), yoksa deactivate. `PlatformAdminBusinessController`'a
+`PUT .../branches/{branchId}` (edit) + `.../activate` + `.../deactivate` eklendi.
+
+**Backend - pasif işletme/şube müşteri engeli:** Yeni `BusinessUnavailableException` → 503 (409'dan
+kasıtlı olarak ayrı status - customer-web'in "kapalı/saat dışı" ile "deaktive edilmiş"i ayırt edebilmesi
+için). `TenantService.assertBusinessAndBranchActive` üç noktada çağrılıyor: `resolveActiveQrToken` (yeni
+check-in), `OrderingService.addItem` (yeni sipariş/sepete ekleme), `assertOrderingCurrentlyAllowed`
+(ödeme - aynı zamanda branch kilidini de alan tek metod). Sipariş tracking/receipt (`getOrderTrackingView`
+vb.) bu kontrole hiç dokunmuyor, kasıtlı olarak.
+
+**Backend - audit genişletme:** `TenantService.createBusiness/createBranch` ve
+`StaffAuthService.createStaffUser`'a `actorStaffUserId` parametresi eklendi (internal bootstrap
+çağrılarında `null` - zorunlu değil), üçü de artık `CREATED` audit kaydı yazıyor. Şube edit/aktif/pasif
+de audit'e giriyor. Not: `AuditLogEntry.branch_id` kolonu bir DB trigger'ı (`assign_audit_branch_from_staff`,
+V25) tarafından dolduruluyor ve **PLATFORM_ADMIN aktörlerini kasıtlı olarak hariç tutuyor** - yani
+platform admin'in yaptığı hiçbir aksiyon (yeni Branch aksiyonları dahil, önceden var olan Business/
+StaffUser aksiyonları gibi) branch-scoped "Denetim Kaydı" ekranında görünmüyor; bu mevcut/kasıtlı bir
+tasarım, benim eklediğim bir regresyon değil - canlı Postgres sorgusu ve backend testiyle doğrulandı.
+
+**Backend testleri (13 yeni, hepsi yeşil):** `PlatformAdminBranchManagementIntegrationTest` (4: edit/
+activate/deactivate, aktif siparişli branch'in deactivate'inin 409 ile reddi, create/edit/toggle audit
+kayıtları, concurrent deactivate-vs-payment-start race testi - `ExecutorService` + `CountDownLatch` ile
+gerçek Postgres testcontainer üzerinde, 5 kez ardışık koşturulup flake olmadığı doğrulandı) +
+`PlatformAdminCustomerAccessIntegrationTest` (5: pasif şube/işletme yeni check-in'i 503 ile reddediyor,
+zaten check-in olmuş bir visit için yeni sepet öğesi 503, DRAFT sepetli branch deactivate edilebiliyor
+ama sonra ödeme 503, terminal duruma ulaşmış (REJECTED_BY_STORE) bir siparişin tracking/receipt'i branch
+deactive olduktan sonra da 200 dönüyor). Tüm proje test suite'i de koşturuldu: 2 pre-existing/ilgisiz
+başarısızlık tespit edildi (`BulkAssignBranchesFlowIntegrationTest#businessAdminCanAssignOnlyToActiveBranch`,
+`BranchBusinessHoursFlowIntegrationTest#anOvernightWindowFromYesterdayStillAllowsOrderingJustAfterMidnight`)
+- `git stash` ile bu oturumun değişiklikleri geçici olarak geri alınıp aynı iki test orijinal (main)
+kodda da başarısız bulunarak benim değişikliklerimle ilgisiz oldukları doğrulandı, sonra stash geri
+uygulandı. Düzeltilmedi (kapsam dışı).
+
+**Frontend:** staff-web `lib/api.ts`'e `Branch.active` alanı + `updatePlatformBranchInfo/
+activatePlatformBranch/deactivatePlatformBranch`; işletme detay sayfasına şube "Düzenle" dialog'u +
+Durum sütunu + aktif/pasif buton (409 aldığında "Şubede devam eden bir sipariş olduğu için pasife
+alınamadı." toast'ı). customer-web `page.tsx`/`PaymentSheet.tsx`'teki mevcut status-koduna-göre-mesaj
+deseni (`error.status === 409/410` zaten vardı) genişletilip 503 için "Bu işletme/şube şu anda hizmet
+vermiyor." eklendi (check-in, sepete ekleme, ödeme başlatma, ödeme retry - 4 nokta). `page.test.tsx`'e 3
+yeni unit test (check-in/sepet/ödeme 503 senaryoları, menü/sepetin görünür kalması). Tüm customer-web
+(33 test) ve staff-web lib testleri yeşil, her iki frontend `tsc --noEmit` temiz.
+
+**Canlı doğrulama:** Backend + staff-web Docker image'ları yeniden build edilip (staff-web Dockerfile'ın
+`COPY --from=build /app/public ./public` adımı boş bir `public/` klasörü beklediği ama repoda hiç
+olmadığı - önceden var olan, bu oturumla ilgisiz bir sorun - fark edildi; yerel olarak boş `public/`
+klasörü oluşturularak build'i açığa çıkarıldı, commit edilmedi) container'lar restart edildi, migration
+V32 otomatik uygulandı. Gerçek Chrome'da PLATFORM_ADMIN (`arda@qrmenu.local`) ile "Meydan Bistro"nun tek
+şubesi üzerinde Düzenle → Kaydet, Pasifleştir → Aktifleştir gerçek tıklamalarla test edildi (doğru toast
+mesajları, durum rozetleri anında güncellendi), sonra şube tekrar Aktif duruma geri alındı. Audit
+yazma tarafı doğrudan `psql` ile teyit edildi. Commit/push yapılmadı (kullanıcı talebi).
+
+## 2026-08-23 Full test suite'teki 2 pre-existing başarısızlığın kök neden analizi ve düzeltilmesi
+
+**Kapsam:** Bir önceki oturumda full suite'te bulunan ve baseline'da (git stash ile main'e dönülüp)
+de başarısız olduğu doğrulanan 2 testin kök nedeni araştırıldı (`superpowers:systematic-debugging`
+süreciyle). Biri gerçek production bug, diğeri saf test flake'i çıktı - ikisi de düzeltildi, başka
+feature/refactor yapılmadı, commit/push yapılmadı.
+
+**1) `BulkAssignBranchesFlowIntegrationTest#businessAdminCanAssignOnlyToActiveBranch` - GERÇEK BUG:**
+Kök neden `StaffContext.activeBranchId()`'de: `role == PLATFORM_ADMIN && branchIds.size() == 1` özel
+durumu sadece PLATFORM_ADMIN'in TAM OLARAK bir şubesi olduğunda çalışıyordu; 0 veya 2+ şubede genel
+"Staff user must have exactly one active branch" exception'ına düşüyordu (→ 403). Ama
+`StaffAuthService.createStaffUser` PLATFORM_ADMIN'e oluşturulduğu anda işletmenin **tüm** şubelerini
+otomatik atıyor (bkz. bu dosyadaki daha önceki Platform Admin oturumları) - yani "birden fazla şubeli
+bir işletmenin platform admin'i" tam olarak NORMAL/beklenen durum, ve bu durumda
+`resolveStaffContextForActiveBranch` kullanan HER staff-web endpoint'i (menu bulk-assign, business
+settings, branch listeleme vb.) gerçek kullanımda spurious 403 üretiyordu - test verisi hatası değil,
+gerçek bir production bug. Düzeltme: `activeBranchId()` artık PLATFORM_ADMIN için branch sayısına
+bakmaksızın (boş olmadığı sürece) ilk branch'i döndürüyor - PLATFORM_ADMIN zaten `canAccessBranch()`'te
+her şubeye erişebiliyor ve gerçek cross-business işler her zaman path'ten gelen açık businessId/branchId
+ile yapılıyor (`PlatformAdminBusinessController`), bu metodun döndürdüğü değer sadece "bir" resolvable
+branch olarak kullanılıyor.
+
+**2) `BranchBusinessHoursFlowIntegrationTest#anOvernightWindowFromYesterdayStillAllowsOrderingJustAfterMidnight`
+- FLAKY TEST (saat bağımlı, production bug değil):** Kök neden testin fixture kurgusunda:
+`TenantService.isWithinYesterdaysOvernightCarryOver` bir günün "gece yarısını aşan" pencere olduğunu
+salt `opening.isAfter(closing)` (takvim farkındalığı olmayan düz LocalTime karşılaştırması)
+ile anlıyor. Test, dünün closing saatini gerçek `LocalTime.now(Europe/Istanbul).plusMinutes(5)`'ten
+türetirken opening'i sabit `23:00` bırakıyordu - gerçek saat İstanbul'da 22:55-24:00 arasına
+girdiğinde (bu oturum boyunca test tam da bu aralıkta - 23:1x'ten 23:4x'e - koşturuldu) closing artık
+23:00'ü geçiyor, `opening.isAfter(closing)` matematiksel olarak yanlış çıkıyor, fonksiyon `false`
+dönüyor, bugünün kapalı satırı devreye girip 409 üretiyordu; test 201 bekliyordu. Bu üretim kodunun
+kendisinde bir hata değil - gerçek bir "18:00-02:00" gibi yapılandırılmış overnight pencere için
+mantık doğru çalışıyor (aynı dosyadaki `staffCanSaveAndReadBackAnOvernightHoursWindow`,
+`todaysScheduleTakesOverOnceYesterdaysOvernightWindowHasEnded` testleri hâlâ yeşil ve saatten bağımsız
+sağlam - ayrıca doğrulandı). `TenantService`'te bir Clock/saat enjeksiyonu olmadığından (bu oturumda
+eklenmedi - kapsam dışı refactor), testi TAM deterministik yapmak matematiksel olarak imkansız (LocalTime
+karşılaştırması takvim-farkındalıksız kaldığı sürece), ama pratik olarak neredeyse tamamen ortadan
+kaldırılabilir: sabit "opening" değeri `23:00`'dan mümkün olan en geç temsil edilebilir saate
+(`LocalTime.of(23, 59, 59)`) çekilerek riskli pencere ~65 gerçek dakikadan ~1 saniyeye indirildi (yalnızca
+"now" tam olarak 23:55'in bir saniye altındayken, yani closing=now+5dk'nın 23:59:59'u aşıp gece yarısını
+henüz sarmadığı o bir saniyelik anda hâlâ teorik bir risk var - pratikte hiç yakalanamayacak kadar dar).
+
+**Doğrulama:** Her iki düzeltme de gerçek saat 23:49 (önceden bozuk olan pencerenin tam içinde) iken
+tekrar koşturulup yeşil olduğu doğrulandı; overnight testi ayrıca 5 kez daha ardışık koşturulup
+kararlı olduğu teyit edildi. Tüm proje test suite'i: **42 test sınıfı, 200 test, 0 hata, 0 failure,
+0 skip - tamamen yeşil.** Başka hiçbir feature/refactor yapılmadı. Commit/push yapılmadı (kullanıcı
+talebi).
+
+## 2026-08-24 İki düzeltmenin production-öncesi sağlamlaştırılması
+
+**Kapsam:** Bir önceki oturumdaki iki düzeltme, kullanıcı talebiyle daha sağlam hale getirildi -
+biri "belirsiz branch seçimi" riskini tamamen ortadan kaldıracak şekilde, diğeri gerçek bir
+`Clock` enjeksiyonuyla matematiksel olarak tam deterministik olacak şekilde. Başka feature/refactor
+yapılmadı, commit/push yapılmadı.
+
+**1) `StaffContext.activeBranchId()` - "ilk branch'i otomatik seç" yaklaşımı kaldırıldı:** Bir
+önceki oturumdaki düzeltme PLATFORM_ADMIN için `branchIds`'ten rastgele/ilk elemanı seçiyordu - bu,
+gerçekten branch-scoped bir işlem yapan (ör. `StaffTenantController`, `StaffUserController`,
+`OrderControlController`, `RefundController`, `StaffReportingController`, `StaffDailyCloseController`,
+`StaffExpenseController`, `AuditController` - hepsi `context.activeBranchId()`'i doğrudan gerçek bir
+şube kapsamlaması olarak kullanıyor) bir endpoint'e çok-şubeli bir PLATFORM_ADMIN isteği geldiğinde
+sessizce YANLIŞ/keyfi bir şubeyi kullanmasına yol açabilirdi. Düzeltme: `activeBranchId()` artık
+role farkı gözetmeksizin herkes için "tam olarak bir branch yoksa reddet" davranışına döndürüldü (özel
+PLATFORM_ADMIN dalı komple kaldırıldı - önceki hâli zaten sadece branchIds.size()==1 durumunda anlamlı
+bir şey yapıyordu, fonksiyonel olarak ölü koddu). Gerçek çözüm bunun yerine
+`StaffAuthService.resolveStaffContextForActiveBranch`'e taşındı: PLATFORM_ADMIN için branch
+çözümlemesini/doğrulamasını hiç DENEMEDEN (aktifBranchId() hiç çağrılmadan) context'i doğrudan
+döndürüyor - böylece PLATFORM_ADMIN'i açıkça bypass eden endpoint'ler (ör.
+`StaffMenuController.bulkAssignBranches`'in `ALL_BRANCHES` dalı, ki zaten `context.activeBranchId()`'i
+hiç çağırmıyor) sorunsuz çalışırken, gerçekten tek bir şubeye ihtiyaç duyan endpoint'ler bir
+PLATFORM_ADMIN çok şubeli çağırdığında artık sessizce yanlış şubeyi kullanmak yerine AÇIKÇA
+(`StaffPermissionDeniedException` → 403) reddediyor. Platform panelinin kendisi (`PlatformAdminBusinessController`/
+`PlatformAdminStaffController`) zaten hiç `resolveStaffContextForActiveBranch`/`activeBranchId()`
+kullanmıyor (her zaman path'ten explicit businessId/branchId alıyor), dolayısıyla hiç etkilenmedi.
+
+**2) Overnight carryover testi - gerçek `Clock` enjeksiyonu ile tam determinizm:** Önceki oturumun
+"opening'i 23:59:59'a çek" workaround'u kaldırıldı. `TenantService`'e bir `java.time.Clock` alanı
+eklendi (constructor injection), `isWithinConfiguredBusinessHours` artık `LocalDate.now(zone)`/
+`LocalTime.now(zone)` yerine `LocalDate.now(clock.withZone(zone))`/`LocalTime.now(clock.withZone(zone))`
+kullanıyor - production'da yeni `TenantClockConfig`'in sağladığı `Clock.systemUTC()` bean'i ile
+davranış birebir aynı (aynı gerçek an, sadece zone reinterpretasyonu - `Clock.withZone` zaten
+`LocalDate/LocalTime.now(zone)`'un içeride yaptığı şeyin ta kendisi). Flaky testin kendisi
+`BranchBusinessHoursFlowIntegrationTest`'ten çıkarılıp yeni `BranchOvernightCarryoverIntegrationTest`'e
+taşındı - bu yeni sınıf `@TestConfiguration` + `@Import` + `@Primary` ile `Clock` bean'ini
+`Clock.fixed(sabit-an, Europe/Istanbul)` ile değiştiriyor (ayrı bir Spring context, ama
+`AbstractIntegrationTest`'in aynı statik Postgres container'ını paylaşıyor), fixture'ı da bu SABİT
+ana göre kuruyor (artık gerçek `LocalTime.now()` hiç kullanılmıyor) - artık gerçek saatten tamamen
+bağımsız, matematiksel olarak %100 deterministik. Diğer testler (`BranchBusinessHoursFlowIntegrationTest`'in
+kalan 8'i) hâlâ gerçek `Clock.systemUTC()` bean'ini kullanıyor, hiç dokunulmadı - production davranışı
+değişmedi, sadece TAM OLARAK bu bir testin zaman kaynağı değişti.
+
+**Doğrulama:** Yeni `BranchOvernightCarryoverIntegrationTest` 6 kez ardışık koşturuldu (hepsi yeşil,
+gerçek saat 23:xx'ten 00:xx'e geçmesine rağmen fark etmedi - beklenen, artık saatten bağımsız).
+`BulkAssignBranchesFlowIntegrationTest`, `StaffAccessFlowIntegrationTest`,
+`CrossTenantBranchAccessIntegrationTest`, `PlatformAdminFlowIntegrationTest`,
+`PlatformAdminBranchManagementIntegrationTest` (concurrent race testi dahil, 3 kez daha koşturuldu),
+`PlatformAdminCustomerAccessIntegrationTest` tekrar çalıştırılıp hepsi yeşil. Tüm proje test suite'i:
+**43 test sınıfı, 200 test, 0 hata, 0 failure, 0 skip - tamamen yeşil.** Başka feature/refactor
+yapılmadı. Commit/push yapılmadı (kullanıcı talebi).
+
+## 2026-08-24 Expense → Reports bug: kök neden ve düzeltme
+
+**Kök neden araştırması:** Backend zinciri (`ExpenseRepository.sumManualAmount`/`sumRecurringAmount` →
+`ExpenseService.expenseBreakdown` → `StaffReportingController#operatingResult`) gerçek datayla
+(branch-manager, cashier, PLATFORM_ADMIN rolleriyle) uçtan uca defalarca test edildi - manuel ve
+gerçekleşmiş recurring giderler her seferinde doğru toplandı, JPQL filtreleri (`cancelledAt IS NULL`,
+`sourceTemplateId IS NULL/NOT NULL`, `incurredAt BETWEEN`) hatasız çalıştı. Asıl kök neden backend'de
+değil, frontend'deydi: `frontend/staff-web/app/expenses/features/ExpenseForm.tsx` (yeni gider
+`incurredAt` varsayılanı), `ExpenseList.tsx` (Gider Listesi'nin varsayılan tarih filtresi) ve
+`RecurringTemplates.tsx` (şablon "sonraki tarih" hesaplaması), `lib/time.ts`'in kendi doc-comment'inin
+açıkça yasakladığı `localIsoDate()` (cihazın yerel tarihi) kullanıyordu - hâlbuki Özet/Kasa/Raporlar
+ekranları bu tam sınıf bug için daha önce zaten `branchIsoDate(activeBranchTimeZone)`'a geçirilmişti
+(bkz. `lib/time.test.ts`'in "Özet/Kasa/Raporlar" regresyon testleri). Sonuç: personelin cihazı
+şubenin saat dilimiyle (Europe/Istanbul) aynı değilse, "Gider Ekle" formu gideri yanlış takvim
+gününe kaydediyor, Gider Listesi de kendi içinde tutarlı biçimde (yine cihaz-yerel) o günü
+gösterdiği için gider ekranda görünüyor - ama şube saat dilimine göre doğru filtreleyen Raporlar/
+"Yönetimsel Net Sonuç" o günü farklı hesapladığı için gideri dışarıda bırakıyordu.
+
+**Düzeltme:** `ExpensesPage` artık zaten sahip olduğu `me()` sonucundan `activeBranchTimeZone`'u üç
+alt bileşene (`ExpenseForm`, `ExpenseList`, `RecurringTemplates`) prop olarak geçiriyor; üçü de
+`localIsoDate()` yerine `branchIsoDate(branchTimeZone)` kullanacak şekilde güncellendi (ExpenseList,
+`me()` henüz dönmeden ilk render'da cihaz-yerel yer tutucuyla açılıp branchTimeZone geldiğinde bir kez
+yeniden çapalanıyor - Raporlar sayfasındaki aynı desen). Backend'de değişiklik yapılmadı (zaten doğru
+çalışıyordu).
+
+**Regresyon testi:** Bu app'te component render test altyapısı yok (sadece `node --test` ile saf
+fonksiyon testleri, bkz. `lib/time.test.ts`). Yeni `app/expenses/features/expenseTimeZone.test.ts`
+üç dosyanın kaynağını okuyup `branchIsoDate` kullandığını ve `localIsoDate`'i hiç çağırmadığını
+doğruluyor - `lib/time.ts`'in "expense dates" için `localIsoDate` yasağını doğrudan kod seviyesinde
+uygulayan bir muhafız. `package.json`'daki `test` script'i bu yeni dosyayı da kapsayacak şekilde
+genişletildi. `npm test`: **8/8 yeşil.** `tsc --noEmit`: hatasız. Canlı tarayıcıda doğrulandı
+(branch-manager ile giriş, Giderler sayfası varsayılan tarih filtresi ve "Yeni Gider" diyaloğunun
+tarih alanı artık cihaz saatinden bağımsız, şubenin (Europe/Istanbul) o anki takvim gününü
+gösteriyor; konsol hatası yok). Reprodüksiyon sırasında oluşturulan iki test gideri (`TestVendor`,
+`BizLevel`) iptal edilerek gerçek veri temizlendi. Commit/push yapılmadı (kullanıcı talebi).
+
+## 2026-08-24 PLATFORM_ADMIN scope daraltma
+
+**Kök mekanizma:** `StaffRole.permissions()` (backend, `StaffRole.java`) PLATFORM_ADMIN için
+`EnumSet.allOf(Permission.class)` döndürüyordu - yani her normal-staff `Permission`'a otomatik
+sahipti. Bütün normal işletme operasyonu endpoint'leri (Kasa/sipariş, menü, masalar, giderler,
+raporlar, refund, branch/business ayarları, business-scoped personel yönetimi) tek bir noktadan,
+`StaffAuthService.requirePermission`/`resolveStaffContext(sessionId, Permission)` üzerinden
+`Permission` kontrolüyle korunuyor - PLATFORM_ADMIN'in "her Permission'a sahip olması" bu
+gate'lerin hepsinden sessizce geçmesi anlamına geliyordu (dolaylı erişim, kullanıcının
+bahsettiği tam olarak bu). `/api/platform-admin/**` paneli (`PlatformAdminBusinessController`,
+`PlatformAdminStaffController`) ise hiç `Permission` kontrolü yapmıyor - sadece
+`context.role() == PLATFORM_ADMIN` diye rol bazlı kontrol ediyor; `/api/staff/auth/me`,
+`/change-password`, `/logout` de permission gerektirmiyor (sadece oturum). Bu nedenle tek satırlık
+değişiklik - PLATFORM_ADMIN için `EnumSet.noneOf(Permission.class)` - cerrahi ve eksiksiz: platform
+paneli ve PLATFORM_ADMIN'in kendi hesabı (me/şifre/çıkış) hiç etkilenmeden, her normal işletme
+operasyonu endpoint'i artık PLATFORM_ADMIN'i 403 ile reddediyor. `StaffContext.canAccessBranch`'in
+PLATFORM_ADMIN kısayolu bilinçli olarak dokunulmadan bırakıldı - tüm çağrı noktaları zaten bir
+Permission kontrolünün ardından geliyor (artık PLATFORM_ADMIN için hiç ulaşılamıyor), sadece
+`/me`'nin kozmetik şube listesinde kullanılıyor.
+
+**Etkilenen mevcut testler (PLATFORM_ADMIN'in artık YAPAMAYACAĞI şeyleri doğruluyorlardı, negatif
+teste çevrildi):** `ChainComparisonFlowIntegrationTest` (PLATFORM_ADMIN artık `/api/staff/branches/
+comparison`'da BUSINESS_ADMIN ile aynı şekilde 403 alıyor - artık hiçbir staff-web rolünün erişimi
+yok), `ReportingFlowIntegrationTest` (`/api/staff/reports/chain` PLATFORM_ADMIN için de 403),
+`BulkAssignBranchesFlowIntegrationTest` (PLATFORM_ADMIN'in eski ALL_BRANCHES menü ataması istisnası
+artık erişilemez, 403). Yeni `PlatformAdminScopeIntegrationTest` eklendi: tek testte Kasa/sipariş,
+refund, menü, masalar, giderler, raporlar (branch + chain + kitchen-summary + comparison), branch/
+business ayarları, business-scoped personel yönetimi, audit - hepsi PLATFORM_ADMIN için 403; ayrı
+bir testte `/me`, `/api/platform-admin/businesses`, `/api/platform-admin/businesses/{id}/staff-users`
+hâlâ 200 döndüğü doğrulanıyor.
+
+**Frontend (`staffNav.ts`/`AppShell.tsx`/`page.tsx`):** `NAV_GROUPS`'taki her item'dan
+`"PLATFORM_ADMIN"` çıkarıldı - sadece "Platform" grubundaki "İşletmeler" linki kaldı (artık
+kimsenin erişemediği "Zincir Raporları"/"Şube Karşılaştırma" item'ları da silindi). AppShell'in
+sidebar footer'ı (e-posta, rol, şifre değiştir, çıkış) zaten role bakılmaksızın her zaman
+gösteriliyordu - dokunulmadı. Login sonrası yönlendirme rol bazlı ayrıldı: normal roller hâlâ
+`/dashboard`'a, PLATFORM_ADMIN artık doğrudan `/platform-admin/businesses`'e gidiyor (aksi halde
+/dashboard'da art arda 403'lerle karşılaşırdı). Bu, projenin var olan felsefesiyle birebir uyumlu
+(`staffNav.ts`'in kendi yorumu: "bu yalnızca 403'e gidecek bir linki gizleme niceliğidir, gerçek
+yetkilendirme backend'de kalır") - dolayısıyla PLATFORM_ADMIN doğrudan URL'ye giderse (ör.
+`/expenses`) sayfa çökmüyor, sadece "Bir şeyler ters gitti" hata durumunu gösteriyor.
+
+**Doğrulama:** Backend - hedefli testler + tüm suite (`./mvnw test`) çalıştırıldı: **44 test sınıfı,
+202 test, 0 hata, 0 failure, 0 skip - tamamen yeşil.** Frontend - `tsc --noEmit` hatasız, `npm test`
+8/8 yeşil (Expense zaman dilimi testleri dahil, etkilenmedi). Backend + staff-web docker imajları
+yeniden build edilip container'lar yeniden başlatılarak canlı doğrulandı: PLATFORM_ADMIN
+(`arda@qrmenu.local`) ile giriş → doğrudan Platform Admin panosuna düşüyor, sidebar'da sadece
+"İşletmeler" + hesap alanı var; `curl` ile `/api/staff/expenses` ve `/api/staff/reports` 403,
+`/api/staff/auth/me` ve `/api/platform-admin/businesses` 200. `branch-manager@qrmenu.local` ile
+giriş yapılıp normal rollerin nav'ının (Özet/Kasa/Siparişler/Raporlar/Giderler/İadeler) hiç
+değişmediği doğrulandı - regresyon yok. Commit/push yapılmadı (kullanıcı talebi).
+
+## 2026-08-24 Dev verisini production-like kuruluma sıfırlama
+
+**Amaç:** Dev DB'de birikmiş test/smoke verisini (birden fazla smoke-test işletmesi, inactive test
+personeli, eski sipariş/ödeme/gider/rapor kayıtları) temizleyip gerçek kullanılacak hesaplarla
+(`arda@qrmenu.local` PLATFORM_ADMIN, `branch-manager@qrmenu.local`, `cashier@qrmenu.local` - hepsi
+Meydan Bistro/Arabica Bahçelievler altında) production'a yakın, gerçek UI/API akışlarından üretilmiş
+bir veri seti kurmak. Kullanıcı onayı öncesi FK grafiği migration'lardan (`REFERENCES` taramasıyla)
+çıkarıldı; silme/koruma kapsamı ve üretilecek veri seti onaylandıktan sonra uygulandı.
+
+**Önce yedek:** `docker exec infra-postgres-1 pg_dump -Fc` ile tam DB dump'ı alınıp
+scratchpad'e kopyalandı (geri dönüş için).
+
+**Temizlik (tek transaction, `TRUNCATE` + hedefli `DELETE`):** Operasyon tabloları global olarak
+boşaltıldı - `order_item_option, refund_item, payment_webhook_event, refund, payment, order_item,
+customer_order, branch_daily_order_sequence, table_visit, anonymous_customer_session,
+table_qr_token, restaurant_table, branch_product, product_option, product_allergen,
+product_option_group, product, menu_category, expense, recurring_expense_template,
+expense_category, owner_notification_log, daily_branch_close_report, audit_log_entry,
+outbox_event, staff_session, business_contact, branch_business_hours`. Ardından üç eski
+smoke/browser-test işletmesi (Browser Test Seed Business, Smoke Test İşletmesi, Yeni Test Şubeler
+A.Ş.) `staff_user_branch` → `staff_user` → `branch` → `business` sırasıyla tamamen silindi (FK
+bütünlüğü nedeniyle bu sıra zorunlu - önce operasyon verisi boşaltılmadan bu personel/business
+satırları silinemezdi, çünkü expense/audit_log_entry gibi tablolar onlara referans veriyordu).
+Transaction sonunda kalan `business`/`branch`/`staff_user` sayılarını doğrulayan bir `DO` bloğu
+(1/1/3 bekleniyor) eklendi - beklenmedik bir sayı olsaydı `RAISE EXCEPTION` ile tüm transaction
+otomatik geri alınacaktı. `backend/data/media` zaten boştu, ek dosya temizliği gerekmedi.
+
+**Sonuç doğrulandı:** `business`=1 (Meydan Bistro), `branch`=1 (Arabica Bahçelievler),
+`staff_user`=3 (`arda@qrmenu.local` PLATFORM_ADMIN, `branch-manager@qrmenu.local`,
+`cashier@qrmenu.local`, üçü de `active=true`), tüm operasyon/rapor tabloları 0 satır.
+Commit/push yapılmadı (kullanıcı talebi) - bu bir DB veri işlemi, kod değişikliği yok.
+
+**Sıradaki adım:** `branch-manager@qrmenu.local` ile staff-web'e giriş yapıp gerçek UI/API
+akışlarıyla kahve dükkânı menüsü, çalışma saatleri, masa/QR, giderler, siparişler ve
+refund senaryolarını oluşturmak (DB'ye elle veri basılmayacak).
+
+### Production-like veri seti kuruldu (gerçek REST API akışlarıyla, DB'ye elle yazım yok)
+
+**Yöntem:** UI yerine backend REST API'ye doğrudan `curl` ile, gerçek staff-session/customer-session
+akışları üzerinden gidildi (aynı endpoint'ler UI'nin kullandığı endpoint'ler - "gerçek API akışı"
+kapsamında, DB seed değil). Ekran doğrulaması için sonda staff-web + customer-web tarayıcıda
+kontrol edildi.
+
+**Eksik rol bulgusu:** Menü/şube/QR/business-contact yönetimi `Permission.MENU_MANAGE` /
+`BRANCH_MANAGE` / `QR_MANAGE` / `BUSINESS_SETTINGS_MANAGE` gerektiriyor - bunların hepsi yalnızca
+`BUSINESS_ADMIN` rolünde var (`StaffRole.java`). Korunan 3 hesaptan hiçbiri (`PLATFORM_ADMIN` artık
+sıfır permission, `BRANCH_MANAGER`/`CASHIER`'da bu izinler yok) bu işlemleri yapamıyordu. Bu yüzden
+`/internal/businesses/{id}/staff-users` ile yeni bir `business-admin@qrmenu.local` (BUSINESS_ADMIN,
+`Test1234!`, Arabica Bahçelievler'e bağlı) hesabı oluşturuldu - kod yorumundaki "PLATFORM_ADMIN'in
+işletme işlemleri için ayrı bir BUSINESS_ADMIN/BRANCH_MANAGER hesabı kullanması" beklentisiyle
+birebir uyumlu. Sipariş/refund/gider akışları için `branch-manager@qrmenu.local` kullanıldı.
+
+**Kurulan veri:** Çalışma saatleri (veri girişi sırasında geçici olarak 7/24 açıldı, sonda gerçek
+saatlere - Pzt-Per 08-22, Cum-Cts 08/09-23, Paz 09-21 - geri alındı, gerçek saat o an açık
+saatlerin dışındaydı ve sipariş akışı `assertOrderingCurrentlyAllowed` ile buna bağlı olduğu için
+gerekliydi); 1 business contact; 4 menü kategorisi, 13 ürün (görselli, alerjen etiketli,
+Latte/Iced Latte'de opsiyon grupları - süt tipi/boy) hepsi şubede `AVAILABLE`; 5 masa + QR token;
+5 gider kategorisi, 6 manuel gider + 2 recurring şablon (kira, doğalgaz) - şablonlar oluşturulduktan
+kısa süre sonra arka plandaki `RecurringExpenseScheduler` gerçekten çalışıp iki realizasyonu kendisi
+üretti, bu yüzden elle eklenmiş "gerçekleşmiş örnek" kira kaydı iptal edildi (`cancel` endpoint'i) -
+gerçek mekanizma zaten kendi örneğini üretmiş oldu; 6 customer_order tam checkin→cart→payment
+(mock-outcome + poll)→accept→ready→complete akışıyla farklı masalardan (#1-#4, #6 masa 1'in ikinci
+ziyareti) oluşturuldu, #5 (masa 5) reddedilip `RefundService` otomatik tam refund'u tetikledi, #6
+üzerinde manuel kısmi refund (1 adet Cappuccino) yapıldı.
+
+**Doğrulama (branch-manager ile canlı tarayıcı):** Özet - brüt ₺1.725, refund ₺275, net ₺1.450,
+6 sipariş, ortalama sepet ₺287,50 (hepsi DB ile birebir). Siparişler sekmeleri (Tamamlanan/
+Reddedilen/İade) doğru dağılım gösteriyor. Kasa: günlük ciro ve tamamlanan sipariş sayısı (5)
+doğru, kuyruklar boş (hepsi zaten sonuçlanmış). Giderler: manuel liste kasıtlı olarak
+`sourceTemplateId IS NULL` filtreliyor (recurring-üretilenler ayrı tutuluyor - mevcut tasarım,
+bug değil) ama Raporlar'daki "Yönetimsel Net Sonuç" ikisini de topluyor: Manuel ₺10.850,75 +
+Tekrarlayan ₺46.800,00 = ₺57.650,75 toplam gider, net sonuç -₺56.200,75 (kira/kuruluş
+maliyetleri satış hacmini aştığı için negatif - beklenen, tek aylık ilk kurulum verisiyle
+gerçekçi). Kategori/ürün bazlı ciro dağılımı ve customer-web menüsü (görseller dahil) görsel
+olarak doğrulandı. Commit/push yapılmadı (kullanıcı talebi).
+
+### Business-scoped Personel ekranından PLATFORM_ADMIN'in tamamen gizlenmesi (bug fix)
+
+**Bulgu:** Business Admin'in Personel ekranı (`/api/staff/staff-users` GET, `StaffUserController.list`)
+`StaffAuthService.listStaffUsers(businessId, branchId)` çağırıyordu, bu da rol filtresi olmadan
+şubeye atanmış her `StaffUser`'ı döndürüyordu. `createStaffUser` PLATFORM_ADMIN'i business'ın
+*her* şubesine otomatik atadığı için (`StaffAuthService.java:158-160`), aynı business içindeki bir
+PLATFORM_ADMIN hesabı bu listede normal personel gibi görünüyordu - frontend'de (`app/staff/page.tsx`)
+`ROLE_LABELS`'ta karşılığı olmadığı için ham "PLATFORM_ADMIN" string'i olarak.
+
+Daha ciddisi: `StaffAuthService.deactivateStaffUser(businessId, branchId, staffUserId)` hedefin
+rolünü hiç kontrol etmiyordu - sadece `businessId` ve şube ataması kontrol ediliyordu, PLATFORM_ADMIN
+her şubeye zaten atanmış olduğundan bu kontrolü geçiyordu. Yani ID'sini bilen bir BUSINESS_ADMIN,
+kendi business'ındaki PLATFORM_ADMIN hesabını gerçekten devre dışı bırakabiliyordu. `resetPassword`
+zaten PLATFORM_ADMIN hedefini reddediyordu (403); business-scoped tarafta rol değiştirme endpoint'i
+zaten yok (rol değişimi sadece Platform Admin panelinde ve orada da `requireNonPlatformAdminTarget`
+ile PLATFORM_ADMIN hedefi zaten engelleniyor) - o iki nokta zaten güvenliydi.
+
+**Kapsam dışı bırakılan:** `StaffAuthService.listStaffUsers(businessId)` (tek parametreli, sadece
+`PlatformAdminStaffController.list` kullanıyor) ve Platform Admin panelinin diğer tüm endpoint'leri
+bilerek dokunulmadan bırakıldı - kullanıcı talebi açıkça "Platform Admin panelindeki mevcut
+kullanıcı/işletme yönetimini bozma" dedi ve o panel zaten PLATFORM_ADMIN'i görüp yönetebilmeli.
+
+**Çözüm:**
+1. `listStaffUsers(businessId, branchId)` sonucuna `role != PLATFORM_ADMIN` filtresi eklendi -
+   business-scoped liste artık PLATFORM_ADMIN'i asla döndürmüyor (frontend'de ekstra gizleme
+   gerekmedi, veri zaten gelmiyor).
+2. `deactivateStaffUser(businessId, branchId, staffUserId)`'a, `resetPassword`'daki mevcut
+   desenle birebir aynı kontrol eklendi: hedef PLATFORM_ADMIN ise `StaffPermissionDeniedException`
+   (403) - branch ataması kontrolünden önce.
+3. Regression testleri `StaffAccessFlowIntegrationTest`'e eklendi: business-scoped listede
+   PLATFORM_ADMIN'in hiç görünmediği + ID'si bilerek yapılan deactivate/reset-password
+   denemelerinin 403 döndüğü + gerçek personelin (BUSINESS_ADMIN dahil) listede ve mutation'larda
+   etkilenmediği doğrulandı.
+
+**Ek doğrulama - Platform Admin panel tarafı (kod değişikliği yok, sadece test):** Kullanıcı
+`/api/platform-admin/**`'te de PLATFORM_ADMIN hedefine mutation yapılamamasını (listede görünmesi
+sorun değil, salt-okunur kalmalı) doğrulamamı istedi. `StaffAuthService.requireNonPlatformAdminTarget`
+zaten deactivate/activate/role-change/reset-password'ün dördünün de tek ortak kontrol noktası -
+kod değiştirilmedi. `PlatformAdminFlowIntegrationTest.platformAdminCannotManageAnotherPlatformAdminAccountThroughThePanel`
+testi genişletildi: önceden sadece deactivate+reset-password'ü kapsıyordu, şimdi activate ve
+role-change de eklendi (hepsi 403), listede PLATFORM_ADMIN'in hâlâ göründüğü doğrulandı (salt-okunur
+olması bekleniyor, gizlenmesi değil), ve tüm reddedilen denemelerden sonra hedef hesabın orijinal
+şifresiyle hâlâ login olabildiği (reset-password'ün gerçekten etkisiz kaldığı) teyit edildi.
+6/6 test geçti, business-scoped düzeltmeye dokunulmadı.
+
+Commit/push yapılmadı (kullanıcı talebi).
+
+## 2026-08-24 — Rol bazlı UI/permission smoke test + BRANCH_MANAGER ordering-toggle boşluğu
+
+Kullanıcı BUSINESS_ADMIN/BRANCH_MANAGER/CASHIER ile canlı login yapıp (Chrome automation) her
+rolün sidebar'ının backend permission'larıyla birebir tutarlı olduğunu, URL'yi elle yazarak
+yetkisiz sayfalara gidilemeyeceğini ve kritik aksiyonların (personel, menü, masa/QR, şube
+ayarları, giderler, raporlar, refund, Kasa) doğru korunduğunu doğrulamamı istedi.
+
+**Sonuç - mevcut kod zaten sağlamdı:** 3 rolün sidebar'ı (`staffNav.ts`) `StaffRole.permissions()`
+ile tam örtüşüyordu; sidebar'da gizlenen her sayfaya manuel URL ile gidildiğinde backend gerçekten
+403 döndürüyordu (menü, personel, şube ayarları, masalar, denetim kaydı, işletme ayarları,
+giderler, refund arama, platform-admin - hepsi network log'uyla teyit edildi). Refund arama ve
+business-settings kaydetme gibi kritik aksiyonlar da 403 ile reddedildi, oturum bozulmadan.
+İki kozmetik (güvenlik dışı) gözlem: `/refunds` sayfası 403'te `router.replace("/")` ile login
+ekranına atıyor (session aslında hâlâ geçerli, `/dashboard`'a dönünce görülüyor) - diğer sayfalar
+gibi satır içi hata banner'ı göstermek yerine; ve business-settings formundaki para birimi/saat
+dilimi alanları programatik hızlı tıklamada değeri commit etmeyip 400 (403 değil) dönebiliyor -
+her iki durum da yetkilendirme açığı değil, ayrı UX detayları.
+
+**Bulunan gerçek tutarsızlık:** Backend `StaffRole.java` ve `StaffTenantController` Javadoc'u
+açıkça BRANCH_MANAGER'ın kendi şubesi için `Permission.ORDERING_TOGGLE` ile sipariş alımını
+açıp kapatabilmesi gerektiğini söylüyordu, ama frontend'de Şube Ayarları sadece BUSINESS_ADMIN'e
+gösteriliyordu; sayfaya manuel gidilse bile ilk veri yüklemesi (`GET /branch`, `GET
+/branch/business-hours`) `Permission.BRANCH_MANAGE` istediğinden (BRANCH_MANAGER'da yok) sayfa
+hep "Bir şeyler ters gitti" ile patlıyordu - yani role verilmiş bir yetkinin kullanılabileceği
+hiçbir UI yolu yoktu. Kullanıcıya soruldu, "şimdi düzelt" seçildi.
+
+**Çözüm:**
+1. `StaffAuthService`'e `Permission...` varargs alan iki "anyOf" overload eklendi:
+   `resolveStaffContextForActiveBranch(sessionId, Permission... anyOf)` ve
+   `resolveStaffContextForBranch(sessionId, branchId, Permission... anyOf)` (parametre sırası
+   farklı olduğu için mevcut tek-Permission overload'larla çakışmıyor, Java en spesifik metodu
+   seçiyor). `requireAnyPermission` helper'ı rolün listedeki permission'lardan en az birine sahip
+   olup olmadığını kontrol ediyor.
+2. `StaffTenantController.listBranches` ve `getBusinessHours`, `Permission.BRANCH_MANAGE`
+   yerine `anyOf(BRANCH_MANAGE, ORDERING_TOGGLE)` kullanacak şekilde güncellendi - artık
+   BRANCH_MANAGER da bu iki GET'i (yalnızca okuma) geçebiliyor. Tüm POST/PATCH endpoint'leri
+   (adres, saat dilimi, kasa kabul süresi, teslimat modeli, çalışma saatleri) bilerek
+   `BRANCH_MANAGE`'de bırakıldı - sadece `/branch/ordering-enabled` zaten `ORDERING_TOGGLE`
+   kullanıyordu, değişmedi.
+3. Frontend: `staffNav.ts`'te "Şube Ayarları" nav item'ına `BRANCH_MANAGER` eklendi.
+   `app/branches/page.tsx` artık `me()` ile rolü de çekiyor; `canManageBranch = role ===
+   "BUSINESS_ADMIN"` false olduğunda (yani BRANCH_MANAGER) sadece "Operasyon" kartındaki
+   sipariş alımı toggle'ı gösteriliyor - "Teslimat modeli" alanı, "Operasyonu Kaydet",
+   "Şube Bilgileri" ve "Çalışma Saatleri" bölümlerinin tamamı (hepsi BRANCH_MANAGE gerektirdiği
+   için) gizleniyor.
+4. Doğrulama: backend `mvn test` (ilgili 3 sınıf + tam suite) yeşil; canlı testte BRANCH_MANAGER
+   artık sadece toggle'ı görüyor ve gerçekten çalışıyor ("Sipariş durumu güncellendi" toast +
+   `openNow`/`orderingEnabled` state'i değişiyor); aynı oturumda adres değiştirme denemesi hâlâ
+   403 ("Missing permission: BRANCH_MANAGE"); CASHIER hâlâ sayfayı hiç göremiyor/açamıyor (nav'da
+   yok, manuel URL 403); BUSINESS_ADMIN'de sayfa öncekiyle birebir aynı (regresyon yok). Backend
+   (`infra-backend-1`) ve staff-web (`infra-staff-web-1`, volume mount yok - Dockerfile'dan build
+   ediliyor, kod değişikliği için `docker compose build` + `up -d` gerekiyor) image'ları yeniden
+   build edilip yeniden başlatıldı.
+
+Commit/push yapılmadı (kullanıcı talebi).
+
+## 2026-08-24 — Rol smoke testte kalan 2 UX düzeltmesi: 401/403 ayrımı + business-settings çift gönderim
+
+Bir önceki smoke test girdisinde "kozmetik" diye not düşülen iki gerçek UX kusuru:
+
+1. **403'te login'e yönlendirme:** `refunds`, `orders` ve `cashier` sayfalarındaki ilk yükleme/arama
+   catch bloklarının hepsi `err.status === 401 || err.status === 403` durumunda aynı şekilde
+   `router.replace("/")` çağırıyordu - yetkisiz bir role sahip kullanıcı (ör. CASHIER `/refunds`'a
+   manuel giderse) geçerli oturumuyla login ekranına atılıyordu, session'ın hâlâ geçerli olduğu
+   `/dashboard`'a dönünce görülüyordu.
+2. **Business Settings çift gönderim → 400:** "Ayarları Kaydet" formunda `disabled={savingSettings}`
+   var ama bu prop yalnızca React commit sonrası DOM'a yansıyor; repaint'ten önce ulaşan ikinci bir
+   submit event'i (hızlı çift tık/Enter+tık) handler'ı `savingSettings` hâlâ `false` görerek tekrar
+   çalıştırıyor, iki eşzamanlı `updateBusinessSettings` isteğinden biri backend'de 400 dönüyordu.
+
+**Çözüm (küçük, ortak, sayfa mantığına dokunmadan):**
+- `lib/api.ts`'e `isSessionExpired` (401) / `isAccessDenied` (403) yardımcıları eklendi - beş çağrı
+  noktasındaki (`cashier` ×2, `orders` ×2, `refunds` ×1) `err instanceof ApiError && (401||403)`
+  tekrarının yerine geçti.
+- `AppShell`'e `accessDenied?: boolean` prop'u eklendi; `true` olduğunda sidebar/topbar aynı kalıp
+  içerik alanında mevcut `ErrorState` ile "Bu sayfaya erişim yetkiniz yok." gösteriyor (yeni
+  component yok, var olanı kullandı). Üç sayfa da 401'de hâlâ `router.replace("/")`, 403'te ise
+  `setAccessDenied(true)` + bu prop'u `AppShell`'e geçiriyor.
+- `business-settings/page.tsx`: `handleSaveSettings` içine `savingSettingsRef` (useRef) eklendi -
+  handler'ın en başında senkron kontrol edilip set ediliyor, `finally`'de sıfırlanıyor. State'e
+  bağlı `disabled` prop'un kapatamadığı render-timing açığını, event-loop içinde senkron olarak
+  kapatıyor. Yalnızca bu form değiştirildi - aynı state/disabled desenini kullanan diğer ~97 submit
+  handler'ına dokunulmadı (geniş refactor istenmedi); kişi ekleme formu da rapor edilen kapsamın
+  dışında bırakıldı.
+
+**Regresyon testleri:** staff-web'de daha önce React component testi yoktu (yalnızca `node --test`
+ile saf mantık testleri) - `customer-web`'deki kurulumla birebir aynı `vitest` + `@testing-library/react`
++ `jsdom` eklendi (`vitest.config.mts`, `vitest.setup.ts`; `package.json`'da `test:unit` (mevcut
+`node --test`, değişmedi) + `test:components` (yeni `vitest run`) + `test` ikisini sırayla çalıştırıyor).
+Eklenen testler: `lib/api.test.ts` (isSessionExpired/isAccessDenied, node:test), `components/layout/
+AppShell.test.tsx` (accessDenied=true'da içerik yerine mesaj + `router.replace` çağrılmıyor;
+accessDenied=false'ta normal içerik; `/me` gerçekten 401 verirse hâlâ login'e yönlendiriyor),
+`app/business-settings/page.test.tsx` (aynı formun `fireEvent.submit` ile art arda iki kez, ilk istek
+hâlâ pending'ken tetiklenmesi `updateBusinessSettings`'i yalnızca bir kez çağırıyor; ilk istek
+bitince tetiklenen üçüncü submit normal şekilde ikinci isteği yolluyor). `npm test` (10 node:test +
+4 vitest testi) ve `npx tsc --noEmit` yeşil.
+
+Commit/push yapılmadı (kullanıcı talebi).
+
+## 2026-08-24 — Staff-web genel UI: arama ikonu, Kasa Yenile, dark mode, sidebar collapse
+
+Dört ayrı UI kusuru rapor edildi, hepsi shared component seviyesinde çözülecek (geniş refactor yok):
+
+**Tasarım (uygulama öncesi):**
+1. **Arama ikonu çakışması:** `refunds`/`orders` sayfalarındaki `searchInputWrap` deseni (ikon
+   absolute + ayrı `page.module.css`'te `padding-left: 40px`) iki farklı CSS module dosyasına
+   bölünmüş - cascade sırası bundler'ın import graph'ına bağlı, garanti değil. Kasa'daki arama ise
+   shared `Input` component'ini hiç kullanmıyor, kendi hardcoded-renkli `.searchBar`'ı var (dark
+   mode'da da kırık). Çözüm: `components/ui/Input.tsx`'e opsiyonel `icon` prop'u eklenecek - ikon
+   pozisyonu ve `padding-left` aynı `Input.module.css` dosyasında, tek kaynaktan, cascade sırası
+   riski olmadan tanımlanacak. Üç sayfa da (`cashier`, `refunds`, `orders`) kendi
+   `searchInputWrap`/`searchBar` kopyalarını silip bu prop'u kullanacak.
+2. **Kasa Yenile no-op görünümü:** `reloadAll()` gerçekten sipariş listelerini + KPI'ları (`refreshMetrics`)
+   yeniden çekiyor, ama `loading` yalnızca ilk yüklemede true oluyor - manuel tıklamada buton hiç
+   disabled/loading durumuna girmiyor, kullanıcıya "hiçbir şey olmadı" izlenimi veriyor. Çözüm: ayrı
+   bir `refreshing` state - tıklanınca true, ikon spin + buton disabled, istek bitince false.
+3. **Dark mode:** `app/globals.css`'teki token seti (`:root[data-theme="dark"]`) zaten doğru ve eksiksiz;
+   sorun `AppShell.module.css` (sidebar/topbar), `app/cashier/[branchId]/page.module.css`,
+   `app/tables/page.module.css`, `app/branches/page.module.css`'in token yerine hardcoded hex/rgba
+   renk kullanması - bu yüzden o bölgeler dark mode'da hâlâ açık renkte kalıyor. Çözüm: bu dosyalardaki
+   hardcoded renkleri (`--color-*` token ailesi + gerekiyorsa dark override'da yeni bir eşleniği)
+   tokenlara taşımak; ikonik turuncu accent (`--color-primary`/`--kasa-accent` vb.) iki temada da aynı
+   kalıyor zaten (globals.css'te böyle tanımlı), değiştirilmeyecek.
+4. **Sidebar collapse:** Topbar'daki `.hamburger` (yalnızca <1024px'te görünen, mobil drawer'ı açan
+   IconButton) kaldırılacak; yerine sidebar'ın üst kısmına (`brand` satırına, logo yanına) yeni bir
+   toggle IconButton eklenecek. Bu tek buton hem `drawerOpen` (mobil) hem yeni bir `collapsed` state'ini
+   (masaüstü) aynı anda toggle'layacak - hangisinin görsel etkisi olacağını mevcut `@media (max-width:
+   1023px)` breakpoint'i belirliyor, ayrı bir JS matchMedia kontrolüne gerek yok. `collapsed` state'i
+   sayfa geçişlerinde AppShell yeniden mount olduğu için component state'te tutulamıyor (17 sayfa da
+   kendi `<AppShell>`'ini kuruyor) - `lib/theme.ts`'teki `useSyncExternalStore` + `localStorage` deseni
+   kopyalanarak yeni bir `lib/sidebarCollapse.ts` eklenecek. Collapsed genişlikte nav label'ları,
+   grup başlıkları, marka wordmark'ı, kullanıcı e-postası/rolü ve destek kartı metni gizlenecek
+   (yeni `linkLabel` vb. span'larla sarmalanıp `.collapsed` altında `display:none`); ikonlar kalacak.
+   Mobil davranış (drawer + backdrop + link tıklayınca otomatik kapanma) değişmeyecek.
+
+**Uygulama ve doğrulama (bilgisayar reset'i sonrası devam):** Bilgisayarda reset olmuş, Docker
+daemon ve tüm container'lar durmuştu; oturuma devam ederken Docker Desktop yeniden başlatıldı,
+`infra-postgres-1`/`infra-mailhog-1` manuel `docker compose up -d` ile ayağa kaldırıldı (backend
+bu ikisine bağımlı olduğu için restart-loop'taydı). Kod tarafında yukarıdaki 4 madde çalışma
+dizininde zaten tam uygulanmış haldeydi (reset koddan önce, sadece bu log girdisinin
+tamamlanmasından ve canlı doğrulamadan önce olmuş) - `npx tsc --noEmit` ve `npm test` (10
+node:test + 4 vitest) reset sonrası da yeşil, backend `mvn -o compile` de temiz. staff-web image'ı
+(volume mount yok) `docker compose build staff-web` + `up -d` ile yeniden build edilip
+doğrulandı: sidebar collapse toggle (PLATFORM_ADMIN ile, `/platform-admin/businesses`) genişlik
+animasyonu ve label gizleme dahil sorunsuz; Kasa'daki arama kutusu ikonu artık `Input` component'i
+üzerinden hizalı; "Yenile" butonu tıklanınca spin/disabled oluyor; `/orders` sayfasındaki arama
+kutusu da aynı ikon deseniyle tutarlı; tüm bu ekranlar dark mode'da (varsayılan tema) hardcoded
+renk kalmadan doğru görünüyor. Konsol hatası yok.
+
+**Yan not - iki hesap login olamıyor:** Doğrulama sırasında `business-admin@qrmenu.local` ve
+`branch-manager@qrmenu.local` (`Test1234!`) ikisi de 401 "Invalid email or password" döndü;
+`arda@qrmenu.local` (PLATFORM_ADMIN) ve `cashier@qrmenu.local` (CASHIER) sorunsuz login oldu.
+Önceki bir memory/log girdisi `business-admin@qrmenu.local`'ın 2026-08-24 reset'inde oluşturulduğunu
+söylüyordu - ya reset sonrası bir volume/veri kaybı ya da o hesap hiç kalıcı olmamış, araştırılmadı
+(bu oturumun kapsamı dışında, kullanıcıya ayrıca bildirildi).
+
+Commit/push yapılmadı.
