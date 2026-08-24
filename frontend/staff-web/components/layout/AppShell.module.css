@@ -39,6 +39,17 @@
   color: var(--sidebar-fg);
 }
 
+/* Containing block for .sidebarToggle: kept separate from .sidebar itself because .sidebar
+ * has overflow-y: auto (its nav list can outgrow 100vh), which would clip an absolutely
+ * positioned/translated child straddling its border. This wrapper is a plain, non-scrolling
+ * box the same size as .sidebar, so the button can hang half outside .sidebar's edge without
+ * being cut off. */
+.sidebarWrap {
+  position: relative;
+  display: flex;
+  flex-shrink: 0;
+}
+
 .brand {
   display: flex;
   align-items: center;
@@ -50,11 +61,20 @@
  * CSS cascade order between AppShell.module.css and IconButton.module.css isn't guaranteed
  * by import order in this build, so equal-specificity display rules aren't reliable (same
  * class of bug the shared Input icon fix worked around by keeping everything in one module -
- * not an option here since IconButton is a separate shared component). */
+ * not an option here since IconButton is a separate shared component).
+ *
+ * Positioned absolutely against .sidebarWrap (see below) instead of sitting inline in
+ * .brand's flex flow - .brand's layout flips between row (expanded) and column (collapsed),
+ * which used to drag the button to a different spot in each state. top/right here are fixed
+ * regardless of collapsed/expanded width, so the button stays anchored to the same point on
+ * the sidebar's right border in both. */
 .sidebarToggle {
   display: none !important;
-  margin-left: auto;
-  flex-shrink: 0;
+  position: absolute;
+  top: var(--space-6);
+  right: 0;
+  transform: translateX(50%);
+  z-index: calc(var(--z-sticky-header) + 1);
 }
 
 .brandMark {

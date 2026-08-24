@@ -147,14 +147,6 @@ export default function AppShell({ children, accessDenied = false }: Props) {
           Q
         </span>
         <span className={styles.brandWordmark}>QR Menü</span>
-        <IconButton
-          aria-label={collapsed ? "Kenar çubuğunu genişlet" : "Kenar çubuğunu daralt"}
-          size="sm"
-          className={styles.sidebarToggle}
-          onClick={toggleSidebar}
-        >
-          {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
-        </IconButton>
       </div>
       <nav className={styles.nav}>
         {NAV_GROUPS.map((group) => {
@@ -215,13 +207,27 @@ export default function AppShell({ children, accessDenied = false }: Props) {
   return (
     <div className={styles.shell}>
       {drawerOpen ? <div className={styles.backdrop} onClick={() => setDrawerOpen(false)} /> : null}
-      <aside
-        className={[styles.sidebar, drawerOpen ? styles.sidebarOpen : null, collapsed ? styles.collapsed : null]
-          .filter(Boolean)
-          .join(" ")}
-      >
-        {navContent}
-      </aside>
+      <div className={styles.sidebarWrap}>
+        <aside
+          className={[styles.sidebar, drawerOpen ? styles.sidebarOpen : null, collapsed ? styles.collapsed : null]
+            .filter(Boolean)
+            .join(" ")}
+        >
+          {navContent}
+        </aside>
+        {/* Positioned relative to .sidebarWrap (not .sidebar itself, which scrolls its own
+         *  content) so the button can sit fixed on the sidebar's right border - straddling
+         *  it via translateX(50%) - at the same spot regardless of collapsed/expanded width,
+         *  instead of moving with .brand's internal layout. */}
+        <IconButton
+          aria-label={collapsed ? "Kenar çubuğunu genişlet" : "Kenar çubuğunu daralt"}
+          size="sm"
+          className={styles.sidebarToggle}
+          onClick={toggleSidebar}
+        >
+          {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+        </IconButton>
+      </div>
       <div className={styles.main}>
         <header className={styles.topbar}>
           <div className={styles.topbarLeft}>
