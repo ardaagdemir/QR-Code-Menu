@@ -50,6 +50,16 @@ public class OrderingService {
     private static final List<OrderStatus> PAYABLE_STATUSES = List.of(OrderStatus.DRAFT, OrderStatus.PAYMENT_FAILED);
 
     /**
+     * Platform admin panel (branch deactivate) and its own hasActiveOrders reader below -
+     * the single, reused definition of "this branch still has an order the kitchen/
+     * customer needs to see through to a terminal state." DRAFT (an uncommitted cart) and
+     * PAYMENT_FAILED (a failed attempt, no kitchen impact) are deliberately excluded -
+     * they carry no operational obligation a branch deactivation would strand.
+     */
+    static final List<OrderStatus> ACTIVE_ORDER_STATUSES = List.of(
+            OrderStatus.AWAITING_PAYMENT, OrderStatus.AWAITING_STORE_ACCEPTANCE, OrderStatus.IN_KITCHEN, OrderStatus.READY);
+
+    /**
      * Gap-analysis #8 reporting (Section 13.4: "Payment + immutable Order/OrderItem
      * snapshots"): every order that reached a status only reachable after a successful
      * payment webhook - including REJECTED_BY_STORE, whose paid amount still counts
@@ -103,6 +113,10 @@ public class OrderingService {
     @Transactional
     public CartView addItem(UUID tableVisitId, UUID callerSessionId, AddCartItemRequest request) {
         TableVisit visit = customerSessionService.getActiveTableVisitForOrdering(tableVisitId, callerSessionId);
+        // New cart items only - a business/branch deactivated after check-in must not
+        // accept new orders even from an already-established visit (Section: platform
+        // admin deactivation). Existing cart contents/tracking are untouched.
+        tenantService.assertBusinessAndBranchActive(visit.getBusinessId(), visit.getBranchId());
 
         Product product = menuService.getProductForBusiness(visit.getBusinessId(), request.productId());
         if (!product.isActive()) {
@@ -595,6 +609,18 @@ public class OrderingService {
         CustomerOrder order = orderRepository.save(
                 new CustomerOrder(visit.getBusinessId(), visit.getBranchId(), visit.getId(), tokenHash));
         return new CreateOrReuseDraftResult(order, rawToken);
+    }
+
+    /**
+     * Platform admin panel: does this branch have any order still in flight
+     * (ACTIVE_ORDER_STATUSES)? Read inside the caller's own transaction - see
+     * PlatformAdminBranchService.deactivateBranch, which calls this only after locking
+     * the branch row via TenantService.getBranchForUpdate, so the read is guaranteed
+     * fresh with respect to any concurrent order/payment transition on this branch.
+     */
+    @Transactional(readOnly = true)
+    public boolean hasActiveOrders(UUID branchId) {
+        return orderRepository.existsByBranchIdAndStatusIn(branchId, ACTIVE_ORDER_STATUSES);
     }
 
     /** Gap-analysis #7 chain comparison: non-financial order volume per branch since a cutoff. */

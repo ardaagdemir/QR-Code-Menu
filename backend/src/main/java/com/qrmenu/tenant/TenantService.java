@@ -1,6 +1,7 @@
 package com.qrmenu.tenant;
 
 import com.qrmenu.audit.AuditService;
+import com.qrmenu.common.web.BusinessUnavailableException;
 import com.qrmenu.common.web.OrderingNotAllowedException;
 import com.qrmenu.common.web.ResourceNotFoundException;
 import com.qrmenu.tenant.repository.BranchBusinessHoursRepository;
@@ -9,6 +10,7 @@ import com.qrmenu.tenant.repository.BusinessContactRepository;
 import com.qrmenu.tenant.repository.BusinessRepository;
 import com.qrmenu.tenant.repository.RestaurantTableRepository;
 import com.qrmenu.tenant.repository.TableQrTokenRepository;
+import java.time.Clock;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -37,6 +39,7 @@ public class TenantService {
     private final BranchBusinessHoursRepository branchBusinessHoursRepository;
     private final BusinessContactRepository businessContactRepository;
     private final AuditService auditService;
+    private final Clock clock;
 
     public TenantService(
             BusinessRepository businessRepository,
@@ -45,7 +48,8 @@ public class TenantService {
             TableQrTokenRepository qrTokenRepository,
             BranchBusinessHoursRepository branchBusinessHoursRepository,
             BusinessContactRepository businessContactRepository,
-            AuditService auditService) {
+            AuditService auditService,
+            Clock clock) {
         this.businessRepository = businessRepository;
         this.branchRepository = branchRepository;
         this.tableRepository = tableRepository;
@@ -53,11 +57,15 @@ public class TenantService {
         this.branchBusinessHoursRepository = branchBusinessHoursRepository;
         this.businessContactRepository = businessContactRepository;
         this.auditService = auditService;
+        this.clock = clock;
     }
 
+    /** actorStaffUserId is null for the /internal/** bootstrap API, which has no logged-in staff session yet. */
     @Transactional
-    public Business createBusiness(String name) {
-        return businessRepository.save(new Business(name));
+    public Business createBusiness(String name, UUID actorStaffUserId) {
+        Business business = businessRepository.save(new Business(name));
+        auditService.record(business.getId(), actorStaffUserId, "Business", business.getId(), "CREATED", Map.of("name", name));
+        return business;
     }
 
     @Transactional(readOnly = true)
@@ -65,6 +73,30 @@ public class TenantService {
         return businessRepository
                 .findById(businessId)
                 .orElseThrow(() -> new ResourceNotFoundException("Business not found: " + businessId));
+    }
+
+    /** Platform admin panel: cross-business listing, not scoped to any single tenant. */
+    @Transactional(readOnly = true)
+    public List<Business> listBusinesses() {
+        return businessRepository.findAllByOrderByNameAsc();
+    }
+
+    @Transactional
+    public Business activateBusiness(UUID businessId, UUID actorStaffUserId) {
+        Business business = getBusiness(businessId);
+        business.activate();
+        businessRepository.save(business);
+        auditService.record(businessId, actorStaffUserId, "Business", businessId, "ACTIVATED", Map.of());
+        return business;
+    }
+
+    @Transactional
+    public Business deactivateBusiness(UUID businessId, UUID actorStaffUserId) {
+        Business business = getBusiness(businessId);
+        business.deactivate();
+        businessRepository.save(business);
+        auditService.record(businessId, actorStaffUserId, "Business", businessId, "DEACTIVATED", Map.of());
+        return business;
     }
 
     /** Gap-analysis #6, Section 12.1: BUSINESS_ADMIN-editable default currency/timezone fallback. */
@@ -77,12 +109,65 @@ public class TenantService {
         return business;
     }
 
+    /** actorStaffUserId is null for the /internal/** bootstrap API, which has no logged-in staff session yet. */
     @Transactional
-    public Branch createBranch(UUID businessId, String name, boolean orderingEnabled, String address, DeliveryModel deliveryModel) {
+    public Branch createBranch(
+            UUID businessId, String name, boolean orderingEnabled, String address, DeliveryModel deliveryModel,
+            UUID actorStaffUserId) {
         businessRepository
                 .findById(businessId)
                 .orElseThrow(() -> new ResourceNotFoundException("Business not found: " + businessId));
-        return branchRepository.save(new Branch(businessId, name, orderingEnabled, address, deliveryModel));
+        Branch branch = branchRepository.save(new Branch(businessId, name, orderingEnabled, address, deliveryModel));
+        auditService.record(businessId, actorStaffUserId, "Branch", branch.getId(), "CREATED", Map.of("name", name));
+        return branch;
+    }
+
+    /** Platform admin panel: edits a branch's basic info (name/address) - never a hard delete. */
+    @Transactional
+    public Branch updateBranchInfo(UUID businessId, UUID branchId, String name, String address, UUID actorStaffUserId) {
+        Branch branch = branchRepository
+                .findByIdAndBusinessId(branchId, businessId)
+                .orElseThrow(() -> new ResourceNotFoundException("Branch not found for business: " + branchId));
+        branch.rename(name);
+        branch.setAddress(address);
+        branchRepository.save(branch);
+        auditService.record(businessId, actorStaffUserId, "Branch", branch.getId(), "INFO_UPDATED", Map.of("name", name));
+        return branch;
+    }
+
+    /** Platform admin panel: reactivation never conflicts with in-flight orders, so no locking is needed here. */
+    @Transactional
+    public Branch activateBranch(UUID businessId, UUID branchId, UUID actorStaffUserId) {
+        Branch branch = branchRepository
+                .findByIdAndBusinessId(branchId, businessId)
+                .orElseThrow(() -> new ResourceNotFoundException("Branch not found for business: " + branchId));
+        branch.activate();
+        branchRepository.save(branch);
+        auditService.record(businessId, actorStaffUserId, "Branch", branch.getId(), "ACTIVATED", Map.of());
+        return branch;
+    }
+
+    /**
+     * Locks the branch row (PESSIMISTIC_WRITE) for the platform-admin deactivate flow -
+     * held until the caller's transaction commits, so a concurrent
+     * assertOrderingCurrentlyAllowed call (same lock) cannot let a new order become
+     * "active" in the gap between the caller's active-order check and its actual
+     * deactivate write. See PlatformAdminBranchService.deactivateBranch, the only caller.
+     */
+    @Transactional
+    public Branch getBranchForUpdate(UUID businessId, UUID branchId) {
+        return branchRepository
+                .findByIdAndBusinessIdForUpdate(branchId, businessId)
+                .orElseThrow(() -> new ResourceNotFoundException("Branch not found for business: " + branchId));
+    }
+
+    /** Deactivates a branch already loaded (and locked) via getBranchForUpdate - see that method's Javadoc. */
+    @Transactional
+    public Branch deactivateLockedBranch(Branch branch, UUID actorStaffUserId) {
+        branch.deactivate();
+        branchRepository.save(branch);
+        auditService.record(branch.getBusinessId(), actorStaffUserId, "Branch", branch.getId(), "DEACTIVATED", Map.of());
+        return branch;
     }
 
     @Transactional
@@ -408,16 +493,44 @@ public class TenantService {
      * blocks ordering outright; an overnight window (opening after closing, e.g.
      * 18:00-02:00) is treated as wrapping past midnight.
      */
-    @Transactional(readOnly = true)
+    @Transactional
     public void assertOrderingCurrentlyAllowed(UUID businessId, UUID branchId) {
+        // PESSIMISTIC_WRITE (not a plain read): this is the same branch-row lock
+        // getBranchForUpdate takes for the platform-admin deactivate flow, so the two
+        // paths always serialize against each other instead of racing - see that
+        // method's Javadoc and BranchRepository.findByIdAndBusinessIdForUpdate.
         Branch branch = branchRepository
-                .findByIdAndBusinessId(branchId, businessId)
+                .findByIdAndBusinessIdForUpdate(branchId, businessId)
                 .orElseThrow(() -> new ResourceNotFoundException("Branch not found for business: " + branchId));
+        assertBusinessAndBranchActive(getBusiness(businessId), branch);
         if (!branch.isOrderingEnabled()) {
             throw new OrderingNotAllowedException("Branch is not currently accepting orders: " + branchId);
         }
         if (!isWithinConfiguredBusinessHours(branch)) {
             throw new OrderingNotAllowedException("Branch is outside its ordering hours: " + branchId);
+        }
+    }
+
+    /**
+     * Customer-facing gate: a deactivated business or branch (PLATFORM_ADMIN's
+     * activate/deactivate, distinct from Branch.orderingEnabled) rejects new check-in,
+     * new orders, and new payments with a dedicated status (BusinessUnavailableException
+     * -> 503) so customer-web can show "not currently in service" instead of the generic
+     * ordering-not-allowed message. Existing order tracking/receipt access never calls
+     * this - only new check-in (TenantService.resolveActiveQrToken), new cart items
+     * (OrderingService.addItem), and payment start (assertOrderingCurrentlyAllowed above).
+     */
+    @Transactional(readOnly = true)
+    public void assertBusinessAndBranchActive(UUID businessId, UUID branchId) {
+        Branch branch = branchRepository
+                .findByIdAndBusinessId(branchId, businessId)
+                .orElseThrow(() -> new ResourceNotFoundException("Branch not found for business: " + branchId));
+        assertBusinessAndBranchActive(getBusiness(businessId), branch);
+    }
+
+    private void assertBusinessAndBranchActive(Business business, Branch branch) {
+        if (!business.isActive() || !branch.isActive()) {
+            throw new BusinessUnavailableException("Business or branch is not currently in service: " + branch.getId());
         }
     }
 
@@ -437,9 +550,14 @@ public class TenantService {
         // zone the server/JVM happens to be running in - a server in UTC checking a
         // Europe/Istanbul branch's hours near local midnight would otherwise enforce
         // the wrong day-of-week's schedule entirely, not just an off-by-a-few-hours error.
+        // Reads the current instant through the injected Clock (a real system clock in
+        // production; BranchOvernightCarryoverIntegrationTest swaps in a Clock.fixed(...)
+        // to make the near-midnight overnight-carryover gate deterministic in tests) rather
+        // than calling LocalDate/LocalTime.now(zone) directly.
         ZoneId zone = resolveBranchTimeZone(branch);
-        LocalDate today = LocalDate.now(zone);
-        LocalTime now = LocalTime.now(zone);
+        Clock zonedClock = clock.withZone(zone);
+        LocalDate today = LocalDate.now(zonedClock);
+        LocalTime now = LocalTime.now(zonedClock);
         // An overnight row (e.g. Monday 18:00-02:00) is stored under Monday, but its
         // early-morning tail is physically Tuesday. Without this, a lookup on Tuesday
         // 01:00 would check Tuesday's own row (wrong or absent) instead of honoring the
@@ -520,6 +638,10 @@ public class TenantService {
         Business business = businessRepository
                 .findById(branch.getBusinessId())
                 .orElseThrow(() -> new IllegalStateException("Business missing for branch " + branch.getId()));
+        // New check-in only - an already-established TableVisit/session keeps working for
+        // tracking/receipt access even after the business/branch is deactivated later
+        // (see assertBusinessAndBranchActive's Javadoc).
+        assertBusinessAndBranchActive(business, branch);
         return new TableReference(
                 business.getId(), branch.getId(), table.getId(), business.getName(), branch.getName(), table.getLabel());
     }

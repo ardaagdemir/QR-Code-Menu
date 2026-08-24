@@ -120,32 +120,10 @@ class BranchBusinessHoursFlowIntegrationTest extends AbstractIntegrationTest {
         assertThat(hours.get(0).get("closingTime").asText()).startsWith("02:00");
     }
 
-    /** Overnight window (e.g. Monday 18:00-02:00) is stored under yesterday's DayOfWeek row -
-     * a customer ordering just after midnight must still be allowed even if today's own row
-     * is closed, since they're still inside yesterday night's carried-over window. */
-    @Test
-    void anOvernightWindowFromYesterdayStillAllowsOrderingJustAfterMidnight() throws Exception {
-        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Overnight Carryover Business");
-        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
-        String staffCookie = StaffFixtures.bootstrapBusinessAdminAndLogin(
-                mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "hours-admin-5@example.com");
-        LocalTime now = LocalTime.now(BUSINESS_DEFAULT_ZONE);
-        DayOfWeek today = LocalDate.now(BUSINESS_DEFAULT_ZONE).getDayOfWeek();
-        // Yesterday's row still has a few minutes left in its overnight tail (closing is
-        // just after "now"), so it must win even though today is explicitly closed. Both
-        // days must be sent in the same request - setBranchBusinessHours replaces the whole
-        // weekly schedule per call, so two sequential single-day calls would overwrite
-        // each other instead of accumulating.
-        setDaysHours(branchId, staffCookie,
-                new DayHours(today.minus(1), LocalTime.of(23, 0), now.plusMinutes(5), false),
-                new DayHours(today, LocalTime.of(0, 0), LocalTime.of(23, 59), true));
-
-        String tableId = TenantFixtures.createTable(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, "Masa 1");
-        String qrToken = TenantFixtures.createQrToken(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, tableId);
-        CheckedInVisit visit = createDraftOrderWithOneItem(businessId, branchId, qrToken);
-
-        createPaymentIntent(visit).andExpect(status().isCreated());
-    }
+    // The "yesterday's overnight window is still within its carried-over tail" scenario
+    // moved to BranchOvernightCarryoverIntegrationTest, which pins a Clock.fixed(...) instant
+    // instead of building its fixture off real LocalTime.now() - see that class's Javadoc for
+    // why (this test used to flake for ~65 real minutes of any day near local midnight).
 
     /** Once yesterday's overnight window has actually finished (its closing time already
      * passed), today's own schedule takes back over - a `closed=true` today must block. */

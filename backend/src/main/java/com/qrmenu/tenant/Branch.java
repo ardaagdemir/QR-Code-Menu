@@ -40,6 +40,16 @@ public class Branch {
     @Column(nullable = false)
     private String name;
 
+    /**
+     * Platform admin's activate/deactivate (soft-delete-like, never a hard delete) -
+     * distinct from orderingEnabled, which is the branch's own temporary "closed right
+     * now" toggle. A deactivated branch is unavailable end-to-end (no new customer
+     * check-in/order/payment, per TenantService.assertBusinessAndBranchActive), not just
+     * not-currently-accepting-orders the way orderingEnabled=false is.
+     */
+    @Column(nullable = false)
+    private boolean active;
+
     @Column(name = "ordering_enabled", nullable = false)
     private boolean orderingEnabled;
 
@@ -79,6 +89,7 @@ public class Branch {
     public Branch(UUID businessId, String name, boolean orderingEnabled, String address, DeliveryModel deliveryModel) {
         this.businessId = businessId;
         this.name = name;
+        this.active = true;
         this.orderingEnabled = orderingEnabled;
         this.address = address;
         this.deliveryModel = deliveryModel;
@@ -86,6 +97,22 @@ public class Branch {
         Instant now = Instant.now();
         this.createdAt = now;
         this.updatedAt = now;
+    }
+
+    /** Platform admin panel: branch info edit (name/address), never a hard delete. */
+    public void rename(String name) {
+        this.name = name;
+        this.updatedAt = Instant.now();
+    }
+
+    public void activate() {
+        this.active = true;
+        this.updatedAt = Instant.now();
+    }
+
+    public void deactivate() {
+        this.active = false;
+        this.updatedAt = Instant.now();
     }
 
     /** Section 9, Milestone 8: BUSINESS_ADMIN can toggle ordering on/off for their branch. */
@@ -136,6 +163,10 @@ public class Branch {
 
     public String getName() {
         return name;
+    }
+
+    public boolean isActive() {
+        return active;
     }
 
     public boolean isOrderingEnabled() {

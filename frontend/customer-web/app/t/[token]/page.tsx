@@ -48,9 +48,21 @@ type LoadState =
   | { status: "expired" }
   | { status: "ready"; visit: TableVisit; menu: Menu };
 
+// Platform admin's business/branch deactivate (distinct from Branch.orderingEnabled/
+// closed-for-now) - the backend's BusinessUnavailableException maps to 503 specifically
+// so this can be told apart from the existing "closed right now" 409s below.
+const BUSINESS_UNAVAILABLE_MESSAGE = "Bu işletme/şube şu anda hizmet vermiyor.";
+
+function isBusinessUnavailableError(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 503;
+}
+
 function loadErrorMessage(error: unknown): string {
   if (error instanceof ApiError && error.status === 404) {
     return "Bu QR kod geçersiz ya da artık aktif değil. Lütfen masadaki QR kodu tekrar okutun.";
+  }
+  if (isBusinessUnavailableError(error)) {
+    return BUSINESS_UNAVAILABLE_MESSAGE;
   }
   return "Menü yüklenirken bir sorun oluştu. İnternet bağlantınızı kontrol edip tekrar deneyin.";
 }
@@ -81,6 +93,9 @@ function cartActionErrorMessage(error: unknown): string {
   if (isVisitExpiredForOrderingError(error)) {
     return VISIT_EXPIRED_MESSAGE;
   }
+  if (isBusinessUnavailableError(error)) {
+    return BUSINESS_UNAVAILABLE_MESSAGE;
+  }
   if (error instanceof ApiError) {
     if (error.status === 409) {
       return "Bu ürün şu anda sipariş alınamıyor (tükenmiş ya da bu şubede satışta değil).";
@@ -97,6 +112,9 @@ function checkoutErrorMessage(error: unknown): string {
   // this is called - it never reaches here.
   if (isVisitExpiredForOrderingError(error)) {
     return VISIT_EXPIRED_MESSAGE;
+  }
+  if (isBusinessUnavailableError(error)) {
+    return BUSINESS_UNAVAILABLE_MESSAGE;
   }
   if (error instanceof ApiError && error.status === 409) {
     return "Bu şube şu anda sipariş kabul etmiyor (kapalı ya da çalışma saatleri dışında).";

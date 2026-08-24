@@ -24,6 +24,9 @@ public interface OrderRepository extends JpaRepository<CustomerOrder, UUID> {
     /** KDS queue listing (Milestone 6) - orderNumber ascending puts the oldest paid order first. */
     List<CustomerOrder> findAllByBranchIdAndStatusOrderByOrderNumberAsc(UUID branchId, OrderStatus status);
 
+    /** Platform admin panel: is any order for this branch still operationally in flight (OrderingService.ACTIVE_ORDER_STATUSES)? */
+    boolean existsByBranchIdAndStatusIn(UUID branchId, List<OrderStatus> statuses);
+
     Optional<CustomerOrder> findByTrackingTokenHash(String trackingTokenHash);
 
     /** Serializes refund attempts for one order so item-level remaining quantities cannot race. */

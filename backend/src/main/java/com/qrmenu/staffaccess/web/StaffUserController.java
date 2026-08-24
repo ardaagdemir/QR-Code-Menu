@@ -50,7 +50,8 @@ public class StaffUserController {
             throw new StaffPermissionDeniedException("Cannot grant PLATFORM_ADMIN through business-scoped staff management");
         }
         StaffUser created = staffAuthService.createStaffUser(
-                context.businessId(), request.email(), request.password(), request.role(), List.of(context.activeBranchId()));
+                context.businessId(), request.email(), request.password(), request.role(), List.of(context.activeBranchId()),
+                context.staffUserId());
         return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(created, List.of(context.activeBranchId())));
     }
 

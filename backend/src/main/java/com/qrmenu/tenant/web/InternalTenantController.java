@@ -40,7 +40,7 @@ class InternalTenantController {
 
     @PostMapping
     ResponseEntity<BusinessResponse> createBusiness(@Valid @RequestBody CreateBusinessRequest request) {
-        Business business = tenantService.createBusiness(request.name());
+        Business business = tenantService.createBusiness(request.name(), null);
         return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(business));
     }
 
@@ -48,7 +48,8 @@ class InternalTenantController {
     ResponseEntity<BranchResponse> createBranch(
             @PathVariable UUID businessId, @Valid @RequestBody CreateBranchRequest request) {
         Branch branch = tenantService.createBranch(
-                businessId, request.name(), request.orderingEnabledOrDefault(), request.address(), request.deliveryModelOrDefault());
+                businessId, request.name(), request.orderingEnabledOrDefault(), request.address(), request.deliveryModelOrDefault(),
+                null);
         return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(branch));
     }
 
@@ -86,8 +87,8 @@ class InternalTenantController {
     private BranchResponse toResponse(Branch branch) {
         boolean openNow = tenantService.isOpenNow(branch.getBusinessId(), branch.getId());
         return new BranchResponse(
-                branch.getId(), branch.getBusinessId(), branch.getName(), branch.isOrderingEnabled(), openNow, branch.getAddress(),
-                branch.getTimezone(), branch.getDeliveryModel().name(), branch.getStoreAcceptanceTimeoutSeconds());
+                branch.getId(), branch.getBusinessId(), branch.getName(), branch.isActive(), branch.isOrderingEnabled(), openNow,
+                branch.getAddress(), branch.getTimezone(), branch.getDeliveryModel().name(), branch.getStoreAcceptanceTimeoutSeconds());
     }
 
     private TableResponse toResponse(RestaurantTable table) {

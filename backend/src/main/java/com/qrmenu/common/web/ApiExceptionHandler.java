@@ -20,7 +20,7 @@ public class ApiExceptionHandler {
         return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Uploaded file exceeds the maximum allowed size.");
     }
 
-    @ExceptionHandler({ProductNotOrderableException.class, OrderingNotAllowedException.class})
+    @ExceptionHandler({ProductNotOrderableException.class, OrderingNotAllowedException.class, BranchHasActiveOrdersException.class})
     public ProblemDetail handleConflict(RuntimeException ex) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
     }
@@ -28,6 +28,12 @@ public class ApiExceptionHandler {
     @ExceptionHandler(TableVisitExpiredException.class)
     public ProblemDetail handleGone(TableVisitExpiredException ex) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.GONE, ex.getMessage());
+    }
+
+    /** Distinct status from the 409s above so customer-web can tell "temporarily closed" apart from "deactivated". */
+    @ExceptionHandler(BusinessUnavailableException.class)
+    public ProblemDetail handleServiceUnavailable(BusinessUnavailableException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
     }
 
     @ExceptionHandler({InvalidWebhookSignatureException.class, StaffAuthenticationRequiredException.class})

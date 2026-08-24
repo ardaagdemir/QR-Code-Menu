@@ -307,4 +307,45 @@ class StaffAccessFlowIntegrationTest extends AbstractIntegrationTest {
             }
         });
     }
+
+    /** PLATFORM_ADMIN is auto-assigned to every branch of its home business (createStaffUser), so
+     * without an explicit filter it would otherwise show up as a regular team member in that
+     * business's own Personel screen - and without an explicit role check, a BUSINESS_ADMIN who
+     * learned its staffUserId could actually deactivate or reset the password of that PLATFORM_ADMIN
+     * account. Both must be fully blocked: invisible in the list, and rejected on every mutation. */
+    @Test
+    void businessScopedStaffListAndMutationsNeverExposeAPlatformAdminSharingTheBusiness() throws Exception {
+        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Platform Admin Hiding Business");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
+        MockCookie adminCookie = new MockCookie(StaffCookieSupport.COOKIE_NAME, StaffFixtures.bootstrapAndLogin(
+                mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "hiding-admin@example.com", "BUSINESS_ADMIN"));
+
+        String platformAdminEmail = "hidden-platform-admin@example.com";
+        MockCookie platformAdminCookie = new MockCookie(StaffCookieSupport.COOKIE_NAME,
+                StaffFixtures.bootstrapPlatformAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, platformAdminEmail));
+        String platformAdminStaffId = objectMapper.readTree(mockMvc.perform(get("/api/staff/auth/me").cookie(platformAdminCookie))
+                        .andExpect(status().isOk())
+                        .andReturn().getResponse().getContentAsString())
+                .get("staffUserId").asText();
+
+        JsonNode staffUsers = objectMapper.readTree(mockMvc.perform(get("/api/staff/staff-users").cookie(adminCookie))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString());
+        assertThat(staffUsers).hasSize(1);
+        assertThat(staffUsers).noneSatisfy(staffUser -> assertThat(staffUser.get("role").asText()).isEqualTo("PLATFORM_ADMIN"));
+        assertThat(staffUsers).noneSatisfy(staffUser -> assertThat(staffUser.get("email").asText()).isEqualTo(platformAdminEmail));
+
+        mockMvc.perform(post("/api/staff/staff-users/{id}/deactivate", platformAdminStaffId).cookie(adminCookie))
+                .andExpect(status().is4xxClientError());
+        mockMvc.perform(post("/api/staff/staff-users/{id}/reset-password", platformAdminStaffId)
+                        .cookie(adminCookie)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"newPassword\":\"attacker-chosen-1234\",\"confirmNewPassword\":\"attacker-chosen-1234\"}"))
+                .andExpect(status().is4xxClientError());
+
+        // The PLATFORM_ADMIN account itself must be untouched by the rejected attempts.
+        mockMvc.perform(get("/api/staff/auth/me").cookie(platformAdminCookie))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.role").value("PLATFORM_ADMIN"));
+    }
 }

@@ -186,16 +186,15 @@ class ReportingFlowIntegrationTest extends AbstractIntegrationTest {
         acceptOrder(branchA, adminCookie, visitA);
 
         LocalDate today = LocalDate.now(BUSINESS_DEFAULT_ZONE);
+        // PLATFORM_ADMIN is scoped out of every normal business-operation endpoint (see
+        // PlatformAdminScopeIntegrationTest) - chain reports included, same as BUSINESS_ADMIN below.
         String platformCookie = StaffFixtures.bootstrapAndLogin(
                 mockMvc, TEST_ADMIN_TOKEN, businessId, branchA, "report-platform-2@example.com", "PLATFORM_ADMIN");
-        JsonNode chain = objectMapper.readTree(mockMvc.perform(get("/api/staff/reports/chain")
+        mockMvc.perform(get("/api/staff/reports/chain")
                         .param("from", today.toString())
                         .param("to", today.toString())
                         .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, platformCookie)))
-                .andExpect(status().isOk())
-                .andReturn().getResponse().getContentAsString());
-        assertThat(chain.get("totalGrossSalesMinorUnits").asLong()).isEqualTo(1000);
-        assertThat(chain.get("branches")).hasSize(2);
+                .andExpect(status().isForbidden());
 
         mockMvc.perform(get("/api/staff/reports/chain")
                         .param("from", today.toString())

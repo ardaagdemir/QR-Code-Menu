@@ -33,6 +33,21 @@ public final class StaffFixtures {
         return login(mockMvc, email);
     }
 
+    /** Bootstraps a PLATFORM_ADMIN through the /internal/** shared-token API - the only place
+     * a PLATFORM_ADMIN is ever created (see platformadmin.web tests: the /api/platform-admin/**
+     * panel deliberately cannot mint or promote to this role). branchIds is ignored server-side
+     * (StaffAuthService.createStaffUser auto-assigns every branch of businessId to PLATFORM_ADMIN). */
+    public static String bootstrapPlatformAdminAndLogin(MockMvc mockMvc, String adminToken, String businessId, String email)
+            throws Exception {
+        mockMvc.perform(post("/internal/businesses/{businessId}/staff-users", businessId)
+                        .header("X-Internal-Admin-Token", adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"" + email + "\",\"password\":\"" + DEFAULT_PASSWORD
+                                + "\",\"role\":\"PLATFORM_ADMIN\",\"branchIds\":[]}"))
+                .andExpect(status().isCreated());
+        return login(mockMvc, email);
+    }
+
     public static String bootstrapAndLogin(
             MockMvc mockMvc, String adminToken, String businessId, String branchId, String email, String role)
             throws Exception {

@@ -30,6 +30,7 @@ vi.mock("@/lib/api", async () => {
 });
 
 const EXPIRED_MESSAGE = "Oturumunuz sona erdi. Yeni sipariş için masadaki QR kodunu tekrar okutun.";
+const BUSINESS_UNAVAILABLE_MESSAGE = "Bu işletme/şube şu anda hizmet vermiyor.";
 
 function visit(overrides: Partial<TableVisit> = {}): TableVisit {
   return {
@@ -172,6 +173,55 @@ describe("TableVisitPage - customer TableVisit expiry", () => {
     fireEvent.click(await screen.findByText("Ödemeye Geç"));
 
     expect(await screen.findByText(EXPIRED_MESSAGE)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Köfte" })).toBeTruthy();
+  });
+});
+
+describe("TableVisitPage - deactivated business/branch (503)", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+    vi.resetAllMocks();
+    (global as unknown as { IntersectionObserver: unknown }).IntersectionObserver = class {
+      observe() {}
+      disconnect() {}
+      unobserve() {}
+    };
+    getPopularProductIds.mockResolvedValue([]);
+  });
+
+  it("shows the dedicated unavailable message (not a generic error) when check-in itself is rejected with 503", async () => {
+    checkInWithQrToken.mockRejectedValue(new ApiError("Business or branch is not currently in service", 503));
+
+    render(<TableVisitPage />);
+
+    expect(await screen.findByText(BUSINESS_UNAVAILABLE_MESSAGE)).toBeTruthy();
+  });
+
+  it("shows the dedicated unavailable message when adding a new cart item hits a 503, keeping the menu visible", async () => {
+    checkInWithQrToken.mockResolvedValue(visit());
+    getMenu.mockResolvedValue(menu());
+    getCart.mockResolvedValue(emptyCart());
+    addCartItem.mockRejectedValue(new ApiError("Business or branch is not currently in service", 503));
+
+    render(<TableVisitPage />);
+    await addProductToCart();
+
+    expect(await screen.findByText(BUSINESS_UNAVAILABLE_MESSAGE)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Köfte" })).toBeTruthy();
+  });
+
+  it("shows the dedicated unavailable message when starting payment hits a 503, keeping the cart visible", async () => {
+    checkInWithQrToken.mockResolvedValue(visit());
+    getMenu.mockResolvedValue(menu());
+    getCart.mockResolvedValue(cartWithOneItem());
+    createPaymentIntent.mockRejectedValue(new ApiError("Business or branch is not currently in service", 503));
+
+    render(<TableVisitPage />);
+    fireEvent.click(await screen.findByText("Sepetim"));
+    fireEvent.click(await screen.findByText("Ödemeye Geç"));
+
+    expect(await screen.findByText(BUSINESS_UNAVAILABLE_MESSAGE)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Köfte" })).toBeTruthy();
   });
 });

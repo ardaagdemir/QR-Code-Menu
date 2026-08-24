@@ -6,6 +6,7 @@ public record BranchResponse(
         UUID id,
         UUID businessId,
         String name,
+        boolean active,
         boolean orderingEnabled,
         boolean openNow,
         String address,

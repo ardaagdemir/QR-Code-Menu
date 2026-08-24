@@ -114,7 +114,7 @@ public class StaffTenantController {
     @GetMapping({"/branch", "/branches"})
     public List<BranchResponse> listBranches(
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie) {
-        StaffContext context = resolveActiveContext(sessionCookie, Permission.BRANCH_MANAGE);
+        StaffContext context = resolveActiveContext(sessionCookie, null, Permission.BRANCH_MANAGE, Permission.ORDERING_TOGGLE);
         return List.of(toResponse(tenantService.getBranch(context.businessId(), context.activeBranchId())));
     }
 
@@ -174,7 +174,7 @@ public class StaffTenantController {
     public List<BranchBusinessHoursResponse> getBusinessHours(
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
             @PathVariable(required = false) UUID branchId) {
-        StaffContext context = resolveActiveContext(sessionCookie, Permission.BRANCH_MANAGE, branchId);
+        StaffContext context = resolveActiveContext(sessionCookie, branchId, Permission.BRANCH_MANAGE, Permission.ORDERING_TOGGLE);
         return tenantService.getBranchBusinessHours(context.businessId(), context.activeBranchId()).stream().map(StaffTenantController::toResponse).toList();
     }
 
@@ -268,11 +268,21 @@ public class StaffTenantController {
         return context;
     }
 
+    /** anyOf variant for read endpoints multiple roles reach via different permissions - see listBranches/getBusinessHours. */
+    private StaffContext resolveActiveContext(String sessionCookie, UUID requestedBranchId, Permission... anyOf) {
+        UUID sessionId = StaffCookieSupport.parseSessionId(sessionCookie);
+        StaffContext context = staffAuthService.resolveStaffContextForActiveBranch(sessionId, anyOf);
+        if (requestedBranchId != null && !context.activeBranchId().equals(requestedBranchId)) {
+            return staffAuthService.resolveStaffContextForBranch(sessionId, requestedBranchId, anyOf);
+        }
+        return context;
+    }
+
     private BranchResponse toResponse(Branch branch) {
         boolean openNow = tenantService.isOpenNow(branch.getBusinessId(), branch.getId());
         return new BranchResponse(
-                branch.getId(), branch.getBusinessId(), branch.getName(), branch.isOrderingEnabled(), openNow, branch.getAddress(),
-                branch.getTimezone(), branch.getDeliveryModel().name(), branch.getStoreAcceptanceTimeoutSeconds());
+                branch.getId(), branch.getBusinessId(), branch.getName(), branch.isActive(), branch.isOrderingEnabled(), openNow,
+                branch.getAddress(), branch.getTimezone(), branch.getDeliveryModel().name(), branch.getStoreAcceptanceTimeoutSeconds());
     }
 
     private BusinessResponse toResponse(Business business) {

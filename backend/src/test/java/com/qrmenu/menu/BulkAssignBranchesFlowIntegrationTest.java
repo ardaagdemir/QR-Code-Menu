@@ -43,10 +43,12 @@ class BulkAssignBranchesFlowIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].branchId").value(branchA));
 
+        // PLATFORM_ADMIN is scoped out of every normal business-operation endpoint (see
+        // PlatformAdminScopeIntegrationTest) - MENU_MANAGE included, so even its former
+        // ALL_BRANCHES bulk-assign exemption is unreachable now.
         mockMvc.perform(post("/api/staff/products/{productId}/branch-assignments", productId)
                         .cookie(platformCookie).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"target\":\"ALL_BRANCHES\"}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$", org.hamcrest.Matchers.hasSize(2)));
+                .andExpect(status().isForbidden());
     }
 }

@@ -33,7 +33,7 @@ class InternalStaffController {
     @PostMapping
     ResponseEntity<StaffUserResponse> create(@PathVariable UUID businessId, @Valid @RequestBody CreateStaffUserRequest request) {
         StaffUser created = staffAuthService.createStaffUser(
-                businessId, request.email(), request.password(), request.role(), request.branchIdsOrEmpty());
+                businessId, request.email(), request.password(), request.role(), request.branchIdsOrEmpty(), null);
         // Echo what was actually persisted, not the request's list - createStaffUser
         // overrides it for PLATFORM_ADMIN (auto-assigned to every branch in the business).
         var persistedBranchIds = staffAuthService.getBranchIds(created.getId()).stream().toList();

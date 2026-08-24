@@ -25,9 +25,9 @@ class BranchTimeZoneResolutionIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void aBranchWithNoExplicitTimezoneFallsBackToItsBusinessDefaultTimeZoneNotUtc() {
-        Business business = tenantService.createBusiness("Zone Fallback Business");
+        Business business = tenantService.createBusiness("Zone Fallback Business", null);
         tenantService.updateBusinessSettings(business.getId(), "TRY", "Asia/Tokyo", null);
-        Branch branch = tenantService.createBranch(business.getId(), "Şube", true, null, DeliveryModel.WAITER_DELIVERY);
+        Branch branch = tenantService.createBranch(business.getId(), "Şube", true, null, DeliveryModel.WAITER_DELIVERY, null);
 
         assertThat(branch.getTimezone()).isNull();
         assertThat(tenantService.resolveBranchTimeZone(branch)).isEqualTo(ZoneId.of("Asia/Tokyo"));
@@ -35,9 +35,9 @@ class BranchTimeZoneResolutionIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void aBranchsOwnExplicitTimezoneWinsOverItsBusinessDefault() {
-        Business business = tenantService.createBusiness("Zone Override Business");
+        Business business = tenantService.createBusiness("Zone Override Business", null);
         tenantService.updateBusinessSettings(business.getId(), "TRY", "Asia/Tokyo", null);
-        Branch branch = tenantService.createBranch(business.getId(), "Şube", true, null, DeliveryModel.WAITER_DELIVERY);
+        Branch branch = tenantService.createBranch(business.getId(), "Şube", true, null, DeliveryModel.WAITER_DELIVERY, null);
         tenantService.setBranchTimezone(business.getId(), branch.getId(), "Pacific/Kiritimati", null);
 
         Branch reloaded = tenantService.getBranch(business.getId(), branch.getId());
@@ -49,8 +49,8 @@ class BranchTimeZoneResolutionIntegrationTest extends AbstractIntegrationTest {
         // Every fixture in this test suite (TenantFixtures.createBusiness) relies on
         // this exact default - it's the reason the rest of the suite can compute
         // "today" as Europe/Istanbul without configuring it explicitly per test.
-        Business business = tenantService.createBusiness("Default Zone Business");
-        Branch branch = tenantService.createBranch(business.getId(), "Şube", true, null, DeliveryModel.WAITER_DELIVERY);
+        Business business = tenantService.createBusiness("Default Zone Business", null);
+        Branch branch = tenantService.createBranch(business.getId(), "Şube", true, null, DeliveryModel.WAITER_DELIVERY, null);
 
         assertThat(business.getDefaultTimeZone()).isEqualTo("Europe/Istanbul");
         assertThat(tenantService.resolveBranchTimeZone(branch)).isEqualTo(ZoneId.of("Europe/Istanbul"));

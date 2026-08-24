@@ -20,6 +20,11 @@ function delay(ms: number): Promise<void> {
 }
 
 function retryErrorMessage(error: unknown): string {
+  // Platform admin deactivate (503) is distinct from "closed right now" (409) - see
+  // page.tsx's isBusinessUnavailableError/BUSINESS_UNAVAILABLE_MESSAGE.
+  if (error instanceof ApiError && error.status === 503) {
+    return "Bu işletme/şube şu anda hizmet vermiyor.";
+  }
   if (error instanceof ApiError && error.status === 409) {
     return "Bu şube şu anda sipariş kabul etmiyor (kapalı ya da çalışma saatleri dışında).";
   }

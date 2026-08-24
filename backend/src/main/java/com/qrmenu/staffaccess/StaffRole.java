@@ -6,10 +6,20 @@ import java.util.Set;
 /**
  * Section 5/12 (CONFIRMED): the three roles. permissions() is the one place the
  * role->permission mapping lives (Role -> Set&lt;Permission&gt;) - PLATFORM_ADMIN is
- * business_id-less (Section 5, "tek istisna") and today only used for the /internal/**
- * bootstrap API (shared admin token, not StaffUser login), so it isn't wired into any
- * staff-web-facing permission check yet; its permission set is still defined here for
- * data-model completeness and to not special-case it out of the enum's contract.
+ * business_id-less (Section 5, "tek istisna").
+ *
+ * <p>PLATFORM_ADMIN scope narrowing: PLATFORM_ADMIN holds no regular-staff Permission at
+ * all (deliberately EnumSet.noneOf, not EnumSet.allOf as before) - it manages
+ * businesses/branches/staff-users exclusively through /api/platform-admin/**, which never
+ * checks a Permission in the first place (PlatformAdminBusinessController/
+ * PlatformAdminStaffController role-check PLATFORM_ADMIN directly). Every normal
+ * business-operation endpoint (Kasa/orders, menu, tables, expenses, reports, refunds,
+ * branch/business settings, business-scoped staff management) is gated behind a
+ * Permission via StaffAuthService.requirePermission, so an empty permission set is what
+ * actually keeps PLATFORM_ADMIN out of them - previously EnumSet.allOf(Permission.class)
+ * let it through every one of those gates as a side effect, which is exactly the indirect
+ * access this narrowing removes. A PLATFORM_ADMIN that needs to operate a business uses a
+ * separate BUSINESS_ADMIN/BRANCH_MANAGER account instead.
  *
  * <p>Product decision (KDS simplification): there is no separate KITCHEN_STAFF role
  * anymore - sipariş operasyonunun tamamı (kabul/red + PREPARING/READY/COMPLETED akışı)
@@ -23,7 +33,7 @@ public enum StaffRole {
 
     public Set<Permission> permissions() {
         return switch (this) {
-            case PLATFORM_ADMIN -> EnumSet.allOf(Permission.class);
+            case PLATFORM_ADMIN -> EnumSet.noneOf(Permission.class);
             case BUSINESS_ADMIN -> EnumSet.of(
                     Permission.MENU_MANAGE,
                     Permission.BRANCH_MANAGE,
