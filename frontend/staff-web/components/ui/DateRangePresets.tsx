@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { branchCalendarDate, localIsoDate } from "@/lib/time";
 import FormField from "./FormField";
 import Input from "./Input";
@@ -39,7 +40,10 @@ export function presetRange(preset: "today" | "yesterday" | "week" | "month", ti
   return { from: toIsoDate(new Date(today.getFullYear(), today.getMonth(), 1)), to: toIsoDate(today) };
 }
 
-const PRESETS: Array<{ key: "today" | "yesterday" | "week" | "month"; label: string }> = [
+type PresetKey = "today" | "yesterday" | "week" | "month";
+type SelectedKey = PresetKey | "custom";
+
+const PRESETS: Array<{ key: PresetKey; label: string }> = [
   { key: "today", label: "Bugün" },
   { key: "yesterday", label: "Dün" },
   { key: "week", label: "Bu Hafta" },
@@ -54,10 +58,32 @@ type Props = {
 };
 
 export default function DateRangePresets({ value, onChange, timeZone }: Props) {
-  const activePreset = PRESETS.find((preset) => {
+  // Which button is "active" is tracked explicitly rather than re-derived from `value`
+  // on every render: on a Monday, "Bu Hafta"'s range is identical to "Bugün"'s (the week
+  // just started), so matching by date range alone can't tell the two apart.
+  const matchedPreset = PRESETS.find((preset) => {
     const range = presetRange(preset.key, timeZone);
     return range.from === value.from && range.to === value.to;
   });
+  const [selectedKey, setSelectedKey] = useState<SelectedKey>(matchedPreset?.key ?? "custom");
+  const [customOpen, setCustomOpen] = useState(selectedKey === "custom");
+
+  function handlePresetClick(key: PresetKey) {
+    setSelectedKey(key);
+    setCustomOpen(false);
+    onChange(presetRange(key, timeZone));
+  }
+
+  function handleCustomClick() {
+    setSelectedKey("custom");
+    setCustomOpen(true);
+  }
+
+  function handleCustomChange(nextRange: DateRange) {
+    setSelectedKey("custom");
+    setCustomOpen(true);
+    onChange(nextRange);
+  }
 
   return (
     <div className={styles.wrap}>
@@ -66,26 +92,46 @@ export default function DateRangePresets({ value, onChange, timeZone }: Props) {
           <button
             key={preset.key}
             type="button"
-            className={[styles.presetButton, activePreset?.key === preset.key ? styles.active : ""].join(" ")}
-            onClick={() => onChange(presetRange(preset.key, timeZone))}
+            className={[styles.presetButton, selectedKey === preset.key ? styles.active : ""].join(" ")}
+            onClick={() => handlePresetClick(preset.key)}
           >
             {preset.label}
           </button>
         ))}
-        <span className={[styles.presetButton, !activePreset ? styles.active : ""].join(" ")}>Özel</span>
+        <button
+          type="button"
+          className={[styles.presetButton, selectedKey === "custom" ? styles.active : ""].join(" ")}
+          onClick={handleCustomClick}
+        >
+          Özel
+        </button>
       </div>
-      <div className={styles.customFields}>
-        <FormField label="Başlangıç">
-          {(controlProps) => (
-            <Input {...controlProps} type="date" value={value.from} max={value.to} onChange={(event) => onChange({ ...value, from: event.target.value })} />
-          )}
-        </FormField>
-        <FormField label="Bitiş">
-          {(controlProps) => (
-            <Input {...controlProps} type="date" value={value.to} min={value.from} onChange={(event) => onChange({ ...value, to: event.target.value })} />
-          )}
-        </FormField>
-      </div>
+      {customOpen ? (
+        <div className={styles.customFields}>
+          <FormField label="Başlangıç">
+            {(controlProps) => (
+              <Input
+                {...controlProps}
+                type="date"
+                value={value.from}
+                max={value.to}
+                onChange={(event) => handleCustomChange({ ...value, from: event.target.value })}
+              />
+            )}
+          </FormField>
+          <FormField label="Bitiş">
+            {(controlProps) => (
+              <Input
+                {...controlProps}
+                type="date"
+                value={value.to}
+                min={value.from}
+                onChange={(event) => handleCustomChange({ ...value, to: event.target.value })}
+              />
+            )}
+          </FormField>
+        </div>
+      ) : null}
     </div>
   );
 }
