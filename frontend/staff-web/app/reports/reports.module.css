@@ -1,63 +1,3 @@
-.filterBar {
-  display: grid;
-  grid-template-areas:
-    "title dates"
-    "presets dates";
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
-  gap: var(--space-1) var(--space-6);
-  padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--color-panel-border);
-  border-radius: var(--radius-lg);
-  background: var(--color-surface-raised);
-  box-shadow: var(--shadow-panel);
-}
-
-.filterTitle {
-  grid-area: title;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-shrink: 0;
-  color: var(--color-primary-strong);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-}
-
-.filterControls {
-  display: contents;
-}
-
-.filterControls > div {
-  display: contents;
-  padding: 0;
-  border: none;
-  background: transparent;
-  box-shadow: none;
-}
-
-.filterControls > div > div:first-child {
-  grid-area: presets;
-  align-items: center;
-  flex-wrap: nowrap;
-}
-
-.filterControls > div > div:last-child {
-  grid-area: dates;
-  align-items: flex-end;
-  flex-wrap: nowrap;
-}
-
-.filterControls > div > div:first-child > * {
-  display: inline-flex;
-  align-items: center;
-  min-height: var(--tap-target-min);
-}
-
-.filterControls > div > div:last-child > div {
-  min-width: 142px;
-}
-
 .kpiGrid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -486,30 +426,6 @@
 }
 
 @media (max-width: 900px) {
-  .filterBar {
-    display: flex;
-    align-items: stretch;
-    flex-direction: column;
-    gap: var(--space-3);
-  }
-
-  .filterControls {
-    display: block;
-    width: 100%;
-  }
-
-  .filterControls > div {
-    display: flex;
-    align-items: stretch;
-    flex-direction: column;
-    gap: var(--space-3);
-  }
-
-  .filterControls > div > div:first-child,
-  .filterControls > div > div:last-child {
-    flex-wrap: wrap;
-  }
-
   .kpiGrid,
   .operationGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -563,11 +479,6 @@
 
   .dailyCloseActions,
   .dailyCloseActions > * {
-    width: 100%;
-  }
-
-  .filterControls > div > div:last-child,
-  .filterControls > div > div:last-child > div {
     width: 100%;
   }
 }

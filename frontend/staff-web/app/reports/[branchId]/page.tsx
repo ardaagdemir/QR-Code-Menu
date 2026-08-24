@@ -261,15 +261,7 @@ function BranchReportPage() {
           description={report ? `${report.branchName} · satış, sipariş ve operasyon performansı` : "Satış ve operasyon performansını inceleyin."}
         />
 
-        <section className={styles.filterBar} aria-label="Tarih filtresi">
-          <div className={styles.filterTitle}>
-            <CalendarDays size={17} aria-hidden="true" />
-            <span>Tarih Aralığı</span>
-          </div>
-          <div className={styles.filterControls}>
-            <DateRangePresets value={range} onChange={handleRangeChange} timeZone={branchTimeZone} />
-          </div>
-        </section>
+        <DateRangePresets value={range} onChange={handleRangeChange} timeZone={branchTimeZone} />
 
         {loading ? (
           <TableSkeleton />
