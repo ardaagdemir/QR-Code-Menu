@@ -39,11 +39,6 @@
   color: var(--sidebar-fg);
 }
 
-/* Containing block for .sidebarToggle: kept separate from .sidebar itself because .sidebar
- * has overflow-y: auto (its nav list can outgrow 100vh), which would clip an absolutely
- * positioned/translated child straddling its border. This wrapper is a plain, non-scrolling
- * box the same size as .sidebar, so the button can hang half outside .sidebar's edge without
- * being cut off. */
 .sidebarWrap {
   position: relative;
   display: flex;
@@ -57,24 +52,42 @@
   padding: 0 var(--space-3) var(--space-2);
 }
 
-/* !important here beats IconButton's own `.button { display: inline-flex }` - cross-module
- * CSS cascade order between AppShell.module.css and IconButton.module.css isn't guaranteed
- * by import order in this build, so equal-specificity display rules aren't reliable (same
+/* !important here beats IconButton's own `.button { display/width/height/border-radius }` -
+ * cross-module CSS cascade order between AppShell.module.css and IconButton.module.css isn't
+ * guaranteed by import order in this build, so equal-specificity rules aren't reliable (same
  * class of bug the shared Input icon fix worked around by keeping everything in one module -
  * not an option here since IconButton is a separate shared component).
  *
- * Positioned absolutely against .sidebarWrap (see below) instead of sitting inline in
- * .brand's flex flow - .brand's layout flips between row (expanded) and column (collapsed),
- * which used to drag the button to a different spot in each state. top/right here are fixed
- * regardless of collapsed/expanded width, so the button stays anchored to the same point on
- * the sidebar's right border in both. */
-.sidebarToggle {
+ * Sits in normal flex flow as the first child of .brand, so its left/top position is purely a
+ * function of .sidebar's own padding + .brand's own padding - both of which stay in sync
+ * between expanded/collapsed (see the .sidebar.collapsed .brand override below), so the button
+ * never shifts when the rail collapses.
+ *
+ * Hidden below the desktop breakpoint: mobile already has its own drawer trigger
+ * (.hamburger in the topbar), so this stays out of the off-canvas drawer entirely and
+ * mobile's .brand renders exactly as it did before this button existed. */
+.menuToggle {
   display: none !important;
-  position: absolute;
-  top: var(--space-6);
-  right: 0;
-  transform: translateX(50%);
-  z-index: calc(var(--z-sticky-header) + 1);
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: var(--radius-sm) !important;
+  border: none !important;
+  flex-shrink: 0;
+}
+
+/* IconButton's ghost hover uses --color-surface, same as this sidebar's own background
+ * (see .sidebar above), so it would be invisible here - use the raised tone the nav
+ * links already hover to (.link:hover below) for a hover that's actually visible. */
+.menuToggle:hover {
+  background: var(--color-surface-raised) !important;
+}
+
+.brandLogo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  overflow: hidden;
 }
 
 .brandMark {
@@ -286,7 +299,7 @@
   min-width: 0;
 }
 
-/* !important - see the comment on .sidebarToggle above; same cross-module cascade-order
+/* !important - see the comment on .menuToggle above; same cross-module cascade-order
  * issue against IconButton's own `display: inline-flex`. */
 .hamburger {
   display: none !important;
@@ -406,7 +419,7 @@
  * transform/off-canvas), so its own toggle (in .brand, near the logo) can drive this
  * directly - unlike the mobile drawer, which needs a topbar-level trigger instead. */
 @media (min-width: 1024px) {
-  .sidebarToggle {
+  .menuToggle {
     display: inline-flex !important;
   }
 
@@ -416,13 +429,15 @@
     padding-right: var(--space-2);
   }
 
+  /* .sidebar's own left padding drops from --space-4 (16px) to --space-2 (8px) when
+   * collapsed; .brand's left padding here picks up the other 8px (--space-3 -> --space-5)
+   * so the combined offset - and with it .menuToggle's left edge - stays identical to the
+   * expanded state. Only the logo (which this rail is too narrow for) is dropped. */
   .sidebar.collapsed .brand {
-    flex-direction: column;
-    align-items: center;
-    padding: 0 0 var(--space-2);
+    padding: 0 0 var(--space-2) var(--space-5);
   }
 
-  .sidebar.collapsed .brandWordmark,
+  .sidebar.collapsed .brandLogo,
   .sidebar.collapsed .groupTitle,
   .sidebar.collapsed .linkLabel,
   .sidebar.collapsed .userMeta,

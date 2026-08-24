@@ -4,7 +4,7 @@ import { useEffect, useId, useState, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { CircleHelp, Eye, EyeOff, KeyRound, LogOut, Menu, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { CircleHelp, Eye, EyeOff, KeyRound, LogOut, Menu } from "lucide-react";
 import { ApiError, changePassword, logout, me, MIN_PASSWORD_LENGTH, type StaffContext } from "@/lib/api";
 import { NAV_GROUPS, ROLE_LABELS } from "@/lib/staffNav";
 import IconButton from "@/components/ui/IconButton";
@@ -142,11 +142,23 @@ export default function AppShell({ children, accessDenied = false }: Props) {
 
   const navContent = (
     <>
+      {/* Hamburger stays pinned at the sidebar's top-left corner in both expanded and
+       *  collapsed states (see .brand/.menuToggle padding math in the CSS module) -
+       *  drives the same toggleSidebar as the mobile topbar trigger below. */}
       <div className={styles.brand}>
-        <span className={styles.brandMark} aria-hidden="true">
-          Q
+        <IconButton
+          aria-label={collapsed ? "Kenar çubuğunu genişlet" : "Kenar çubuğunu daralt"}
+          className={styles.menuToggle}
+          onClick={toggleSidebar}
+        >
+          <Menu size={18} aria-hidden="true" />
+        </IconButton>
+        <span className={styles.brandLogo}>
+          <span className={styles.brandMark} aria-hidden="true">
+            Q
+          </span>
+          <span className={styles.brandWordmark}>QR Menü</span>
         </span>
-        <span className={styles.brandWordmark}>QR Menü</span>
       </div>
       <nav className={styles.nav}>
         {NAV_GROUPS.map((group) => {
@@ -215,18 +227,6 @@ export default function AppShell({ children, accessDenied = false }: Props) {
         >
           {navContent}
         </aside>
-        {/* Positioned relative to .sidebarWrap (not .sidebar itself, which scrolls its own
-         *  content) so the button can sit fixed on the sidebar's right border - straddling
-         *  it via translateX(50%) - at the same spot regardless of collapsed/expanded width,
-         *  instead of moving with .brand's internal layout. */}
-        <IconButton
-          aria-label={collapsed ? "Kenar çubuğunu genişlet" : "Kenar çubuğunu daralt"}
-          size="sm"
-          className={styles.sidebarToggle}
-          onClick={toggleSidebar}
-        >
-          {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
-        </IconButton>
       </div>
       <div className={styles.main}>
         <header className={styles.topbar}>
