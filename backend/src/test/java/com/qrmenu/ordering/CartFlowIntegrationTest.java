@@ -112,7 +112,7 @@ class CartFlowIntegrationTest extends AbstractIntegrationTest {
         String qrToken = TenantFixtures.createQrToken(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, tableId);
         String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Kategori");
         String productId = TenantFixtures.createProduct(
-                mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Opt-out Ürün", 5000, 10);
+                mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Opt-out Ürün", 5000);
         // No BranchProduct row created - opt-in rule (Section 5).
         CheckedInVisit visit = TenantFixtures.checkIn(mockMvc, objectMapper, qrToken);
 
@@ -131,7 +131,7 @@ class CartFlowIntegrationTest extends AbstractIntegrationTest {
         String qrToken = TenantFixtures.createQrToken(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, tableId);
         String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Kategori");
         String productId = TenantFixtures.createProduct(
-                mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Tükenen Ürün", 5000, 10);
+                mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Tükenen Ürün", 5000);
         TenantFixtures.upsertBranchProduct(
                 mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, productId, "UNAVAILABLE", null);
         CheckedInVisit visit = TenantFixtures.checkIn(mockMvc, objectMapper, qrToken);
@@ -154,7 +154,7 @@ class CartFlowIntegrationTest extends AbstractIntegrationTest {
                         .header("X-Internal-Admin-Token", TEST_ADMIN_TOKEN)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"categoryId\":\"" + categoryId
-                                + "\",\"name\":\"Pasif Ürün\",\"basePriceMinorUnits\":5000,\"taxRatePercent\":10,"
+                                + "\",\"name\":\"Pasif Ürün\",\"basePriceMinorUnits\":5000,"
                                 + "\"active\":false}"))
                 .andExpect(status().isCreated())
                 .andReturn()
@@ -242,7 +242,7 @@ class CartFlowIntegrationTest extends AbstractIntegrationTest {
             throws Exception {
         String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Kategori");
         String productId = TenantFixtures.createProduct(
-                mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, productName, basePriceMinorUnits, 10);
+                mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, productName, basePriceMinorUnits);
         String groupId = TenantFixtures.createOptionGroup(
                 mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, productId, "Boyut", "SINGLE");
         String option1Id = TenantFixtures.createOption(

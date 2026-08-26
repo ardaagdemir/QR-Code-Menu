@@ -13,7 +13,6 @@ public record CreateProductRequest(
         String description,
         String imageUrl,
         @PositiveOrZero long basePriceMinorUnits,
-        @NotNull @PositiveOrZero Integer taxRatePercent,
         Integer displayOrder,
         Boolean active,
         @PositiveOrZero Integer estimatedPreparationMinutes,

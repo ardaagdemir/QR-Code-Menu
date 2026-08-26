@@ -11,7 +11,6 @@ public record MenuProductResponse(
         String description,
         String imageUrl,
         long priceMinorUnits,
-        int taxRatePercent,
         String availability,
         Integer estimatedPreparationMinutes,
         Set<Allergen> allergens,

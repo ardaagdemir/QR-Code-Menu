@@ -278,9 +278,9 @@ class RefundFlowIntegrationTest extends AbstractIntegrationTest {
         String qrToken = TenantFixtures.createQrToken(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, tableId);
         String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Kategori");
         String inexpensiveProductId =
-                TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Su", 1000, 10);
+                TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Su", 1000);
         String expensiveProductId =
-                TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Ana yemek", 50000, 10);
+                TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Ana yemek", 50000);
         TenantFixtures.upsertBranchProduct(
                 mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, inexpensiveProductId, "AVAILABLE", null);
         TenantFixtures.upsertBranchProduct(
@@ -341,7 +341,7 @@ class RefundFlowIntegrationTest extends AbstractIntegrationTest {
 
         String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Kategori");
         String productId =
-                TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Çorba", 4000, 10);
+                TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Çorba", 4000);
         TenantFixtures.upsertBranchProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, productId, "AVAILABLE", null);
         CheckedInVisit visit = TenantFixtures.checkIn(mockMvc, objectMapper, qrToken);
         MvcResult cartResult = mockMvc.perform(withCookie(post("/api/table-visits/{tableVisitId}/cart/items", visit.tableVisitId()), visit)
@@ -438,7 +438,7 @@ class RefundFlowIntegrationTest extends AbstractIntegrationTest {
             throws Exception {
         String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Kategori");
         String productId = TenantFixtures.createProduct(
-                mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, productName, priceMinorUnits, 10);
+                mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, productName, priceMinorUnits);
         TenantFixtures.upsertBranchProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, productId, "AVAILABLE", null);
         CheckedInVisit visit = TenantFixtures.checkIn(mockMvc, objectMapper, qrToken);
         addItem(visit, productId, quantity);

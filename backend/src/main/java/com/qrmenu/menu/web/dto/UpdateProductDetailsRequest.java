@@ -10,7 +10,6 @@ public record UpdateProductDetailsRequest(
         @NotBlank String name,
         String description,
         @PositiveOrZero long basePriceMinorUnits,
-        @NotNull @PositiveOrZero Integer taxRatePercent,
         @NotNull Boolean active,
         @PositiveOrZero Integer estimatedPreparationMinutes,
         Set<Allergen> allergens,

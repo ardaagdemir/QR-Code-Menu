@@ -71,6 +71,47 @@
   opacity: 0.85;
 }
 
+/* Marka diliyle uyumlu yumuşak accent - "Seçenekler" gibi nötr olmayan ama primary
+   kadar da ağır olmayan secondary aksiyonlar için (bkz. menu_urun_butonlari.png). */
+.accent {
+  background: var(--color-primary-soft);
+  color: var(--color-primary-strong);
+  border-color: color-mix(in srgb, var(--color-primary) 28%, var(--color-primary-soft));
+}
+
+.accent:not(:disabled):hover {
+  background: var(--color-primary-soft-strong);
+  border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-primary-soft));
+}
+
+.accent:not(:disabled):active {
+  opacity: 0.85;
+}
+
+/* "Satıştan Kaldır / Satışa Aç" gibi durum değiştiren aksiyonlar için - nötr secondary'den
+   ayrışsın ama danger kadar alarm vermesin. */
+.warning {
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+  border-color: color-mix(in srgb, var(--color-warning) 32%, var(--color-warning-bg));
+}
+
+.warning:not(:disabled):hover {
+  border-color: var(--color-warning);
+}
+
+.warning:not(:disabled):active {
+  opacity: 0.85;
+}
+
+.sm {
+  min-height: 32px;
+  padding: 0 var(--space-3);
+  font-size: var(--font-size-xs);
+  gap: var(--space-1);
+  border-radius: 7px;
+}
+
 .md {
   font-size: var(--font-size-sm);
 }

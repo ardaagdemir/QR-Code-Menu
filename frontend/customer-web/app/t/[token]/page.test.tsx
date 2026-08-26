@@ -61,7 +61,6 @@ function menu(): Menu {
             description: null,
             imageUrl: null,
             priceMinorUnits: 5000,
-            taxRatePercent: 10,
             availability: "AVAILABLE",
             estimatedPreparationMinutes: null,
             allergens: [],

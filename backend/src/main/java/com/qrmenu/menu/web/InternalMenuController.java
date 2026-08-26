@@ -60,11 +60,11 @@ class InternalMenuController {
                 request.description(),
                 request.imageUrl(),
                 request.basePriceMinorUnits(),
-                request.taxRatePercent(),
                 request.displayOrderOrDefault(),
                 request.activeOrDefault(),
                 request.estimatedPreparationMinutes(),
                 request.allergensOrEmpty(),
+                null,
                 null);
         return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(product));
     }
@@ -115,7 +115,6 @@ class InternalMenuController {
                 product.getDescription(),
                 product.getImageUrl(),
                 product.getBasePriceMinorUnits(),
-                product.getTaxRatePercent(),
                 product.getDisplayOrder(),
                 product.isActive(),
                 product.getEstimatedPreparationMinutes(),

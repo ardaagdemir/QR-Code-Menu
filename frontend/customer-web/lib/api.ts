@@ -50,7 +50,6 @@ export type MenuProduct = {
   description: string | null;
   imageUrl: string | null;
   priceMinorUnits: number;
-  taxRatePercent: number;
   availability: "AVAILABLE" | "UNAVAILABLE";
   estimatedPreparationMinutes: number | null;
   allergens: string[];

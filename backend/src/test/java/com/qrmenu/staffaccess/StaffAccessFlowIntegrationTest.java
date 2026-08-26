@@ -211,14 +211,14 @@ class StaffAccessFlowIntegrationTest extends AbstractIntegrationTest {
         String categoryId =
                 TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Ana Yemekler");
         String productId = TenantFixtures.createProduct(
-                mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Köfte", 12000, 10);
+                mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Köfte", 12000);
 
         String response = mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
                         .patch("/api/staff/products/{productId}", productId)
                         .cookie(adminMockCookie)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"Köfte Deluxe\",\"description\":\"Özel soslu\",\"basePriceMinorUnits\":15000,"
-                                + "\"taxRatePercent\":20,\"active\":false,\"estimatedPreparationMinutes\":20,"
+                                + "\"active\":false,\"estimatedPreparationMinutes\":20,"
                                 + "\"allergens\":[\"GLUTEN\"]}"))
                 .andExpect(status().isOk())
                 .andReturn()
@@ -228,7 +228,6 @@ class StaffAccessFlowIntegrationTest extends AbstractIntegrationTest {
         assertThat(updated.get("name").asText()).isEqualTo("Köfte Deluxe");
         assertThat(updated.get("description").asText()).isEqualTo("Özel soslu");
         assertThat(updated.get("basePriceMinorUnits").asLong()).isEqualTo(15000);
-        assertThat(updated.get("taxRatePercent").asInt()).isEqualTo(20);
         assertThat(updated.get("active").asBoolean()).isFalse();
         assertThat(updated.get("estimatedPreparationMinutes").asInt()).isEqualTo(20);
         assertThat(updated.get("allergens")).hasSize(1);
@@ -262,7 +261,7 @@ class StaffAccessFlowIntegrationTest extends AbstractIntegrationTest {
         String categoryId =
                 TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Ana Yemekler");
         String productId = TenantFixtures.createProduct(
-                mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Çorba", 8000, 10);
+                mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Çorba", 8000);
 
         String cashierEmail = "product-guard-cashier@example.com";
         mockMvc.perform(post("/api/staff/staff-users")
@@ -276,14 +275,13 @@ class StaffAccessFlowIntegrationTest extends AbstractIntegrationTest {
         mockMvc.perform(post("/api/staff/products")
                         .cookie(cashierMockCookie)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"categoryId\":\"" + categoryId + "\",\"name\":\"Kaçak Ürün\",\"basePriceMinorUnits\":1000,"
-                                + "\"taxRatePercent\":10}"))
+                        .content("{\"categoryId\":\"" + categoryId + "\",\"name\":\"Kaçak Ürün\",\"basePriceMinorUnits\":1000}"))
                 .andExpect(status().isForbidden());
         mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
                         .patch("/api/staff/products/{productId}", productId)
                         .cookie(cashierMockCookie)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"Ele Geçirilmiş\",\"basePriceMinorUnits\":1,\"taxRatePercent\":0,"
+                        .content("{\"name\":\"Ele Geçirilmiş\",\"basePriceMinorUnits\":1,"
                                 + "\"active\":false,\"estimatedPreparationMinutes\":null,\"allergens\":[]}"))
                 .andExpect(status().isForbidden());
         mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders

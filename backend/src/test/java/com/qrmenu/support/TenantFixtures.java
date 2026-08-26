@@ -134,15 +134,14 @@ public final class TenantFixtures {
             String businessId,
             String categoryId,
             String name,
-            long basePriceMinorUnits,
-            int taxRatePercent)
+            long basePriceMinorUnits)
             throws Exception {
         JsonNode body = perform(
                 mockMvc,
                 post("/internal/businesses/{businessId}/products", businessId).header("X-Internal-Admin-Token", adminToken),
                 objectMapper,
                 "{\"categoryId\":\"" + categoryId + "\",\"name\":\"" + name + "\",\"basePriceMinorUnits\":"
-                        + basePriceMinorUnits + ",\"taxRatePercent\":" + taxRatePercent + "}",
+                        + basePriceMinorUnits + "}",
                 201);
         return body.get("id").asText();
     }

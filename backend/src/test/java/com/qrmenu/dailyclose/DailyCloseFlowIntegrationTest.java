@@ -59,7 +59,7 @@ class DailyCloseFlowIntegrationTest extends AbstractIntegrationTest {
         String adminCookie =
                 StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "close-admin-1@example.com");
         String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Kategori");
-        String productId = TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Ürün", 3000, 10);
+        String productId = TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Ürün", 3000);
         TenantFixtures.upsertBranchProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, productId, "AVAILABLE", null);
 
         payAndAcceptOneOrder(businessId, branchId, adminCookie, productId, 2);
@@ -113,7 +113,7 @@ class DailyCloseFlowIntegrationTest extends AbstractIntegrationTest {
         String adminCookie = StaffFixtures.bootstrapBusinessAdminAndLogin(
                 mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "close-midnight-admin@example.com");
         String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Kategori");
-        String productId = TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Ürün", 2500, 10);
+        String productId = TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Ürün", 2500);
         TenantFixtures.upsertBranchProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, productId, "AVAILABLE", null);
 
         payAndAcceptOneOrder(businessId, branchId, adminCookie, productId, 1);

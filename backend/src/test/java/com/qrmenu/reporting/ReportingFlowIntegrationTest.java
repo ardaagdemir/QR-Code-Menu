@@ -51,7 +51,7 @@ class ReportingFlowIntegrationTest extends AbstractIntegrationTest {
         String adminCookie = StaffFixtures.bootstrapBusinessAdminAndLogin(
                 mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "report-admin-1@example.com");
         String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "İçecekler");
-        String productId = TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Kahve", 3000, 10);
+        String productId = TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Kahve", 3000);
         TenantFixtures.upsertBranchProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, productId, "AVAILABLE", null);
 
         // Order A: paid, cashier ACCEPT auto-accepts both units -> counts fully toward gross/net/product breakdown.
@@ -143,7 +143,7 @@ class ReportingFlowIntegrationTest extends AbstractIntegrationTest {
         String adminCookie = StaffFixtures.bootstrapBusinessAdminAndLogin(
                 mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "report-midnight-admin@example.com");
         String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Kategori");
-        String productId = TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Ürün", 2000, 10);
+        String productId = TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Ürün", 2000);
         TenantFixtures.upsertBranchProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, productId, "AVAILABLE", null);
 
         String table = TenantFixtures.createTable(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, "Masa 1");
@@ -177,7 +177,7 @@ class ReportingFlowIntegrationTest extends AbstractIntegrationTest {
         String adminCookie = StaffFixtures.bootstrapAndLogin(
                 mockMvc, TEST_ADMIN_TOKEN, businessId, branchA, "report-admin-2@example.com", "BUSINESS_ADMIN");
         String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Kategori");
-        String productId = TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Çay", 1000, 10);
+        String productId = TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Çay", 1000);
         TenantFixtures.upsertBranchProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchA, productId, "AVAILABLE", null);
 
         String tableA = TenantFixtures.createTable(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchA, "Masa 1");
@@ -245,7 +245,7 @@ class ReportingFlowIntegrationTest extends AbstractIntegrationTest {
         String adminCookie = StaffFixtures.bootstrapBusinessAdminAndLogin(
                 mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "report-admin-4@example.com");
         String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Kategori");
-        String productId = TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Kahve", 1500, 10);
+        String productId = TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Kahve", 1500);
         TenantFixtures.upsertBranchProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, productId, "AVAILABLE", null);
 
         String tableId = TenantFixtures.createTable(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, "Masa 1");

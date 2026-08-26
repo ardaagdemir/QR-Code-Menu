@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Pause, Pencil, Play, SlidersHorizontal, Trash2 } from "lucide-react";
 import {
   updateProductDetails,
   upsertBranchProduct,
@@ -85,15 +85,8 @@ export default function ProductRow({
       return;
     }
     const priceMinorUnits = Math.round(Number(formValues.price.replace(",", ".")) * 100);
-    const taxRatePercent = Number(formValues.taxRate);
-    if (
-      formValues.price.trim() === "" ||
-      !Number.isFinite(priceMinorUnits) ||
-      priceMinorUnits < 0 ||
-      !Number.isInteger(taxRatePercent) ||
-      taxRatePercent < 0
-    ) {
-      showToast("Geçerli bir fiyat ve KDV oranı girin.", "error");
+    if (formValues.price.trim() === "" || !Number.isFinite(priceMinorUnits) || priceMinorUnits < 0) {
+      showToast("Geçerli bir fiyat girin.", "error");
       return;
     }
     const prepTimeValue = formValues.preparationMinutes.trim() === "" ? null : Number(formValues.preparationMinutes);
@@ -107,7 +100,6 @@ export default function ProductRow({
         name: formValues.name.trim(),
         description: formValues.description.trim() || null,
         basePriceMinorUnits: priceMinorUnits,
-        taxRatePercent,
         active: product.active,
         estimatedPreparationMinutes: prepTimeValue,
         allergens: formValues.allergens,
@@ -128,7 +120,7 @@ export default function ProductRow({
       <tr>
         <td className={tableStyles.primary}>{product.name}</td>
         <td className={tableStyles.muted}>
-          {(product.basePriceMinorUnits / 100).toFixed(2)} ₺ · KDV %{product.taxRatePercent}
+          {(product.basePriceMinorUnits / 100).toFixed(2)} ₺
           {product.estimatedPreparationMinutes != null ? ` · ~${product.estimatedPreparationMinutes} dk` : ""}
         </td>
         <td className={tableStyles.muted}>{product.allergens.length > 0 ? product.allergens.map((a) => ALLERGEN_LABELS[a]).join(", ") : "—"}</td>
@@ -138,44 +130,43 @@ export default function ProductRow({
         </td>
         <td>
           <div className={tableStyles.actions}>
-            <button
-              type="button"
-              className={menuStyles.rowIconButton}
-              disabled={!canMoveUp || reorderDisabled}
-              onClick={onMoveUp}
-              aria-label={`${product.name} ürününü yukarı taşı`}
-              title="Yukarı taşı"
-            >
-              <ArrowUp size={14} aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              className={menuStyles.rowIconButton}
-              disabled={!canMoveDown || reorderDisabled}
-              onClick={onMoveDown}
-              aria-label={`${product.name} ürününü aşağı taşı`}
-              title="Aşağı taşı"
-            >
-              <ArrowDown size={14} aria-hidden="true" />
-            </button>
-            <Button size="md" variant="secondary" disabled={busy} onClick={handleToggleAvailability}>
-              {isAvailable ? "Satıştan Kaldır" : "Satışa Aç"}
-            </Button>
-            <Button size="md" variant="ghost" disabled={busy} onClick={openEdit}>
-              {panel === "edit" ? "Vazgeç" : "Düzenle"}
-            </Button>
-            <Button size="md" variant="ghost" disabled={busy} onClick={openOptions}>
-              {panel === "options" ? "Vazgeç" : "Seçenekler"}
-            </Button>
-            <button
-              type="button"
-              className={`${menuStyles.rowIconButton} ${menuStyles.rowIconButtonDanger}`}
-              onClick={onRequestDelete}
-              aria-label={`${product.name} ürününü sil`}
-              title="Sil"
-            >
-              <Trash2 size={14} aria-hidden="true" />
-            </button>
+            <div className={menuStyles.rowActionGroup}>
+              <Button size="sm" variant="accent" disabled={busy} onClick={openOptions}>
+                <SlidersHorizontal size={13} aria-hidden="true" /> {panel === "options" ? "Vazgeç" : "Seçenekler"}
+              </Button>
+              <Button size="sm" variant="secondary" disabled={busy} onClick={openEdit}>
+                <Pencil size={13} aria-hidden="true" /> {panel === "edit" ? "Vazgeç" : "Düzenle"}
+              </Button>
+              <Button size="sm" variant="warning" disabled={busy} onClick={handleToggleAvailability}>
+                {isAvailable ? <Pause size={13} aria-hidden="true" /> : <Play size={13} aria-hidden="true" />}{" "}
+                {isAvailable ? "Satıştan Kaldır" : "Satışa Aç"}
+              </Button>
+              <Button size="sm" variant="danger" disabled={busy} onClick={onRequestDelete} aria-label={`${product.name} ürününü sil`}>
+                <Trash2 size={13} aria-hidden="true" /> Sil
+              </Button>
+            </div>
+            <div className={menuStyles.reorderGroup}>
+              <button
+                type="button"
+                className={menuStyles.rowIconButton}
+                disabled={!canMoveUp || reorderDisabled}
+                onClick={onMoveUp}
+                aria-label={`${product.name} ürününü yukarı taşı`}
+                title="Yukarı taşı"
+              >
+                <ArrowUp size={14} aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                className={menuStyles.rowIconButton}
+                disabled={!canMoveDown || reorderDisabled}
+                onClick={onMoveDown}
+                aria-label={`${product.name} ürününü aşağı taşı`}
+                title="Aşağı taşı"
+              >
+                <ArrowDown size={14} aria-hidden="true" />
+              </button>
+            </div>
           </div>
         </td>
       </tr>

@@ -27,7 +27,7 @@ class MenuIsolationIntegrationTest extends AbstractIntegrationTest {
                         .header("X-Internal-Admin-Token", TEST_ADMIN_TOKEN)
                         .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
                         .content("{\"categoryId\":\"" + categoryUnderA
-                                + "\",\"name\":\"Kola\",\"basePriceMinorUnits\":5000,\"taxRatePercent\":10}"))
+                                + "\",\"name\":\"Kola\",\"basePriceMinorUnits\":5000}"))
                 .andExpect(status().isNotFound());
     }
 
@@ -38,7 +38,7 @@ class MenuIsolationIntegrationTest extends AbstractIntegrationTest {
         String categoryId =
                 TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessAId, "Ana Yemekler");
         String productId = TenantFixtures.createProduct(
-                mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessAId, categoryId, "Pizza", 25000, 10);
+                mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessAId, categoryId, "Pizza", 25000);
 
         mockMvc.perform(post("/internal/businesses/{businessId}/products/{productId}/option-groups", businessBId, productId)
                         .header("X-Internal-Admin-Token", TEST_ADMIN_TOKEN)
@@ -56,7 +56,7 @@ class MenuIsolationIntegrationTest extends AbstractIntegrationTest {
         String categoryId =
                 TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessBId, "Tatlılar");
         String productUnderB = TenantFixtures.createProduct(
-                mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessBId, categoryId, "Baklava", 15000, 10);
+                mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessBId, categoryId, "Baklava", 15000);
 
         // Business B's own product, but Business A's branch id in the path.
         mockMvc.perform(put(

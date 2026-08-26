@@ -115,6 +115,15 @@ public class MenuService {
         auditService.record(businessId, actorStaffUserId, "MenuCategory", categoryId, "DELETED", Map.of("name", category.getName()));
     }
 
+    /**
+     * activeBranchId is nullable: the staff-web create-product flow passes the caller's
+     * active branch so the new product is immediately AVAILABLE there instead of staying
+     * invisible until a separate opt-in call (gap-analysis "yeni ürün varsayılan
+     * satışta"); the internal bootstrap API (InternalMenuController, no branch context
+     * yet) passes null and keeps the original opt-in-only behavior. Only the given branch
+     * is touched - every other branch's BranchProduct rows are untouched, same opt-in
+     * model as everywhere else in this module.
+     */
     @Transactional
     public Product createProduct(
             UUID businessId,
@@ -123,11 +132,11 @@ public class MenuService {
             String description,
             String imageUrl,
             long basePriceMinorUnits,
-            int taxRatePercent,
             int displayOrder,
             boolean active,
             Integer estimatedPreparationMinutes,
             Set<Allergen> allergens,
+            UUID activeBranchId,
             UUID actorStaffUserId) {
         MenuCategory category = categoryRepository
                 .findByIdAndBusinessId(categoryId, businessId)
@@ -139,12 +148,15 @@ public class MenuService {
                 description,
                 imageUrl,
                 basePriceMinorUnits,
-                taxRatePercent,
                 displayOrder,
                 active,
                 estimatedPreparationMinutes,
                 allergens));
         auditService.record(businessId, actorStaffUserId, "Product", product.getId(), "CREATED", Map.of("name", name));
+        if (activeBranchId != null) {
+            branchProductRepository.save(
+                    new BranchProduct(businessId, activeBranchId, product.getId(), BranchProductAvailability.AVAILABLE, null));
+        }
         return product;
     }
 
@@ -156,7 +168,6 @@ public class MenuService {
             String name,
             String description,
             long basePriceMinorUnits,
-            int taxRatePercent,
             boolean active,
             Integer estimatedPreparationMinutes,
             Set<Allergen> allergens,
@@ -166,7 +177,7 @@ public class MenuService {
                 .findByIdAndBusinessId(productId, businessId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found for business: " + productId));
         product.updateDetails(
-                name, description, basePriceMinorUnits, taxRatePercent, active, estimatedPreparationMinutes, allergens, imageUrl);
+                name, description, basePriceMinorUnits, active, estimatedPreparationMinutes, allergens, imageUrl);
         Product saved = productRepository.save(product);
         auditService.record(
                 businessId, actorStaffUserId, "Product", saved.getId(), "UPDATED", Map.of("active", String.valueOf(active)));

@@ -65,7 +65,7 @@ export default function OptionGroupsSection({ productId }: Props) {
   useEffect(() => {
     listOptionGroups(productId)
       .then(setGroups)
-      .catch(() => showToast("Option grupları yüklenemedi.", "error"))
+      .catch(() => showToast("Seçenek grupları yüklenemedi.", "error"))
       .finally(() => setLoading(false));
   }, [productId, showToast]);
 
@@ -80,9 +80,9 @@ export default function OptionGroupsSection({ productId }: Props) {
       setGroups((current) => [...current, group]);
       setFormValues(emptyForm());
       setCreateOpen(false);
-      showToast("Option grubu eklendi.", "success");
+      showToast("Seçenek grubu eklendi.", "success");
     } catch {
-      showToast("Option grubu eklenemedi.", "error");
+      showToast("Seçenek grubu eklenemedi.", "error");
     } finally {
       setSaving(false);
     }
@@ -101,9 +101,9 @@ export default function OptionGroupsSection({ productId }: Props) {
       });
       setGroups((current) => current.map((g) => (g.id === updated.id ? updated : g)));
       setEditTarget(null);
-      showToast("Option grubu güncellendi.", "success");
+      showToast("Seçenek grubu güncellendi.", "success");
     } catch {
-      showToast("Option grubu güncellenemedi.", "error");
+      showToast("Seçenek grubu güncellenemedi.", "error");
     } finally {
       setSaving(false);
     }
@@ -121,7 +121,7 @@ export default function OptionGroupsSection({ productId }: Props) {
       const result = await reorderOptionGroups(productId, reordered.map((g) => g.id));
       setGroups(result);
     } catch {
-      showToast("Option grubu sırası güncellenemedi.", "error");
+      showToast("Seçenek grubu sırası güncellenemedi.", "error");
     } finally {
       setReorderingId(null);
     }
@@ -138,9 +138,9 @@ export default function OptionGroupsSection({ productId }: Props) {
       if (expandedGroupId === deleteTarget.id) {
         setExpandedGroupId(null);
       }
-      showToast("Option grubu silindi.", "success");
+      showToast("Seçenek grubu silindi.", "success");
     } catch {
-      showToast("Option grubu silinemedi.", "error");
+      showToast("Seçenek grubu silinemedi.", "error");
     } finally {
       setDeleting(false);
       setDeleteTarget(null);
@@ -148,13 +148,13 @@ export default function OptionGroupsSection({ productId }: Props) {
   }
 
   if (loading) {
-    return <p className={menuStyles.optionsLoading}>Option grupları yükleniyor…</p>;
+    return <p className={menuStyles.optionsLoading}>Seçenek grupları yükleniyor…</p>;
   }
 
   return (
     <div className={menuStyles.optionGroupsPanel}>
       {groups.length === 0 ? (
-        <EmptyState title="Bu üründe option grubu yok" description="Boyut, ekstra malzeme gibi seçenekler eklemek için bir grup oluşturun." />
+        <EmptyState title="Bu üründe seçenek grubu yok" description="Boyut, ekstra malzeme gibi seçenekler eklemek için bir grup oluşturun." />
       ) : (
         <ul className={menuStyles.optionGroupList}>
           {groups.map((group, index) => {
@@ -228,13 +228,13 @@ export default function OptionGroupsSection({ productId }: Props) {
       )}
 
       <Button size="md" variant="secondary" onClick={() => { setFormValues(emptyForm()); setCreateOpen(true); }}>
-        <Plus size={14} aria-hidden="true" /> Option Grubu Ekle
+        <Plus size={14} aria-hidden="true" /> Seçenek Grubu Ekle
       </Button>
 
       {createOpen ? (
         <Dialog onClose={() => setCreateOpen(false)} labelledBy={dialogTitleId} size="sm">
           <h2 id={dialogTitleId} className={styles.sectionTitle}>
-            Yeni Option Grubu
+            Yeni Seçenek Grubu
           </h2>
           <form className={styles.section} onSubmit={handleCreate}>
             <FormField label="Grup adı" required>
@@ -264,7 +264,7 @@ export default function OptionGroupsSection({ productId }: Props) {
       {editTarget ? (
         <Dialog onClose={() => setEditTarget(null)} labelledBy={editDialogTitleId} size="sm">
           <h2 id={editDialogTitleId} className={styles.sectionTitle}>
-            Option Grubunu Düzenle
+            Seçenek Grubunu Düzenle
           </h2>
           <form className={styles.section} onSubmit={handleConfirmEdit}>
             <FormField label="Grup adı" required>
@@ -293,7 +293,7 @@ export default function OptionGroupsSection({ productId }: Props) {
 
       {deleteTarget ? (
         <ConfirmDialog
-          title="Option Grubunu Sil"
+          title="Seçenek Grubunu Sil"
           message={`"${deleteTarget.name}" grubu ve içindeki tüm option'lar kalıcı olarak silinecek.`}
           confirmLabel="Sil"
           tone="danger"

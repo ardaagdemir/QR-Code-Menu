@@ -33,7 +33,6 @@ export type ProductFormValues = {
   name: string;
   description: string;
   price: string;
-  taxRate: string;
   imageUrl: string | null;
   preparationMinutes: string;
   allergens: Allergen[];
@@ -44,7 +43,6 @@ export function emptyProductFormValues(): ProductFormValues {
     name: "",
     description: "",
     price: "",
-    taxRate: "10",
     imageUrl: null,
     preparationMinutes: "",
     allergens: [],
@@ -56,7 +54,6 @@ export function productFormValuesFromProduct(product: ProductAdmin): ProductForm
     name: product.name,
     description: product.description ?? "",
     price: (product.basePriceMinorUnits / 100).toFixed(2).replace(".", ","),
-    taxRate: product.taxRatePercent.toString(),
     imageUrl: product.imageUrl,
     preparationMinutes: product.estimatedPreparationMinutes?.toString() ?? "",
     allergens: product.allergens,
@@ -119,18 +116,6 @@ export default function ProductFormFields({ values, onChange }: Props) {
           )}
         </FormField>
       </div>
-      <FormField label="KDV (%)" required>
-        {(controlProps) => (
-          <Input
-            {...controlProps}
-            inputMode="numeric"
-            value={values.taxRate}
-            onChange={(event) => setValue("taxRate", event.target.value)}
-            required
-          />
-        )}
-      </FormField>
-
       <FormField label="Hazırlık süresi (dk)" hint="İsteğe bağlı">
         {(controlProps) => (
           <Input

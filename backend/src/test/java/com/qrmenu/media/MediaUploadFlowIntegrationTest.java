@@ -37,7 +37,7 @@ class MediaUploadFlowIntegrationTest extends AbstractIntegrationTest {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Media Business 1");
         String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Ana Yemekler");
         String productId =
-                TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Pizza", 25000, 10);
+                TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Pizza", 25000);
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String staffCookie = StaffFixtures.bootstrapAndLogin(
                 mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "media-admin-1@example.com", "BUSINESS_ADMIN");
@@ -56,7 +56,7 @@ class MediaUploadFlowIntegrationTest extends AbstractIntegrationTest {
                         .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, staffCookie))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"Pizza\",\"description\":null,\"basePriceMinorUnits\":25000,"
-                                + "\"taxRatePercent\":10,\"active\":true,\"estimatedPreparationMinutes\":null,"
+                                + "\"active\":true,\"estimatedPreparationMinutes\":null,"
                                 + "\"allergens\":[],\"imageUrl\":\"" + imageUrl + "\"}"))
                 .andExpect(status().isOk())
                 .andReturn()

@@ -477,7 +477,6 @@ export type ProductAdmin = {
   description: string | null;
   imageUrl: string | null;
   basePriceMinorUnits: number;
-  taxRatePercent: number;
   displayOrder: number;
   active: boolean;
   estimatedPreparationMinutes: number | null;
@@ -493,7 +492,6 @@ export type CreateProductInput = {
   name: string;
   description: string | null;
   basePriceMinorUnits: number;
-  taxRatePercent: number;
   imageUrl: string | null;
   estimatedPreparationMinutes: number | null;
   allergens: Allergen[];
@@ -510,7 +508,6 @@ export type UpdateProductDetailsInput = {
   name: string;
   description: string | null;
   basePriceMinorUnits: number;
-  taxRatePercent: number;
   active: boolean;
   estimatedPreparationMinutes: number | null;
   allergens: Allergen[];

@@ -23,7 +23,7 @@ class BulkAssignBranchesFlowIntegrationTest extends AbstractIntegrationTest {
         String branchB = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube B");
         String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Menü");
         String productId = TenantFixtures.createProduct(
-                mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Ürün", 1000, 10);
+                mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Ürün", 1000);
         MockCookie cookie = new MockCookie(StaffCookieSupport.COOKIE_NAME, StaffFixtures.bootstrapAndLogin(
                 mockMvc, TEST_ADMIN_TOKEN, businessId, branchA, "menu-isolation@example.com", "BUSINESS_ADMIN"));
         MockCookie platformCookie = new MockCookie(StaffCookieSupport.COOKIE_NAME, StaffFixtures.bootstrapAndLogin(

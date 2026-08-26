@@ -96,7 +96,7 @@ class TableVisitCleanupSchedulerIntegrationTest extends AbstractIntegrationTest 
         String categoryId = TenantFixtures.createMenuCategory(
                 mockMvc, objectMapper, TEST_ADMIN_TOKEN, fixture.businessId(), "Kategori");
         String productId = TenantFixtures.createProduct(
-                mockMvc, objectMapper, TEST_ADMIN_TOKEN, fixture.businessId(), categoryId, "Ürün", 1000, 10);
+                mockMvc, objectMapper, TEST_ADMIN_TOKEN, fixture.businessId(), categoryId, "Ürün", 1000);
         TenantFixtures.upsertBranchProduct(
                 mockMvc, objectMapper, TEST_ADMIN_TOKEN, fixture.businessId(), fixture.branchId(), productId, "AVAILABLE", null);
 

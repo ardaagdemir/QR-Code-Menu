@@ -120,7 +120,7 @@ class MenuLifecycleIntegrationTest extends AbstractIntegrationTest {
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Ana Yemekler");
         String productId =
-                TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Köfte", 15000, 10);
+                TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Köfte", 15000);
         String staffCookie = StaffFixtures.bootstrapBusinessAdminAndLogin(
                 mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "delete-cat-admin@example.com");
 
@@ -143,10 +143,10 @@ class MenuLifecycleIntegrationTest extends AbstractIntegrationTest {
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Kategori 1");
         String otherCategoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Kategori 2");
-        String p1 = TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "P1", 1000, 10);
-        String p2 = TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "P2", 1000, 10);
+        String p1 = TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "P1", 1000);
+        String p2 = TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "P2", 1000);
         String foreignProductId = TenantFixtures.createProduct(
-                mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, otherCategoryId, "P3", 1000, 10);
+                mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, otherCategoryId, "P3", 1000);
         String staffCookie = StaffFixtures.bootstrapBusinessAdminAndLogin(
                 mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "reorder-prod-admin@example.com");
 
@@ -168,7 +168,7 @@ class MenuLifecycleIntegrationTest extends AbstractIntegrationTest {
         String branchA2 = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessAId, "A Şube 2");
         String categoryAId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessAId, "Kategori A");
         String productAId =
-                TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessAId, categoryAId, "Ürün A", 10000, 10);
+                TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessAId, categoryAId, "Ürün A", 10000);
         String groupAId = TenantFixtures.createOptionGroup(
                 mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessAId, productAId, "Boyut", "SINGLE");
         String optionAId =
@@ -181,7 +181,7 @@ class MenuLifecycleIntegrationTest extends AbstractIntegrationTest {
         String branchBId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessBId, "B Şube");
         String categoryBId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessBId, "Kategori B");
         String productBId =
-                TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessBId, categoryBId, "Ürün B", 8000, 10);
+                TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessBId, categoryBId, "Ürün B", 8000);
         String groupBId = TenantFixtures.createOptionGroup(
                 mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessBId, productBId, "Boyut", "SINGLE");
         TenantFixtures.createOption(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessBId, productBId, groupBId, "Küçük", 0);
@@ -219,7 +219,7 @@ class MenuLifecycleIntegrationTest extends AbstractIntegrationTest {
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Kategori");
         String productId =
-                TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Pizza", 25000, 10);
+                TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Pizza", 25000);
         String staffCookie = StaffFixtures.bootstrapBusinessAdminAndLogin(
                 mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "media-cleanup-admin@example.com");
 
@@ -235,7 +235,7 @@ class MenuLifecycleIntegrationTest extends AbstractIntegrationTest {
 
         mockMvc.perform(staffPatch("/api/staff/products/{productId}", staffCookie, productId)
                         .content("{\"name\":\"Pizza\",\"description\":null,\"basePriceMinorUnits\":25000,"
-                                + "\"taxRatePercent\":10,\"active\":true,\"estimatedPreparationMinutes\":null,"
+                                + "\"active\":true,\"estimatedPreparationMinutes\":null,"
                                 + "\"allergens\":[],\"imageUrl\":\"" + imageUrl + "\"}"))
                 .andExpect(status().isOk());
 
@@ -260,7 +260,7 @@ class MenuLifecycleIntegrationTest extends AbstractIntegrationTest {
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Kategori");
         String productId =
-                TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Pizza", 25000, 10);
+                TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Pizza", 25000);
         String staffEmail = "rollback-media-admin@example.com";
         String staffCookie =
                 StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, staffEmail);
@@ -277,7 +277,7 @@ class MenuLifecycleIntegrationTest extends AbstractIntegrationTest {
 
         mockMvc.perform(staffPatch("/api/staff/products/{productId}", staffCookie, productId)
                         .content("{\"name\":\"Pizza\",\"description\":null,\"basePriceMinorUnits\":25000,"
-                                + "\"taxRatePercent\":10,\"active\":true,\"estimatedPreparationMinutes\":null,"
+                                + "\"active\":true,\"estimatedPreparationMinutes\":null,"
                                 + "\"allergens\":[],\"imageUrl\":\"" + imageUrl + "\"}"))
                 .andExpect(status().isOk());
 
@@ -303,7 +303,7 @@ class MenuLifecycleIntegrationTest extends AbstractIntegrationTest {
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Kategori");
         String productId =
-                TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Burger", 20000, 10);
+                TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Burger", 20000);
         String group1 =
                 TenantFixtures.createOptionGroup(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, productId, "Boyut", "SINGLE");
         String group2 =
@@ -338,7 +338,7 @@ class MenuLifecycleIntegrationTest extends AbstractIntegrationTest {
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Kategori");
         String productId =
-                TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Kahve", 8000, 10);
+                TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Kahve", 8000);
         String groupId =
                 TenantFixtures.createOptionGroup(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, productId, "Boyut", "SINGLE");
         String option1 = TenantFixtures.createOption(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, productId, groupId, "Küçük", 0);

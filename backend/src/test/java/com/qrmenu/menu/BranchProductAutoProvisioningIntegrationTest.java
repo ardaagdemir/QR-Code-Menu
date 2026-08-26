@@ -1,13 +1,18 @@
 package com.qrmenu.menu;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.qrmenu.staffaccess.StaffCookieSupport;
 import com.qrmenu.support.AbstractIntegrationTest;
+import com.qrmenu.support.StaffFixtures;
 import com.qrmenu.support.TenantFixtures;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockCookie;
 
 import static com.qrmenu.support.AbstractIntegrationTest.TEST_ADMIN_TOKEN;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -28,7 +33,7 @@ class BranchProductAutoProvisioningIntegrationTest extends AbstractIntegrationTe
         TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Merkez Şube");
         String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Ana Yemekler");
         String productId = TenantFixtures.createProduct(
-                mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Izgara Köfte", 12000, 10);
+                mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Izgara Köfte", 12000);
 
         // Second branch, created after the catalog already exists - no manual BranchProduct
         // upsert call anywhere in this test.
@@ -49,7 +54,7 @@ class BranchProductAutoProvisioningIntegrationTest extends AbstractIntegrationTe
     void productCreatedBeforeBranchDoesNotLeakIntoAnUnrelatedBusinessesBranch() throws Exception {
         String businessAId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Provision Business A");
         String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessAId, "Tatlılar");
-        TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessAId, categoryId, "Baklava", 15000, 10);
+        TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessAId, categoryId, "Baklava", 15000);
 
         String businessBId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Provision Business B");
         String businessBBranchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessBId, "B Şubesi");
@@ -62,7 +67,7 @@ class BranchProductAutoProvisioningIntegrationTest extends AbstractIntegrationTe
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Sibling Branch Business");
         String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "İçecekler");
         String productId =
-                TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Limonata", 5000, 10);
+                TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Limonata", 5000);
 
         // Both branches are created after the product already exists, so both auto-inherit
         // it as AVAILABLE without any manual opt-in call.
@@ -86,6 +91,40 @@ class BranchProductAutoProvisioningIntegrationTest extends AbstractIntegrationTe
         // Şube A is untouched - still AVAILABLE, proving the toggle is branch-scoped.
         JsonNode branchAProduct = firstProduct(fetchMenu(branchAId));
         assertThat(branchAProduct.get("availability").asText()).isEqualTo("AVAILABLE");
+    }
+
+    /**
+     * Gap-analysis "yeni ürün varsayılan satışta": a product created through the
+     * staff-web create-product flow (POST /api/staff/products, session-scoped to the
+     * caller's one active branch) must be immediately AVAILABLE there - the user must
+     * never see "Şubede yok" right after adding it. A sibling branch of the same
+     * business is untouched: this is a single-branch opt-in, not a bulk-assign.
+     */
+    @Test
+    void productCreatedThroughStaffWebIsImmediatelyAvailableOnlyOnTheCreatingStaffsActiveBranch() throws Exception {
+        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Staff Create Business");
+        String branchAId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube A");
+        String branchBId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube B");
+        String categoryId =
+                TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Tatlılar");
+        String staffCookie = StaffFixtures.bootstrapBusinessAdminAndLogin(
+                mockMvc, TEST_ADMIN_TOKEN, businessId, branchAId, "staff-create-admin@example.com");
+
+        String response = mockMvc.perform(post("/api/staff/products")
+                        .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, staffCookie))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"categoryId\":\"" + categoryId + "\",\"name\":\"Sufle\",\"basePriceMinorUnits\":6000}"))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String productId = objectMapper.readTree(response).get("id").asText();
+
+        JsonNode branchAProduct = firstProduct(fetchMenu(branchAId));
+        assertThat(branchAProduct.get("id").asText()).isEqualTo(productId);
+        assertThat(branchAProduct.get("availability").asText()).isEqualTo("AVAILABLE");
+
+        assertThat(fetchMenu(branchBId).get("categories")).isEmpty();
     }
 
     private JsonNode fetchMenu(String branchId) throws Exception {

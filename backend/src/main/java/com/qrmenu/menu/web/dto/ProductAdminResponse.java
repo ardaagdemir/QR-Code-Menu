@@ -12,7 +12,6 @@ public record ProductAdminResponse(
         String description,
         String imageUrl,
         long basePriceMinorUnits,
-        int taxRatePercent,
         int displayOrder,
         boolean active,
         Integer estimatedPreparationMinutes,

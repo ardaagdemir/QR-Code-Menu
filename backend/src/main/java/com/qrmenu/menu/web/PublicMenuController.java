@@ -151,7 +151,6 @@ public class PublicMenuController {
                 product.getDescription(),
                 product.getImageUrl(),
                 effectivePrice,
-                product.getTaxRatePercent(),
                 branchProduct.getAvailability().name(),
                 product.getEstimatedPreparationMinutes(),
                 product.getAllergens(),

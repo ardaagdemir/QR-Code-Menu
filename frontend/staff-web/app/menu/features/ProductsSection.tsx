@@ -70,16 +70,9 @@ export default function ProductsSection({ categoryId }: Props) {
       return;
     }
     const priceMinorUnits = Math.round(Number(formValues.price.replace(",", ".")) * 100);
-    const taxRatePercent = Number(formValues.taxRate);
     const preparationMinutes = formValues.preparationMinutes.trim() === "" ? null : Number(formValues.preparationMinutes);
-    if (
-      formValues.price.trim() === "" ||
-      !Number.isFinite(priceMinorUnits) ||
-      priceMinorUnits < 0 ||
-      !Number.isInteger(taxRatePercent) ||
-      taxRatePercent < 0
-    ) {
-      setFormError("Geçerli bir fiyat ve KDV oranı girin.");
+    if (formValues.price.trim() === "" || !Number.isFinite(priceMinorUnits) || priceMinorUnits < 0) {
+      setFormError("Geçerli bir fiyat girin.");
       return;
     }
     if (preparationMinutes !== null && (!Number.isInteger(preparationMinutes) || preparationMinutes < 0)) {
@@ -94,7 +87,6 @@ export default function ProductsSection({ categoryId }: Props) {
         name: formValues.name.trim(),
         description: formValues.description.trim() || null,
         basePriceMinorUnits: priceMinorUnits,
-        taxRatePercent,
         imageUrl: formValues.imageUrl,
         estimatedPreparationMinutes: preparationMinutes,
         allergens: formValues.allergens,
@@ -103,6 +95,12 @@ export default function ProductsSection({ categoryId }: Props) {
       setProducts((current) => [...current, product]);
       setCreateOpen(false);
       showToast("Ürün oluşturuldu.", "success");
+      // Backend auto-provisions a BranchProduct row (AVAILABLE) for the active branch on
+      // create, but createProduct's response only carries the Product - refetch so this
+      // row shows up immediately instead of only after a page refresh.
+      listBranchProducts()
+        .then(setBranchProducts)
+        .catch(() => showToast("Şube ürün durumları yenilenemedi.", "error"));
     } catch {
       setFormError("Ürün oluşturulamadı.");
     } finally {
@@ -231,7 +229,7 @@ export default function ProductsSection({ categoryId }: Props) {
       {deleteTarget ? (
         <ConfirmDialog
           title="Ürünü Sil"
-          message={`"${deleteTarget.name}" ürünü, tüm option/option group'ları ve şube atamalarıyla birlikte kalıcı olarak silinecek. Bu işlem geri alınamaz.`}
+          message={`"${deleteTarget.name}" ürünü, tüm option'ları/seçenek gruplarını ve şube atamalarıyla birlikte kalıcı olarak silinecek. Bu işlem geri alınamaz.`}
           confirmLabel="Sil"
           tone="danger"
           confirmLoading={deleting}

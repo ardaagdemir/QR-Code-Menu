@@ -240,11 +240,11 @@ public class StaffMenuController {
                 request.description(),
                 request.imageUrl(),
                 request.basePriceMinorUnits(),
-                request.taxRatePercent(),
                 request.displayOrderOrDefault(),
                 request.activeOrDefault(),
                 request.estimatedPreparationMinutes(),
                 request.allergensOrEmpty(),
+                context.activeBranchId(),
                 context.staffUserId());
         return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(product));
     }
@@ -261,7 +261,6 @@ public class StaffMenuController {
                 request.name(),
                 request.description(),
                 request.basePriceMinorUnits(),
-                request.taxRatePercent(),
                 request.active(),
                 request.estimatedPreparationMinutes(),
                 request.allergensOrEmpty(),
@@ -367,7 +366,6 @@ public class StaffMenuController {
                 product.getDescription(),
                 product.getImageUrl(),
                 product.getBasePriceMinorUnits(),
-                product.getTaxRatePercent(),
                 product.getDisplayOrder(),
                 product.isActive(),
                 product.getEstimatedPreparationMinutes(),

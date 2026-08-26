@@ -54,7 +54,7 @@ class PlatformAdminCustomerAccessIntegrationTest extends AbstractIntegrationTest
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Kategori");
         String productId =
-                TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Ürün", 2000, 10);
+                TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Ürün", 2000);
         TenantFixtures.upsertBranchProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, productId, "AVAILABLE", null);
         String qrToken = createQrTokenForNewTable(businessId, branchId, "Masa 1");
         CheckedInVisit visit = TenantFixtures.checkIn(mockMvc, objectMapper, qrToken);
@@ -74,7 +74,7 @@ class PlatformAdminCustomerAccessIntegrationTest extends AbstractIntegrationTest
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Kategori");
         String productId =
-                TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Ürün", 2000, 10);
+                TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Ürün", 2000);
         TenantFixtures.upsertBranchProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, productId, "AVAILABLE", null);
         String qrToken = createQrTokenForNewTable(businessId, branchId, "Masa 1");
         CheckedInVisit visit = TenantFixtures.checkIn(mockMvc, objectMapper, qrToken);
@@ -100,7 +100,7 @@ class PlatformAdminCustomerAccessIntegrationTest extends AbstractIntegrationTest
         String cashierCookie = bootstrapCashier(businessId, branchId, "tracking-survives-cashier");
         String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Kategori");
         String productId =
-                TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Ürün", 2000, 10);
+                TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Ürün", 2000);
         TenantFixtures.upsertBranchProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, productId, "AVAILABLE", null);
         String qrToken = createQrTokenForNewTable(businessId, branchId, "Masa 1");
         CheckedInVisit visit = TenantFixtures.checkIn(mockMvc, objectMapper, qrToken);

@@ -176,7 +176,7 @@ class TableVisitOrderingExpiryIntegrationTest extends AbstractIntegrationTest {
         String categoryId =
                 TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, fixture.businessId(), "Kategori " + name);
         String productId =
-                TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, fixture.businessId(), categoryId, name, 1000, 10);
+                TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, fixture.businessId(), categoryId, name, 1000);
         TenantFixtures.upsertBranchProduct(
                 mockMvc, objectMapper, TEST_ADMIN_TOKEN, fixture.businessId(), fixture.branchId(), productId, "AVAILABLE", null);
         return productId;

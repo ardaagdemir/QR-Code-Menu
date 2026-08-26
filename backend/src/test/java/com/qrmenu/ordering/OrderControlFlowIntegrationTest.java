@@ -341,7 +341,7 @@ class OrderControlFlowIntegrationTest extends AbstractIntegrationTest {
             String businessId, String branchId, String qrToken, String productName, long priceMinorUnits, int quantity) throws Exception {
         String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Kategori");
         String productId = TenantFixtures.createProduct(
-                mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, productName, priceMinorUnits, 10);
+                mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, productName, priceMinorUnits);
         TenantFixtures.upsertBranchProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, productId, "AVAILABLE", null);
         CheckedInVisit visit = TenantFixtures.checkIn(mockMvc, objectMapper, qrToken);
 

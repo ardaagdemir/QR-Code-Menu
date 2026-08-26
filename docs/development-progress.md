@@ -4924,3 +4924,45 @@ Test verisi (Smoke Test kategori/ürün/option/masa/personel/gider kategorisi/ra
 sonunda temizlendi; gider kategorisi ve personel için UI'da hard-delete olmadığından ikisi de
 pasif/devre-dışı bırakılarak temizlendi (kalıcı satır olarak DB'de kalıyor, listelerde aktif
 görünmüyor). İşletme adı "Meydan Bistro"ya geri döndürüldü. Commit/push yapılmadı (kullanıcı talebi).
+
+## 2026-08-26 — KDV alanı kaldırma + yeni ürün otomatik satışta + ürün satırı buton redesign
+
+IntelliJ kapanması yüzünden yarıda kalan, commit edilmemiş bir oturumun devamı (backend/frontend
+zaten uncommitted staged/unstaged değişiklik olarak duruyordu). Devam etmeden önce her şeyi baştan
+doğruladım: backend `./mvnw -o test` tam suite 0 failure/0 error, frontend `tsc --noEmit`/`eslint`
+temiz, `test:components` 29/29, `test:unit` 10/10, customer-web testleri 33/33 - hiçbir şey bozuk
+kalmamıştı, sadece commit edilmemişti.
+
+**Kapsam (tek mantıksal birim, üç iş):**
+- **KDV (vergi oranı) alanı tamamen kaldırıldı:** `Product.taxRatePercent` staff-web ürün ekle/
+  düzenle formundan ve tüm response/request DTO'larından (`CreateProductRequest`,
+  `UpdateProductDetailsRequest`, `MenuProductResponse`, `ProductAdminResponse`) silindi;
+  `MenuService.createProduct`/`updateProductDetails` imzalarından çıktı; `V41` migration'ı
+  `product.tax_rate_percent` kolonunu drop ediyor. customer-web `MenuProduct` tipinden ve tüm
+  backend integration testlerinin `TenantFixtures.createProduct` çağrılarından (27 dosya, sed ile
+  toplu) da temizlendi. Kod tabanında `taxRate`/`tax_rate` için sıfır kalıntı referans doğrulandı.
+- **Gap-analysis "yeni ürün varsayılan satışta":** `MenuService.createProduct` artık nullable bir
+  `activeBranchId` alıyor - staff-web'in `POST /api/staff/products`'ı çağıran akışında
+  `StaffMenuController` bunu oturumun aktif şubesinden geçiriyor (client'tan gelen bir değer değil,
+  güvenilir sunucu-taraflı context), ürün oluşur oluşmaz o şubede `AVAILABLE` `BranchProduct`
+  satırı da yaratılıyor - kullanıcı "Şubede yok" görmek zorunda kalmıyor. `InternalMenuController`
+  (branch context'i olmayan bootstrap API'si) `null` geçiyor, eski opt-in-only davranış korunuyor.
+  Sadece verilen şube dokunuluyor, kardeş şubeler etkilenmiyor (yeni integration test:
+  `BranchProductAutoProvisioningIntegrationTest.
+  productCreatedThroughStaffWebIsImmediatelyAvailableOnlyOnTheCreatingStaffsActiveBranch`).
+  Frontend tarafında create sonrası `listBranchProducts()` refetch ediliyor (backend'in
+  auto-provision ettiği satır, `createProduct` response'unda gelmediği için sayfa yenilenmeden
+  görünsün diye).
+- **Ürün satırı buton/ikon redesign** (`docs/design/menu_urun_butonlari.png` referansıyla):
+  `Button` bileşenine iki yeni variant (`accent` - "Seçenekler" gibi nötr olmayan ama primary kadar
+  ağır olmayan aksiyonlar için; `warning` - satışa aç/kaldır gibi durum değiştiren ama danger kadar
+  alarm vermeyen aksiyonlar için) + yeni `sm` size eklendi. `ProductRow`: aksiyon butonları artık
+  ikonlu (`Pencil`/`SlidersHorizontal`/`Play`/`Pause`/`Trash2`) ve iki gruba ayrıldı - asıl
+  aksiyonlar (`rowActionGroup`) solda, reorder ok butonları (`reorderGroup`) sağda ince bir
+  ayraçla ayrı. Ayrıca "Option" terimi tüm staff-web menü ekranında (`OptionGroupsSection`,
+  silme onay metni) "Seçenek"e çevrildi - ürün fiyat satırından da artık gösterilmeyen KDV
+  kaldırılınca kalan tek İngilizce terimdi.
+
+**Doğrulama (bu oturumda tekrar):** Backend tam suite yeşil (yukarıda). Frontend `tsc --noEmit`
+temiz, `eslint` değişen dosyalarda temiz, `test:components` 29/29, `test:unit` 10/10, customer-web
+33/33.

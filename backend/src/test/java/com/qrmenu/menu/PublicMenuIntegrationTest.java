@@ -25,7 +25,7 @@ class PublicMenuIntegrationTest extends AbstractIntegrationTest {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Opt-in Business");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Ana Yemekler");
-        TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Görünmez Ürün", 10000, 10);
+        TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Görünmez Ürün", 10000);
         // No BranchProduct row created for this product/branch pair.
 
         MenuFetch menu = fetchMenu(branchId);
@@ -38,7 +38,7 @@ class PublicMenuIntegrationTest extends AbstractIntegrationTest {
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "İçecekler");
         String productId =
-                TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Ayran", 4000, 10);
+                TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Ayran", 4000);
         TenantFixtures.upsertBranchProduct(
                 mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, productId, "AVAILABLE", null);
 
@@ -54,7 +54,7 @@ class PublicMenuIntegrationTest extends AbstractIntegrationTest {
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Tatlılar");
         String productId = TenantFixtures.createProduct(
-                mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Sütlaç", 6000, 10);
+                mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Sütlaç", 6000);
         TenantFixtures.upsertBranchProduct(
                 mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, productId, "AVAILABLE", 5500L);
 
@@ -68,7 +68,7 @@ class PublicMenuIntegrationTest extends AbstractIntegrationTest {
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Çorbalar");
         String productId = TenantFixtures.createProduct(
-                mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Mercimek Çorbası", 3000, 10);
+                mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Mercimek Çorbası", 3000);
         TenantFixtures.upsertBranchProduct(
                 mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, productId, "UNAVAILABLE", null);
 
@@ -83,7 +83,7 @@ class PublicMenuIntegrationTest extends AbstractIntegrationTest {
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Pizzalar");
         String productId = TenantFixtures.createProduct(
-                mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Margherita", 20000, 10);
+                mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Margherita", 20000);
         String groupId = TenantFixtures.createOptionGroup(
                 mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, productId, "Boyut", "SINGLE");
         TenantFixtures.createOption(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, productId, groupId, "Büyük", 3000);
@@ -111,7 +111,7 @@ class PublicMenuIntegrationTest extends AbstractIntegrationTest {
                         .header("X-Internal-Admin-Token", TEST_ADMIN_TOKEN)
                         .contentType(APPLICATION_JSON)
                         .content("{\"categoryId\":\"" + categoryId + "\",\"name\":\"Pasif Ürün\","
-                                + "\"basePriceMinorUnits\":5000,\"taxRatePercent\":10,\"active\":false,"
+                                + "\"basePriceMinorUnits\":5000,\"active\":false,"
                                 + "\"estimatedPreparationMinutes\":15,\"allergens\":[\"GLUTEN\",\"MILK\"]}"))
                 .andExpect(status().isCreated())
                 .andReturn()

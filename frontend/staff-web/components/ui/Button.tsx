@@ -3,8 +3,8 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import styles from "./Button.module.css";
 
-type Variant = "primary" | "secondary" | "ghost" | "danger";
-type Size = "md" | "lg";
+type Variant = "primary" | "secondary" | "ghost" | "danger" | "accent" | "warning";
+type Size = "sm" | "md" | "lg";
 
 type Props = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: Variant;

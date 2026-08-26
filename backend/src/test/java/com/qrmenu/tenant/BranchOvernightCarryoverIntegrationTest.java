@@ -107,7 +107,7 @@ class BranchOvernightCarryoverIntegrationTest extends AbstractIntegrationTest {
 
     private CheckedInVisit createDraftOrderWithOneItem(String businessId, String branchId, String qrToken) throws Exception {
         String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Kategori");
-        String productId = TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Ürün", 1000, 10);
+        String productId = TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Ürün", 1000);
         TenantFixtures.upsertBranchProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, productId, "AVAILABLE", null);
         CheckedInVisit visit = TenantFixtures.checkIn(mockMvc, objectMapper, qrToken);
         mockMvc.perform(withCookie(post("/api/table-visits/{tableVisitId}/cart/items", visit.tableVisitId()), visit)

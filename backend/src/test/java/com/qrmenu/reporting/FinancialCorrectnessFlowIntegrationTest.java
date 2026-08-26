@@ -61,7 +61,7 @@ class FinancialCorrectnessFlowIntegrationTest extends AbstractIntegrationTest {
         MockCookie cookie = new MockCookie(StaffCookieSupport.COOKIE_NAME, adminCookieValue);
 
         String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Ana Yemek");
-        String productId = TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Köfte", 5000, 10);
+        String productId = TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Köfte", 5000);
         TenantFixtures.upsertBranchProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, productId, "AVAILABLE", null);
 
         // --- Paid order, accepted in full: 3 x 5000 = 15000 gross. ---
