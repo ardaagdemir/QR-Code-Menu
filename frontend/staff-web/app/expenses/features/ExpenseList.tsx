@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useId, useState } from "react";
-import { Pencil, Ban } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 import {
-  cancelExpense,
+  deleteExpense,
   formatPriceMinorUnits,
   listExpenses,
   updateExpense,
@@ -17,7 +17,6 @@ import Table from "@/components/ui/Table";
 import EmptyState from "@/components/ui/EmptyState";
 import ErrorState from "@/components/ui/ErrorState";
 import TableSkeleton from "@/components/ui/TableSkeleton";
-import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import Dialog from "@/components/ui/Dialog";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
@@ -82,8 +81,8 @@ export default function ExpenseList({ categories, refreshToken, branchTimeZone }
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  const [cancelTarget, setCancelTarget] = useState<Expense | null>(null);
-  const [cancelling, setCancelling] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Expense | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   function load() {
     listExpenses(appliedFilters.from, appliedFilters.to)
@@ -166,20 +165,20 @@ export default function ExpenseList({ categories, refreshToken, branchTimeZone }
     }
   }
 
-  async function handleConfirmCancel() {
-    if (!cancelTarget) {
+  async function handleConfirmDelete() {
+    if (!deleteTarget) {
       return;
     }
-    setCancelling(true);
+    setDeleting(true);
     try {
-      await cancelExpense(cancelTarget.id);
-      load();
-      showToast("Gider kaydı iptal edildi.", "success");
+      await deleteExpense(deleteTarget.id);
+      setExpenses((current) => current.filter((expense) => expense.id !== deleteTarget.id));
+      showToast("Gider kaydı silindi.", "success");
     } catch {
-      showToast("Gider kaydı iptal edilemedi.", "error");
+      showToast("Gider kaydı silinemedi.", "error");
     } finally {
-      setCancelling(false);
-      setCancelTarget(null);
+      setDeleting(false);
+      setDeleteTarget(null);
     }
   }
 
@@ -214,44 +213,28 @@ export default function ExpenseList({ categories, refreshToken, branchTimeZone }
                 <th>Tutar</th>
                 <th>Tarih</th>
                 <th>Satıcı</th>
-                <th>Durum</th>
                 <th className={expenseStyles.actionsHeader}>İşlemler</th>
               </tr>
             </thead>
             <tbody>
-              {expenses.map((expense) => {
-                const cancelled = expense.cancelledAt !== null;
-                return (
-                  <tr key={expense.id}>
-                    <td className={tableStyles.muted}>{expense.categoryName ?? "—"}</td>
-                    <td className={expenseStyles.templateAmount}>{formatPriceMinorUnits(expense.amountMinorUnits)}</td>
-                    <td className={tableStyles.muted}>{formatExpenseDate(expense.incurredAt)}</td>
-                    <td className={tableStyles.muted}>{expense.vendor?.trim() || "—"}</td>
-                    <td>
-                      <Badge tone={cancelled ? "neutral" : "success"}>{cancelled ? "İptal Edildi" : "Kayıtlı"}</Badge>
-                    </td>
-                    <td className={expenseStyles.actionsCell}>
-                      {cancelled ? (
-                        <span className={tableStyles.muted}>—</span>
-                      ) : (
-                        <div className={tableStyles.actions}>
-                          <Button size="md" variant="ghost" onClick={() => openEditDialog(expense)}>
-                            <Pencil size={15} aria-hidden="true" /> Düzenle
-                          </Button>
-                          <Button
-                            className={expenseStyles.dangerAction}
-                            size="md"
-                            variant="ghost"
-                            onClick={() => setCancelTarget(expense)}
-                          >
-                            <Ban size={15} aria-hidden="true" /> Kaydı İptal Et
-                          </Button>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
+              {expenses.map((expense) => (
+                <tr key={expense.id}>
+                  <td className={tableStyles.muted}>{expense.categoryName ?? "—"}</td>
+                  <td className={expenseStyles.templateAmount}>{formatPriceMinorUnits(expense.amountMinorUnits)}</td>
+                  <td className={tableStyles.muted}>{formatExpenseDate(expense.incurredAt)}</td>
+                  <td className={tableStyles.muted}>{expense.vendor?.trim() || "—"}</td>
+                  <td className={expenseStyles.actionsCell}>
+                    <div className={tableStyles.actions}>
+                      <Button size="sm" variant="secondary" onClick={() => openEditDialog(expense)}>
+                        <Pencil size={13} aria-hidden="true" /> Düzenle
+                      </Button>
+                      <Button size="sm" variant="danger" onClick={() => setDeleteTarget(expense)}>
+                        <Trash2 size={13} aria-hidden="true" /> Sil
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </Table>
         </div>
@@ -318,15 +301,15 @@ export default function ExpenseList({ categories, refreshToken, branchTimeZone }
         </Dialog>
       ) : null}
 
-      {cancelTarget ? (
+      {deleteTarget ? (
         <ConfirmDialog
-          title="Kaydı İptal Et"
-          message="Bu gider kaydı iptal edilecek. Kayıt listede görünmeye devam eder ama gider raporlarına ve Net Sonuç hesabına dahil edilmez. Bu işlem geri alınamaz."
-          confirmLabel="Kaydı İptal Et"
+          title="Kaydı Sil"
+          message="Bu gider kaydı silinecek ve gider raporlarına dahil edilmeyecek. Bu işlem geri alınamaz."
+          confirmLabel="Kaydı Sil"
           tone="danger"
-          confirmLoading={cancelling}
-          onConfirm={handleConfirmCancel}
-          onCancel={() => setCancelTarget(null)}
+          confirmLoading={deleting}
+          onConfirm={handleConfirmDelete}
+          onCancel={() => setDeleteTarget(null)}
         />
       ) : null}
     </section>

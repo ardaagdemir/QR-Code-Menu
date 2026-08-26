@@ -1085,7 +1085,6 @@ export type Expense = {
   description: string | null;
   receiptImageUrl: string | null;
   createdAt: string;
-  cancelledAt: string | null;
 };
 
 export type ExpenseInput = {
@@ -1115,9 +1114,8 @@ export async function updateExpense(expenseId: string, input: Omit<ExpenseInput,
   return apiFetch(`/api/staff/expenses/${encodeURIComponent(expenseId)}`, { method: "POST", body: JSON.stringify(input) });
 }
 
-/** Soft-void: keeps the record and its audit trail, just drops it out of report totals. */
-export async function cancelExpense(expenseId: string): Promise<Expense> {
-  return apiFetch(`/api/staff/expenses/${encodeURIComponent(expenseId)}/cancel`, { method: "POST" });
+export async function deleteExpense(expenseId: string): Promise<void> {
+  return apiFetch(`/api/staff/expenses/${encodeURIComponent(expenseId)}`, { method: "DELETE" });
 }
 
 export type RecurringExpenseTemplate = {

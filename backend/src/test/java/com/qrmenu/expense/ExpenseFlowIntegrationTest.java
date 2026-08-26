@@ -495,7 +495,7 @@ class ExpenseFlowIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void cancelledManualExpenseStaysListedAndAuditedButDropsOutOfReports() throws Exception {
+    void deletedManualExpenseIsRemovedAndAuditedAndDropsOutOfReports() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Expense Business 8");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String adminCookie =
@@ -509,15 +509,10 @@ class ExpenseFlowIntegrationTest extends AbstractIntegrationTest {
         assertThat(operatingResult(cookie, branchId, YearMonth.from(today)).get("manualExpensesMinorUnits").asLong())
                 .isEqualTo(5000);
 
-        JsonNode cancelled = objectMapper.readTree(mockMvc.perform(post("/api/staff/expenses/{expenseId}/cancel", expenseId)
-                        .cookie(cookie))
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString());
-        assertThat(cancelled.get("cancelledAt").isNull()).isFalse();
+        mockMvc.perform(delete("/api/staff/expenses/{expenseId}", expenseId).cookie(cookie))
+                .andExpect(status().isNoContent());
 
-        // Still listed - a cancelled expense is voided, not deleted.
+        // Removed from the list, not just voided.
         JsonNode expenses = objectMapper.readTree(mockMvc.perform(get("/api/staff/expenses")
                         .param("branchId", branchId)
                         .param("from", today.toString())
@@ -527,33 +522,33 @@ class ExpenseFlowIntegrationTest extends AbstractIntegrationTest {
                 .andReturn()
                 .getResponse()
                 .getContentAsString());
-        assertThat(expenses.findValuesAsText("id")).contains(expenseId);
+        assertThat(expenses.findValuesAsText("id")).doesNotContain(expenseId);
 
         // No longer counted toward Toplam Gider / Net Sonuç.
-        JsonNode resultAfterCancel = operatingResult(cookie, branchId, YearMonth.from(today));
-        assertThat(resultAfterCancel.get("manualExpensesMinorUnits").asLong()).isZero();
-        assertThat(resultAfterCancel.get("totalExpensesMinorUnits").asLong()).isZero();
+        JsonNode resultAfterDelete = operatingResult(cookie, branchId, YearMonth.from(today));
+        assertThat(resultAfterDelete.get("manualExpensesMinorUnits").asLong()).isZero();
+        assertThat(resultAfterDelete.get("totalExpensesMinorUnits").asLong()).isZero();
 
-        // Audit trail records the cancellation (soft-void, not a hard delete).
+        // Audit trail records the deletion even though the row itself is gone.
         List<AuditLogEntry> auditEntries = auditLogEntryRepository.findAll().stream()
                 .filter(entry -> "Expense".equals(entry.getEntityType()) && expenseId.equals(String.valueOf(entry.getEntityId())))
                 .toList();
-        assertThat(auditEntries).anyMatch(entry -> "CANCELLED".equals(entry.getAction()));
+        assertThat(auditEntries).anyMatch(entry -> "DELETED".equals(entry.getAction()));
 
-        // A cancelled expense can no longer be edited...
+        // A deleted expense no longer exists to be edited...
         mockMvc.perform(post("/api/staff/expenses/{expenseId}", expenseId)
                         .cookie(cookie)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"categoryId\":\"" + categoryId + "\",\"amountMinorUnits\":999,\"incurredAt\":\"" + today + "\"}"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isNotFound());
 
-        // ...or cancelled a second time.
-        mockMvc.perform(post("/api/staff/expenses/{expenseId}/cancel", expenseId).cookie(cookie))
-                .andExpect(status().isBadRequest());
+        // ...or deleted a second time.
+        mockMvc.perform(delete("/api/staff/expenses/{expenseId}", expenseId).cookie(cookie))
+                .andExpect(status().isNotFound());
     }
 
     @Test
-    void systemGeneratedRecurringRealizationCannotBeCancelled() throws Exception {
+    void systemGeneratedRecurringRealizationCannotBeDeleted() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Expense Business 9");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
         String adminCookie =
@@ -579,10 +574,10 @@ class ExpenseFlowIntegrationTest extends AbstractIntegrationTest {
                 .findFirst()
                 .orElseThrow();
 
-        mockMvc.perform(post("/api/staff/expenses/{expenseId}/cancel", generatedExpense.getId()).cookie(cookie))
+        mockMvc.perform(delete("/api/staff/expenses/{expenseId}", generatedExpense.getId()).cookie(cookie))
                 .andExpect(status().isBadRequest());
 
-        assertThat(expenseRepository.findById(generatedExpense.getId()).orElseThrow().isCancelled()).isFalse();
+        assertThat(expenseRepository.findById(generatedExpense.getId())).isPresent();
         assertThat(operatingResult(cookie, branchId, YearMonth.from(today)).get("recurringExpensesMinorUnits").asLong())
                 .isEqualTo(12000);
     }

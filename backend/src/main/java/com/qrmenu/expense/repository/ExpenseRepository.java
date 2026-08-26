@@ -40,7 +40,6 @@ public interface ExpenseRepository extends JpaRepository<Expense, UUID> {
                     + "WHERE e.businessId = :businessId "
                     + "AND (:branchId IS NULL OR e.branchId = :branchId) "
                     + "AND e.sourceTemplateId IS NULL "
-                    + "AND e.cancelledAt IS NULL "
                     + "AND e.incurredAt BETWEEN :from AND :to")
     long sumManualAmount(
             @Param("businessId") UUID businessId,
@@ -53,7 +52,6 @@ public interface ExpenseRepository extends JpaRepository<Expense, UUID> {
                     + "WHERE e.businessId = :businessId "
                     + "AND (:branchId IS NULL OR e.branchId = :branchId) "
                     + "AND e.sourceTemplateId IS NOT NULL "
-                    + "AND e.cancelledAt IS NULL "
                     + "AND e.incurredAt BETWEEN :from AND :to")
     long sumRecurringAmount(
             @Param("businessId") UUID businessId,

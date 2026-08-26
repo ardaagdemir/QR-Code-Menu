@@ -148,9 +148,6 @@ public class ExpenseService {
             String description,
             String receiptImageUrl) {
         Expense expense = requireManualExpense(context, expenseId);
-        if (expense.isCancelled()) {
-            throw new IllegalStateException("Cancelled expenses cannot be edited: " + expenseId);
-        }
         if (categoryId.equals(expense.getCategoryId())) {
             requireCategory(context.businessId(), categoryId);
         } else {
@@ -161,27 +158,23 @@ public class ExpenseService {
     }
 
     /**
-     * Soft-void rather than a hard delete so the row and its audit trail survive
-     * (product requirement: cancelled expenses must remain auditable). Restricted to
-     * manual expenses via requireManualExpense, same as updateManualExpense, so
-     * scheduler-generated recurring realizations are never touched by this path.
+     * Hard delete, matching the "Sil" action on every other management list (recurring
+     * templates, business contacts). Restricted to manual expenses via requireManualExpense,
+     * same as updateManualExpense, so scheduler-generated recurring realizations are never
+     * touched by this path. The audit log entry is what keeps the deletion itself auditable
+     * (product requirement) even though the row is gone.
      */
     @Transactional
-    public Expense cancelManualExpense(StaffContext context, UUID expenseId) {
+    public void deleteManualExpense(StaffContext context, UUID expenseId) {
         Expense expense = requireManualExpense(context, expenseId);
-        if (expense.isCancelled()) {
-            throw new IllegalStateException("Expense is already cancelled: " + expenseId);
-        }
-        expense.cancel(context.staffUserId());
-        Expense saved = expenseRepository.save(expense);
+        expenseRepository.delete(expense);
         auditService.record(
                 context.businessId(),
                 context.staffUserId(),
                 "Expense",
                 expenseId,
-                "CANCELLED",
+                "DELETED",
                 Map.of("amountMinorUnits", expense.getAmountMinorUnits()));
-        return saved;
     }
 
     @Transactional(readOnly = true)

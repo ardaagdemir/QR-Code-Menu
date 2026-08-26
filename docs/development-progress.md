@@ -4966,3 +4966,48 @@ kalmamıştı, sadece commit edilmemişti.
 **Doğrulama (bu oturumda tekrar):** Backend tam suite yeşil (yukarıda). Frontend `tsc --noEmit`
 temiz, `eslint` değişen dosyalarda temiz, `test:components` 29/29, `test:unit` 10/10, customer-web
 33/33.
+
+## 2026-08-27 — Gider Listesi: "İptal Et" yerine gerçek "Sil" (hard delete)
+
+Kullanıcı talebi: Giderler → Gider Listesi'ndeki "İptal Et" butonu Tekrarlayan Giderler'deki
+"Sil" gibi olsun ve basılınca kayıt gerçekten silinsin.
+
+Kod okuması: `cancelManualExpense` bir soft-void'di (`cancelled_at` set edilip satır DB'de ve
+listede kalıyordu, sadece rapor toplamlarından düşüyordu) - `ExpenseFlowIntegrationTest`teki
+`cancelledManualExpenseStaysListedAndAuditedButDropsOutOfReports` testi bunu açıkça bekliyordu.
+Bu, 2026-08-25'te Rapor Alıcıları'nda çözülen aynı desenin tekrarı ("Devre Dışı Bırak" yerine
+hard delete + Düzenle) - o değişiklikte de kalıcı "aktif/pasif" ara durumu tamamen kaldırılıp
+gerçek silme + audit log'a geçilmişti. Aynı deseni burada da uyguladım: `cancelled_at`/
+`cancelled_by_staff_user_id` kavramını tamamen kaldırıp gerçek `DELETE` yaptım (expense
+tablosuna referans veren hiçbir FK yok, cascade sorunu yok).
+
+**Plan:**
+- Backend: `Expense` entity'sinden cancel alanları/metotları kaldırılacak; `ExpenseService
+  .cancelManualExpense` yerine `deleteManualExpense` (hard delete + audit "DELETED") gelecek;
+  `StaffExpenseController`daki `POST .../cancel` yerine `DELETE /api/staff/expenses/{id}`
+  (Rapor Alıcıları/Tekrarlayan Giderler ile aynı REST deseni); `ExpenseRepository.sumManualAmount/
+  sumRecurringAmount`'taki `cancelledAt IS NULL` filtresi kaldırılacak (silinen satır zaten yok);
+  V42 migration ile `cancelled_at`/`cancelled_by_staff_user_id` kolonları drop edilecek.
+- Frontend: `lib/api.ts`teki `cancelExpense` → `deleteExpense` (DELETE isteği); `ExpenseList.tsx`da
+  ikon `Ban` → `Trash2`, buton metni "İptal Et" → "Sil", onay diyaloğu metni silmeyi anlatacak
+  şekilde güncellenecek, artık hiçbir satır "İptal Edildi" durumuna giremeyeceği için "Durum"
+  kolonu ve `cancelled` dallanması tamamen kaldırılacak (RecurringTemplates'teki gibi tüm
+  satırlarda her zaman Düzenle+Sil aksiyonları görünecek).
+- Testler: `ExpenseFlowIntegrationTest`teki iki cancel testi (listede kalma + audit + rapor
+  düşüşü, sistem-üretimli kaydın iptal edilememesi) yeni delete semantiğine göre yeniden
+  yazılacak.
+
+**Uygulama:** Plandaki gibi yapıldı; ek olarak `PlatformAdminStaffHardDeleteIntegrationTest`teki
+`hardDeletingAStaffUserInvalidatesItsSessionsAndAnonymizesItsAuditAndExpenseHistory` testi de
+`getCancelledByStaffUserId()`'a bağımlıydı (kaldırılan alan) - cancel adımı ve o assertion
+silindi, audit entry sayısı 3'ten 2'ye düşürüldü (artık "Expense CANCELLED" hiç üretilmiyor).
+
+**Doğrulama:** Backend tam suite `./mvnw test` 275/275 yeşil (`ExpenseFlowIntegrationTest` 10/10,
+`PlatformAdminStaffHardDeleteIntegrationTest` 5/5 dahil). Frontend `npx tsc --noEmit` temiz,
+`eslint app/expenses lib/api.ts` yalnız bu görevle ilgisiz önceden var olan bir
+`react-hooks/set-state-in-effect` hatası veriyor (dokunulmadı), `npx vitest run app/expenses`
+7/7 yeşil. `docker compose build backend staff-web && up -d` sonrası Chrome'da gerçek oturumla
+(`isletmesahibi@qrmenu.local`) doğrulandı: "Durum" kolonu kalktı, her satırda Düzenle+Sil var,
+Sil → "Bu gider kaydı silinecek ve gider raporlarına dahil edilmeyecek. Bu işlem geri alınamaz."
+onay diyaloğu → onaylayınca "Gider kaydı silindi." toast'ı ve satır anında listeden düştü;
+sayfa yenilendikten sonra da kayıt geri gelmedi (gerçek hard delete, sadece client state değil).

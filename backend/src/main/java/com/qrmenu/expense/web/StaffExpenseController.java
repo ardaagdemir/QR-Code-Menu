@@ -144,13 +144,13 @@ public class StaffExpenseController {
         return toResponse(expense, categoryNameMap(context.businessId()));
     }
 
-    @PostMapping("/api/staff/expenses/{expenseId}/cancel")
-    public ExpenseResponse cancelExpense(
+    @DeleteMapping("/api/staff/expenses/{expenseId}")
+    public ResponseEntity<Void> deleteExpense(
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
             @PathVariable UUID expenseId) {
         StaffContext context = requireManage(sessionCookie);
-        Expense expense = expenseService.cancelManualExpense(context, expenseId);
-        return toResponse(expense, categoryNameMap(context.businessId()));
+        expenseService.deleteManualExpense(context, expenseId);
+        return ResponseEntity.noContent().build();
     }
 
     /**
@@ -282,8 +282,7 @@ public class StaffExpenseController {
                 expense.getVendor(),
                 expense.getDescription(),
                 expense.getReceiptImageUrl(),
-                expense.getCreatedAt(),
-                expense.getCancelledAt());
+                expense.getCreatedAt());
     }
 
     private static RecurringExpenseTemplateResponse toResponse(

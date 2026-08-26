@@ -195,7 +195,7 @@ class PlatformAdminStaffHardDeleteIntegrationTest extends AbstractIntegrationTes
                 .get("staffUserId")
                 .asText();
 
-        // Target authors expense history (created_by + cancelled_by) and audit entries while it's still alive.
+        // Target authors expense history (created_by) and audit entries while it's still alive.
         String categoryId = objectMapper
                 .readTree(mockMvc.perform(post("/api/staff/expense-categories")
                                 .cookie(targetCookie)
@@ -219,7 +219,6 @@ class PlatformAdminStaffHardDeleteIntegrationTest extends AbstractIntegrationTes
                         .getContentAsString())
                 .get("id")
                 .asText();
-        mockMvc.perform(post("/api/staff/expenses/{expenseId}/cancel", expenseId).cookie(targetCookie)).andExpect(status().isOk());
 
         mockMvc.perform(delete("/api/platform-admin/businesses/{businessId}/staff-users/{staffUserId}", businessId, targetId)
                         .cookie(platformAdminCookie))
@@ -228,10 +227,9 @@ class PlatformAdminStaffHardDeleteIntegrationTest extends AbstractIntegrationTes
         // Session invalidation: the target's own still-cookied session is dead.
         mockMvc.perform(get("/api/staff/auth/me").cookie(targetCookie)).andExpect(status().isUnauthorized());
 
-        // Expense history survives with creator/canceller nulled out by the FK's ON DELETE SET NULL.
+        // Expense history survives with creator nulled out by the FK's ON DELETE SET NULL.
         Expense expense = expenseRepository.findById(UUID.fromString(expenseId)).orElseThrow();
         assertThat(expense.getCreatedByStaffUserId()).isNull();
-        assertThat(expense.getCancelledByStaffUserId()).isNull();
 
         // Audit history survives, actor anonymized and flagged - distinguishable from a genuine system actor.
         // Scoped to this test's own entity ids - the shared Testcontainers Postgres instance is reused
@@ -240,7 +238,7 @@ class PlatformAdminStaffHardDeleteIntegrationTest extends AbstractIntegrationTes
         List<UUID> ownEntityIds = List.of(UUID.fromString(expenseId), UUID.fromString(categoryId));
         List<AuditLogEntry> targetAuthoredEntries =
                 auditLogEntryRepository.findAll().stream().filter(entry -> ownEntityIds.contains(entry.getEntityId())).toList();
-        assertThat(targetAuthoredEntries).hasSize(3); // ExpenseCategory CREATED, Expense CREATED, Expense CANCELLED
+        assertThat(targetAuthoredEntries).hasSize(2); // ExpenseCategory CREATED, Expense CREATED
         assertThat(targetAuthoredEntries)
                 .allSatisfy(entry -> {
                     assertThat(entry.getActorStaffUserId()).isNull();
