@@ -11,4 +11,6 @@ public interface ExpenseCategoryRepository extends JpaRepository<ExpenseCategory
     List<ExpenseCategory> findAllByBusinessIdOrderByNameAsc(UUID businessId);
 
     Optional<ExpenseCategory> findByIdAndBusinessId(UUID id, UUID businessId);
+
+    Optional<ExpenseCategory> findByBusinessIdAndNameIgnoreCase(UUID businessId, String name);
 }

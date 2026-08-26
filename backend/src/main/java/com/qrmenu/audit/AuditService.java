@@ -41,12 +41,27 @@ public class AuditService {
         repository.save(new AuditLogEntry(businessId, actorStaffUserId, entityType, entityId, action, detailsJson));
     }
 
+    /** StaffAuthService.hardDeleteStaffUserAsPlatformAdmin: anonymizes this staff user's past
+     * audit-actor references before the row itself is deleted, so history survives the delete
+     * distinguishably from a genuine system-initiated entry (see AuditLogEntry's javadoc). */
+    @Transactional
+    public void anonymizeActor(UUID staffUserId) {
+        repository.anonymizeActor(staffUserId);
+    }
+
     @Transactional(readOnly = true)
     public List<AuditEntryView> getRecentForBranch(UUID businessId, UUID branchId) {
         return repository.findAllByBusinessIdAndBranchIdOrderByCreatedAtDesc(
                         businessId, branchId, PageRequest.of(0, DEFAULT_LIMIT)).stream()
                 .map(entry -> new AuditEntryView(
-                        entry.getId(), entry.getActorStaffUserId(), entry.getEntityType(), entry.getEntityId(), entry.getAction(), entry.getDetails(), entry.getCreatedAt()))
+                        entry.getId(),
+                        entry.getActorStaffUserId(),
+                        entry.isActorAccountDeleted(),
+                        entry.getEntityType(),
+                        entry.getEntityId(),
+                        entry.getAction(),
+                        entry.getDetails(),
+                        entry.getCreatedAt()))
                 .toList();
     }
 }

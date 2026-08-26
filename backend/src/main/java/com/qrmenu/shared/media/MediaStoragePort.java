@@ -22,6 +22,9 @@ public interface MediaStoragePort {
     /** Reads back the bytes stored under {@code key} (as returned in {@link StoredMedia#key()}). */
     Optional<LoadedMedia> load(String key);
 
+    /** Removes the file stored under {@code key}, if any. A no-op (not an error) if it's already gone. */
+    void delete(String key);
+
     /**
      * Recovers the storage key from a public URL previously returned by {@link #store}, so a
      * caller that only persisted the URL (e.g. Expense.receiptImageUrl) can still look the file

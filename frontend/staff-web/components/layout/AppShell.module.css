@@ -24,7 +24,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
-  padding: var(--space-6) var(--space-4) var(--space-5);
+  padding: var(--space-4) var(--space-4) var(--space-5);
   background: var(--color-surface);
   color: var(--sidebar-fg);
   border-right: 1px solid var(--sidebar-border);
@@ -49,7 +49,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: 0 var(--space-3) var(--space-2);
+  padding: 0 var(--space-3) var(--space-2) var(--space-1);
 }
 
 /* !important here beats IconButton's own `.button { display/width/height/border-radius }` -
@@ -430,11 +430,11 @@
   }
 
   /* .sidebar's own left padding drops from --space-4 (16px) to --space-2 (8px) when
-   * collapsed; .brand's left padding here picks up the other 8px (--space-3 -> --space-5)
+   * collapsed; .brand's left padding here picks up the other 8px (--space-1 -> --space-3)
    * so the combined offset - and with it .menuToggle's left edge - stays identical to the
    * expanded state. Only the logo (which this rail is too narrow for) is dropped. */
   .sidebar.collapsed .brand {
-    padding: 0 0 var(--space-2) var(--space-5);
+    padding: 0 0 var(--space-2) var(--space-3);
   }
 
   .sidebar.collapsed .brandLogo,

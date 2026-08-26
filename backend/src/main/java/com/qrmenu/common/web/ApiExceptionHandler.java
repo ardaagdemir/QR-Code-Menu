@@ -20,7 +20,17 @@ public class ApiExceptionHandler {
         return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Uploaded file exceeds the maximum allowed size.");
     }
 
-    @ExceptionHandler({ProductNotOrderableException.class, OrderingNotAllowedException.class, BranchHasActiveOrdersException.class})
+    @ExceptionHandler({
+        ProductNotOrderableException.class,
+        OrderingNotAllowedException.class,
+        BranchHasActiveOrdersException.class,
+        LastActiveBusinessAdminException.class,
+        CategoryHasProductsException.class,
+        TableHasVisitHistoryException.class,
+        TableInUseException.class,
+        DuplicateEmailException.class,
+        DuplicateExpenseCategoryNameException.class
+    })
     public ProblemDetail handleConflict(RuntimeException ex) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
     }

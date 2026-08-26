@@ -4,8 +4,10 @@ import { useEffect, useId, useState } from "react";
 import { Plus } from "lucide-react";
 import {
   createProduct,
+  deleteProduct,
   listBranchProducts,
   listProductsForCategory,
+  reorderProducts,
   type BranchProductAdmin,
   type ProductAdmin,
 } from "@/lib/api";
@@ -16,6 +18,7 @@ import ErrorState from "@/components/ui/ErrorState";
 import TableSkeleton from "@/components/ui/TableSkeleton";
 import Button from "@/components/ui/Button";
 import Dialog from "@/components/ui/Dialog";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/ToastProvider";
 import ProductRow from "./ProductRow";
 import ProductFormFields, { emptyProductFormValues, type ProductFormValues } from "./ProductFormFields";
@@ -41,6 +44,9 @@ export default function ProductsSection({ categoryId }: Props) {
   const [formValues, setFormValues] = useState<ProductFormValues>(emptyProductFormValues);
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [reorderingId, setReorderingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ProductAdmin | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     listProductsForCategory(categoryId)
@@ -112,6 +118,41 @@ export default function ProductsSection({ categoryId }: Props) {
     setBranchProducts((current) => [...current.filter((bp) => bp.productId !== updated.productId), updated]);
   }
 
+  async function handleMoveProduct(index: number, direction: -1 | 1) {
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= products.length) {
+      return;
+    }
+    const reordered = [...products];
+    [reordered[index], reordered[targetIndex]] = [reordered[targetIndex], reordered[index]];
+    setReorderingId(products[index].id);
+    try {
+      const result = await reorderProducts(categoryId, reordered.map((p) => p.id));
+      setProducts(result);
+    } catch {
+      showToast("Ürün sırası güncellenemedi.", "error");
+    } finally {
+      setReorderingId(null);
+    }
+  }
+
+  async function handleConfirmDeleteProduct() {
+    if (!deleteTarget) {
+      return;
+    }
+    setDeleting(true);
+    try {
+      await deleteProduct(deleteTarget.id);
+      setProducts((current) => current.filter((p) => p.id !== deleteTarget.id));
+      showToast("Ürün silindi.", "success");
+    } catch {
+      showToast("Ürün silinemedi.", "error");
+    } finally {
+      setDeleting(false);
+      setDeleteTarget(null);
+    }
+  }
+
   return (
     <section className={`${styles.section} ${styles.panel} ${menuStyles.productPanel}`}>
       <PageHeader
@@ -148,13 +189,19 @@ export default function ProductsSection({ categoryId }: Props) {
             </tr>
           </thead>
           <tbody>
-            {products.map((product) => (
+            {products.map((product, index) => (
               <ProductRow
                 key={product.id}
                 product={product}
                 branchProduct={branchProducts.find((bp) => bp.productId === product.id)}
                 onProductUpdated={handleProductUpdated}
                 onBranchProductUpdated={handleBranchProductUpdated}
+                canMoveUp={index > 0}
+                canMoveDown={index < products.length - 1}
+                reorderDisabled={reorderingId !== null}
+                onMoveUp={() => handleMoveProduct(index, -1)}
+                onMoveDown={() => handleMoveProduct(index, 1)}
+                onRequestDelete={() => setDeleteTarget(product)}
               />
             ))}
           </tbody>
@@ -179,6 +226,18 @@ export default function ProductsSection({ categoryId }: Props) {
             </div>
           </form>
         </Dialog>
+      ) : null}
+
+      {deleteTarget ? (
+        <ConfirmDialog
+          title="Ürünü Sil"
+          message={`"${deleteTarget.name}" ürünü, tüm option/option group'ları ve şube atamalarıyla birlikte kalıcı olarak silinecek. Bu işlem geri alınamaz.`}
+          confirmLabel="Sil"
+          tone="danger"
+          confirmLoading={deleting}
+          onConfirm={handleConfirmDeleteProduct}
+          onCancel={() => setDeleteTarget(null)}
+        />
       ) : null}
     </section>
   );

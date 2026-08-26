@@ -11,10 +11,10 @@ import java.util.UUID;
 
 /**
  * Gap-analysis #6 (product-requirements.md Section 12.3): a business can have several
- * owners/report recipients. Purely a data holder for now - no report/notification
- * module consumes dailyReportRecipient/monthlyReportRecipient/whatsappEnabled yet
- * (those land with the reporting/owner-notification roadmap items); this just captures
- * the contact list staff configure ahead of that.
+ * owners/report recipients. dailyReportRecipient drives {@code
+ * OwnerNotificationService#dispatchAutoForDailyClose}, monthlyReportRecipient drives
+ * {@code OwnerNotificationService#dispatchAutoForMonthlyReport} - whatsappEnabled remains a
+ * data-only field for now (no WhatsApp adapter exists yet).
  */
 @Entity
 @Table(name = "business_contact")
@@ -45,9 +45,6 @@ public class BusinessContact {
     @Column(name = "monthly_report_recipient", nullable = false)
     private boolean monthlyReportRecipient;
 
-    @Column(nullable = false)
-    private boolean active;
-
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -68,7 +65,6 @@ public class BusinessContact {
         this.whatsappEnabled = whatsappEnabled;
         this.dailyReportRecipient = dailyReportRecipient;
         this.monthlyReportRecipient = monthlyReportRecipient;
-        this.active = true;
         Instant now = Instant.now();
         this.createdAt = now;
         this.updatedAt = now;
@@ -76,14 +72,13 @@ public class BusinessContact {
 
     public void update(
             String name, String phone, String email, boolean whatsappEnabled, boolean dailyReportRecipient,
-            boolean monthlyReportRecipient, boolean active) {
+            boolean monthlyReportRecipient) {
         this.name = name;
         this.phone = phone;
         this.email = email;
         this.whatsappEnabled = whatsappEnabled;
         this.dailyReportRecipient = dailyReportRecipient;
         this.monthlyReportRecipient = monthlyReportRecipient;
-        this.active = active;
         this.updatedAt = Instant.now();
     }
 
@@ -117,10 +112,6 @@ public class BusinessContact {
 
     public boolean isMonthlyReportRecipient() {
         return monthlyReportRecipient;
-    }
-
-    public boolean isActive() {
-        return active;
     }
 
     public Instant getCreatedAt() {

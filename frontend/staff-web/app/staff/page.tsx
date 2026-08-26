@@ -1,12 +1,17 @@
 "use client";
 
 import { useEffect, useId, useState } from "react";
-import { Eye, EyeOff, KeyRound, UserPlus, Users } from "lucide-react";
+import { Eye, EyeOff, KeyRound, Pencil, Power, UserPlus, Users } from "lucide-react";
 import {
+  activateStaffUser,
+  ApiError,
+  changeStaffUserRole,
   createStaffUser,
   deactivateStaffUser,
   listStaffUsers,
+  me,
   resetStaffUserPassword,
+  updateStaffUserEmail,
   MIN_PASSWORD_LENGTH,
   type StaffRole,
   type StaffUser,
@@ -43,6 +48,7 @@ export default function StaffPage() {
   const [staffUsers, setStaffUsers] = useState<StaffUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [currentStaffUserId, setCurrentStaffUserId] = useState<string | null>(null);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [email, setEmail] = useState("");
@@ -54,6 +60,16 @@ export default function StaffPage() {
   const [deactivateTarget, setDeactivateTarget] = useState<StaffUser | null>(null);
   const [deactivating, setDeactivating] = useState(false);
 
+  const [activateTarget, setActivateTarget] = useState<StaffUser | null>(null);
+  const [activating, setActivating] = useState(false);
+
+  const [editTarget, setEditTarget] = useState<StaffUser | null>(null);
+  const [editEmail, setEditEmail] = useState("");
+  const [editRole, setEditRole] = useState<StaffRole>("CASHIER");
+  const [editing, setEditing] = useState(false);
+  const [editFormError, setEditFormError] = useState<string | null>(null);
+  const editDialogTitleId = useId();
+
   const [resetTarget, setResetTarget] = useState<StaffUser | null>(null);
   const [resetPassword, setResetPassword] = useState("");
   const [resetConfirmPassword, setResetConfirmPassword] = useState("");
@@ -63,9 +79,10 @@ export default function StaffPage() {
   const resetDialogTitleId = useId();
 
   function load() {
-    listStaffUsers()
-      .then((users) => {
+    Promise.all([listStaffUsers(), me()])
+      .then(([users, context]) => {
         setStaffUsers(users);
+        setCurrentStaffUserId(context.staffUserId);
         setError(null);
       })
       .catch(() => setError("Personel listesi yüklenemedi."))
@@ -111,6 +128,73 @@ export default function StaffPage() {
     } finally {
       setDeactivating(false);
       setDeactivateTarget(null);
+    }
+  }
+
+  async function handleConfirmActivate() {
+    if (!activateTarget) {
+      return;
+    }
+    setActivating(true);
+    try {
+      await activateStaffUser(activateTarget.id);
+      load();
+      showToast("Personel aktifleştirildi.", "success");
+    } catch {
+      showToast("Personel aktifleştirilemedi.", "error");
+    } finally {
+      setActivating(false);
+      setActivateTarget(null);
+    }
+  }
+
+  function openEditDialog(user: StaffUser) {
+    setEditFormError(null);
+    setEditEmail(user.email);
+    setEditRole(user.role as StaffRole);
+    setEditTarget(user);
+  }
+
+  async function handleConfirmEdit(event: React.FormEvent) {
+    event.preventDefault();
+    if (!editTarget) {
+      return;
+    }
+    const trimmedEmail = editEmail.trim();
+    if (!trimmedEmail) {
+      setEditFormError("E-posta girin.");
+      return;
+    }
+    const emailChanged = trimmedEmail.toLowerCase() !== editTarget.email.toLowerCase();
+    const roleChanged = editRole !== editTarget.role;
+    if (!emailChanged && !roleChanged) {
+      setEditTarget(null);
+      return;
+    }
+    setEditing(true);
+    setEditFormError(null);
+    try {
+      if (emailChanged) {
+        await updateStaffUserEmail(editTarget.id, trimmedEmail);
+      }
+      if (roleChanged) {
+        await changeStaffUserRole(editTarget.id, editRole);
+      }
+      setEditTarget(null);
+      load();
+      showToast("Personel güncellendi.", "success");
+    } catch (err) {
+      // Email and role are two separate requests - one may have already succeeded before the
+      // other failed (e.g. last-active-BUSINESS_ADMIN protection blocking only the role change),
+      // so refresh the list to reflect whatever partially applied.
+      load();
+      if (err instanceof ApiError && err.status === 409) {
+        setEditFormError("Bu e-posta zaten kullanımda ya da bu değişiklik son aktif İşletme Yöneticisi'ni etkiliyor.");
+      } else {
+        setEditFormError("Personel güncellenemedi.");
+      }
+    } finally {
+      setEditing(false);
     }
   }
 
@@ -203,16 +287,27 @@ export default function StaffPage() {
                         <Badge tone={user.active ? "success" : "danger"}>{user.active ? "Aktif" : "Devre dışı"}</Badge>
                       </td>
                       <td className={pageStyles.actionsCell}>
-                        <div className={`${tableStyles.actions} ${pageStyles.staffActions}`}>
-                          <Button size="md" variant="ghost" onClick={() => openResetDialog(user)}>
-                            <KeyRound size={15} aria-hidden="true" /> Şifre Sıfırla
-                          </Button>
-                          {user.active ? (
-                            <Button className={pageStyles.dangerAction} size="md" variant="ghost" onClick={() => setDeactivateTarget(user)}>
-                              Hesabı Devre Dışı Bırak
+                        {user.id === currentStaffUserId ? (
+                          <span className={styles.rowMeta}>-</span>
+                        ) : (
+                          <div className={`${tableStyles.actions} ${pageStyles.staffActions}`}>
+                            <Button size="md" variant="ghost" onClick={() => openEditDialog(user)}>
+                              <Pencil size={15} aria-hidden="true" /> Düzenle
                             </Button>
-                          ) : null}
-                        </div>
+                            <Button size="md" variant="ghost" onClick={() => openResetDialog(user)}>
+                              <KeyRound size={15} aria-hidden="true" /> Şifre Sıfırla
+                            </Button>
+                            {user.active ? (
+                              <Button className={pageStyles.dangerAction} size="md" variant="ghost" onClick={() => setDeactivateTarget(user)}>
+                                <Power size={15} aria-hidden="true" /> Devre Dışı Bırak
+                              </Button>
+                            ) : (
+                              <Button size="md" variant="ghost" onClick={() => setActivateTarget(user)}>
+                                <Power size={15} aria-hidden="true" /> Aktifleştir
+                              </Button>
+                            )}
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -334,14 +429,55 @@ export default function StaffPage() {
 
       {deactivateTarget ? (
         <ConfirmDialog
-          title="Hesabı Devre Dışı Bırak"
-          message={`"${deactivateTarget.email}" devre dışı bırakılacak ve artık giriş yapamayacak. Bu işlem geri alınamaz.`}
-          confirmLabel="Hesabı Devre Dışı Bırak"
+          title="Devre Dışı Bırak"
+          message={`"${deactivateTarget.email}" devre dışı bırakılacak ve artık giriş yapamayacak.`}
+          confirmLabel="Devre Dışı Bırak"
           tone="danger"
           confirmLoading={deactivating}
           onConfirm={handleConfirmDeactivate}
           onCancel={() => setDeactivateTarget(null)}
         />
+      ) : null}
+
+      {activateTarget ? (
+        <ConfirmDialog
+          title="Aktifleştir"
+          message={`"${activateTarget.email}" yeniden aktifleştirilecek ve tekrar giriş yapabilecek. Şifresi değişmez.`}
+          confirmLabel="Aktifleştir"
+          confirmLoading={activating}
+          onConfirm={handleConfirmActivate}
+          onCancel={() => setActivateTarget(null)}
+        />
+      ) : null}
+
+      {editTarget ? (
+        <Dialog onClose={() => setEditTarget(null)} labelledBy={editDialogTitleId}>
+          <h2 id={editDialogTitleId} className={styles.sectionTitle}>
+            Personeli Düzenle
+          </h2>
+          <form className={styles.section} onSubmit={handleConfirmEdit}>
+            <FormField label="E-posta" required>
+              {(controlProps) => (
+                <Input {...controlProps} type="email" value={editEmail} onChange={(event) => setEditEmail(event.target.value)} required />
+              )}
+            </FormField>
+            <FormField label="Rol">
+              {(controlProps) => (
+                <Select {...controlProps} value={editRole} onChange={(event) => setEditRole(event.target.value as StaffRole)}>
+                  <option value="BUSINESS_ADMIN">İşletme Yöneticisi</option>
+                  <option value="BRANCH_MANAGER">Şube Sorumlusu</option>
+                  <option value="CASHIER">Kasa Personeli</option>
+                </Select>
+              )}
+            </FormField>
+
+            {editFormError ? <ErrorState message={editFormError} /> : null}
+
+            <Button type="submit" disabled={editing}>
+              {editing ? "Kaydediliyor…" : "Kaydet"}
+            </Button>
+          </form>
+        </Dialog>
       ) : null}
     </AppShell>
   );

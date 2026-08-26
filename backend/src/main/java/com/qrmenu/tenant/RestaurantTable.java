@@ -37,6 +37,15 @@ public class RestaurantTable {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    /**
+     * Archive/deactivate (never a hard delete) for a table with TableVisit history -
+     * same pattern as Business/Branch.active. An inactive table rejects new QR
+     * check-in (TenantService.checkIn) but existing TableVisit/order
+     * history is untouched. See TenantService.archiveLockedTable/reactivateTable.
+     */
+    @Column(nullable = false)
+    private boolean active;
+
     protected RestaurantTable() {
         // JPA
     }
@@ -45,6 +54,7 @@ public class RestaurantTable {
         this.businessId = businessId;
         this.branchId = branchId;
         this.label = label;
+        this.active = true;
         Instant now = Instant.now();
         this.createdAt = now;
         this.updatedAt = now;
@@ -52,6 +62,16 @@ public class RestaurantTable {
 
     public void rename(String label) {
         this.label = label;
+        this.updatedAt = Instant.now();
+    }
+
+    public void activate() {
+        this.active = true;
+        this.updatedAt = Instant.now();
+    }
+
+    public void deactivate() {
+        this.active = false;
         this.updatedAt = Instant.now();
     }
 
@@ -69,6 +89,10 @@ public class RestaurantTable {
 
     public String getLabel() {
         return label;
+    }
+
+    public boolean isActive() {
+        return active;
     }
 
     public Instant getCreatedAt() {

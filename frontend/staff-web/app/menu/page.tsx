@@ -65,6 +65,17 @@ export default function MenuPage() {
                 setCategories((current) => [...current, category]);
                 setSelectedCategoryId(category.id);
               }}
+              onCategoryRenamed={(category) => {
+                setCategories((current) => current.map((c) => (c.id === category.id ? category : c)));
+              }}
+              onCategoriesReordered={setCategories}
+              onCategoryDeleted={(categoryId) => {
+                const remaining = categories.filter((c) => c.id !== categoryId);
+                setCategories(remaining);
+                if (selectedCategoryId === categoryId) {
+                  setSelectedCategoryId(remaining[0]?.id ?? null);
+                }
+              }}
             />
 
             {selectedCategoryId ? <ProductsSection categoryId={selectedCategoryId} /> : null}

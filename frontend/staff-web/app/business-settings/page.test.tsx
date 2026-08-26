@@ -1,7 +1,7 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ToastProvider } from "@/components/ui/ToastProvider";
-import type { Business } from "@/lib/api";
+import type { Business, BusinessContact } from "@/lib/api";
 import BusinessSettingsPage from "./page";
 
 // AppShell fetches /me and needs next/navigation - none of that is relevant to the
@@ -12,7 +12,11 @@ vi.mock("@/components/layout/AppShell", () => ({
 
 const getBusiness = vi.hoisted(() => vi.fn());
 const updateBusinessSettings = vi.hoisted(() => vi.fn());
+const updateBusinessName = vi.hoisted(() => vi.fn());
 const listBusinessContacts = vi.hoisted(() => vi.fn());
+const createBusinessContact = vi.hoisted(() => vi.fn());
+const updateBusinessContact = vi.hoisted(() => vi.fn());
+const deleteBusinessContact = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/api", async () => {
   const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
@@ -20,9 +24,16 @@ vi.mock("@/lib/api", async () => {
     ...actual,
     getBusiness,
     updateBusinessSettings,
+    updateBusinessName,
     listBusinessContacts,
+    createBusinessContact,
+    updateBusinessContact,
+    deleteBusinessContact,
   };
 });
+
+const patchStaffContext = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/staffContextStore", () => ({ patchStaffContext }));
 
 function business(overrides: Partial<Business> = {}): Business {
   return {
@@ -36,12 +47,64 @@ function business(overrides: Partial<Business> = {}): Business {
   };
 }
 
+function contact(overrides: Partial<BusinessContact> = {}): BusinessContact {
+  return {
+    id: "contact-1",
+    name: "Ayşe Yılmaz",
+    phone: "+905551112233",
+    email: "ayse@example.com",
+    whatsappEnabled: false,
+    dailyReportRecipient: true,
+    monthlyReportRecipient: false,
+    ...overrides,
+  };
+}
+
 beforeEach(() => {
   getBusiness.mockReset();
   updateBusinessSettings.mockReset();
+  updateBusinessName.mockReset();
   listBusinessContacts.mockReset();
+  createBusinessContact.mockReset();
+  updateBusinessContact.mockReset();
+  deleteBusinessContact.mockReset();
+  patchStaffContext.mockReset();
   getBusiness.mockResolvedValue(business());
   listBusinessContacts.mockResolvedValue([]);
+});
+
+describe("BusinessSettingsPage - İşletme Adı", () => {
+  it("loads the current name, saves a trimmed value, and pushes it into the shared staff context", async () => {
+    updateBusinessName.mockResolvedValue(business({ name: "Yeni İsim" }));
+
+    render(
+      <ToastProvider>
+        <BusinessSettingsPage />
+      </ToastProvider>,
+    );
+
+    const nameField = (await screen.findByDisplayValue("Meydan Bistro")) as HTMLInputElement;
+    fireEvent.change(nameField, { target: { value: "  Yeni İsim  " } });
+    fireEvent.click(screen.getByRole("button", { name: "Adı Kaydet" }));
+
+    await waitFor(() => expect(updateBusinessName).toHaveBeenCalledWith("Yeni İsim"));
+    await waitFor(() => expect(patchStaffContext).toHaveBeenCalledWith({ businessName: "Yeni İsim" }));
+  });
+
+  it("rejects a blank name without calling the API", async () => {
+    render(
+      <ToastProvider>
+        <BusinessSettingsPage />
+      </ToastProvider>,
+    );
+
+    const nameField = (await screen.findByDisplayValue("Meydan Bistro")) as HTMLInputElement;
+    fireEvent.change(nameField, { target: { value: "   " } });
+    fireEvent.click(screen.getByRole("button", { name: "Adı Kaydet" }));
+
+    await screen.findByText("İşletme adı boş olamaz.");
+    expect(updateBusinessName).not.toHaveBeenCalled();
+  });
 });
 
 /**
@@ -89,5 +152,83 @@ describe("BusinessSettingsPage - Ayarları Kaydet çift gönderim koruması", ()
     // submit must go through normally.
     fireEvent.submit(form);
     expect(updateBusinessSettings).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("BusinessSettingsPage - Rapor Alıcısı düzenleme", () => {
+  it("opens the edit dialog pre-filled with the contact's current values and submits the update", async () => {
+    listBusinessContacts.mockResolvedValue([contact()]);
+    updateBusinessContact.mockResolvedValue(contact({ name: "Ayşe Demir" }));
+
+    render(
+      <ToastProvider>
+        <BusinessSettingsPage />
+      </ToastProvider>,
+    );
+    await screen.findByText("Ayşe Yılmaz");
+
+    fireEvent.click(screen.getByRole("button", { name: "Düzenle" }));
+
+    const dialog = within(await screen.findByRole("dialog"));
+    await dialog.findByRole("heading", { name: "Kişiyi Düzenle" });
+    expect((dialog.getByLabelText("Ad", { exact: false }) as HTMLInputElement).value).toBe("Ayşe Yılmaz");
+    expect(dialog.queryByLabelText("Telefon")).toBeNull();
+    expect((dialog.getByLabelText("E-posta") as HTMLInputElement).value).toBe("ayse@example.com");
+
+    fireEvent.change(dialog.getByLabelText("Ad", { exact: false }), { target: { value: "Ayşe Demir" } });
+    fireEvent.click(dialog.getByRole("button", { name: "Kaydet" }));
+
+    await waitFor(() => expect(updateBusinessContact).toHaveBeenCalledTimes(1));
+    // Telefon alanı UI'dan kaldırıldı, ama düzenleme formunun yönetmediği mevcut değer korunarak gönderilmeli.
+    expect(updateBusinessContact).toHaveBeenCalledWith(
+      "contact-1",
+      expect.objectContaining({ name: "Ayşe Demir", phone: "+905551112233", email: "ayse@example.com" }),
+    );
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "Kişiyi Düzenle" })).toBeNull());
+  });
+});
+
+describe("BusinessSettingsPage - Rapor Alıcısı silme", () => {
+  it("asks for confirmation before deleting and does not call the API on cancel", async () => {
+    listBusinessContacts.mockResolvedValue([contact()]);
+
+    render(
+      <ToastProvider>
+        <BusinessSettingsPage />
+      </ToastProvider>,
+    );
+    await screen.findByText("Ayşe Yılmaz");
+
+    fireEvent.click(screen.getByRole("button", { name: "Sil" }));
+    await screen.findByText(/Ayşe Yılmaz.*adlı kişiyi silmek istediğinize emin misiniz/);
+
+    fireEvent.click(screen.getByRole("button", { name: "Vazgeç" }));
+
+    expect(deleteBusinessContact).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(screen.queryByText(/adlı kişiyi silmek istediğinize emin misiniz/)).toBeNull(),
+    );
+  });
+
+  it("deletes the contact and refreshes the list on confirm", async () => {
+    listBusinessContacts.mockResolvedValueOnce([contact()]).mockResolvedValueOnce([]);
+    deleteBusinessContact.mockResolvedValue(undefined);
+
+    render(
+      <ToastProvider>
+        <BusinessSettingsPage />
+      </ToastProvider>,
+    );
+    await screen.findByText("Ayşe Yılmaz");
+
+    fireEvent.click(screen.getByRole("button", { name: "Sil" }));
+    await screen.findByText(/adlı kişiyi silmek istediğinize emin misiniz/);
+
+    const dialogConfirmButtons = screen.getAllByRole("button", { name: "Sil" });
+    fireEvent.click(dialogConfirmButtons[dialogConfirmButtons.length - 1]);
+
+    await waitFor(() => expect(deleteBusinessContact).toHaveBeenCalledWith("contact-1"));
+    await waitFor(() => expect(listBusinessContacts).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByText("Ayşe Yılmaz")).toBeNull());
   });
 });

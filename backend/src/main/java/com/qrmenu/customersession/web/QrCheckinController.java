@@ -1,10 +1,9 @@
 package com.qrmenu.customersession.web;
 
-import com.qrmenu.customersession.CheckInResult;
-import com.qrmenu.customersession.CustomerSessionService;
 import com.qrmenu.customersession.SessionCookieSupport;
 import com.qrmenu.customersession.TableVisit;
 import com.qrmenu.customersession.web.dto.TableVisitResponse;
+import com.qrmenu.tenant.QrCheckInOutcome;
 import com.qrmenu.tenant.TableReference;
 import com.qrmenu.tenant.TenantService;
 import jakarta.servlet.http.HttpServletResponse;
@@ -32,11 +31,9 @@ public class QrCheckinController {
     private static final Duration SESSION_COOKIE_MAX_AGE = Duration.ofDays(30);
 
     private final TenantService tenantService;
-    private final CustomerSessionService customerSessionService;
 
-    public QrCheckinController(TenantService tenantService, CustomerSessionService customerSessionService) {
+    public QrCheckinController(TenantService tenantService) {
         this.tenantService = tenantService;
-        this.customerSessionService = customerSessionService;
     }
 
     @PostMapping("/{token}/visit")
@@ -45,13 +42,12 @@ public class QrCheckinController {
             @CookieValue(name = SessionCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
             HttpServletResponse response) {
 
-        TableReference tableReference = tenantService.resolveActiveQrToken(token);
-        CheckInResult result =
-                customerSessionService.checkIn(tableReference, SessionCookieSupport.parseSessionId(sessionCookie));
+        QrCheckInOutcome outcome = tenantService.checkIn(token, SessionCookieSupport.parseSessionId(sessionCookie));
+        TableReference tableReference = outcome.tableReference();
 
-        response.addHeader(HttpHeaders.SET_COOKIE, sessionCookie(result.sessionId()).toString());
+        response.addHeader(HttpHeaders.SET_COOKIE, sessionCookie(outcome.checkInResult().sessionId()).toString());
 
-        TableVisit visit = result.visit();
+        TableVisit visit = outcome.checkInResult().visit();
         return ResponseEntity.ok(new TableVisitResponse(
                 visit.getId(),
                 tableReference.businessId(),

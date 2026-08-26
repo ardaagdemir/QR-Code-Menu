@@ -4,6 +4,8 @@ import com.qrmenu.audit.AuditService;
 import com.qrmenu.common.web.BusinessUnavailableException;
 import com.qrmenu.common.web.OrderingNotAllowedException;
 import com.qrmenu.common.web.ResourceNotFoundException;
+import com.qrmenu.common.web.TableHasVisitHistoryException;
+import com.qrmenu.customersession.CustomerSessionService;
 import com.qrmenu.tenant.repository.BranchBusinessHoursRepository;
 import com.qrmenu.tenant.repository.BranchRepository;
 import com.qrmenu.tenant.repository.BusinessContactRepository;
@@ -39,6 +41,7 @@ public class TenantService {
     private final BranchBusinessHoursRepository branchBusinessHoursRepository;
     private final BusinessContactRepository businessContactRepository;
     private final AuditService auditService;
+    private final CustomerSessionService customerSessionService;
     private final Clock clock;
 
     public TenantService(
@@ -49,6 +52,7 @@ public class TenantService {
             BranchBusinessHoursRepository branchBusinessHoursRepository,
             BusinessContactRepository businessContactRepository,
             AuditService auditService,
+            CustomerSessionService customerSessionService,
             Clock clock) {
         this.businessRepository = businessRepository;
         this.branchRepository = branchRepository;
@@ -57,6 +61,7 @@ public class TenantService {
         this.branchBusinessHoursRepository = branchBusinessHoursRepository;
         this.businessContactRepository = businessContactRepository;
         this.auditService = auditService;
+        this.customerSessionService = customerSessionService;
         this.clock = clock;
     }
 
@@ -96,6 +101,24 @@ public class TenantService {
         business.deactivate();
         businessRepository.save(business);
         auditService.record(businessId, actorStaffUserId, "Business", businessId, "DEACTIVATED", Map.of());
+        return business;
+    }
+
+    /**
+     * Single source of truth for renaming a business - called by both the BUSINESS_ADMIN
+     * flow (StaffTenantController, businessId always the caller's own context.businessId())
+     * and the PLATFORM_ADMIN flow (PlatformAdminBusinessController, businessId from the path,
+     * cross-business by design). Business.rename() does the trim/blank validation.
+     */
+    @Transactional
+    public Business updateBusinessName(UUID businessId, String name, UUID actorStaffUserId) {
+        Business business = getBusiness(businessId);
+        String oldName = business.getName();
+        business.rename(name);
+        businessRepository.save(business);
+        auditService.record(
+                businessId, actorStaffUserId, "Business", businessId, "NAME_CHANGED",
+                Map.of("oldName", oldName, "newName", business.getName()));
         return business;
     }
 
@@ -214,6 +237,34 @@ public class TenantService {
         return saved;
     }
 
+    /**
+     * Hard-deletes a table that has never had a TableVisit - "yanlış oluşturulmuş masa"
+     * case. table_qr_token rows are removed automatically via ON DELETE CASCADE
+     * (V37__restaurant_table_lifecycle.sql), same reasoning as Product hard-delete
+     * cascading its own belongs-to children. Any TableVisit history rejects the delete
+     * outright (TableHasVisitHistoryException, 409) - the caller must archive instead
+     * (OrderingService.archiveTable), never a silent fallback.
+     *
+     * <p>Locks the table row (PESSIMISTIC_WRITE, via getTableForUpdate - same lock
+     * archive uses) before the history check, closing the same race archive already
+     * guards against: without this lock a concurrent check-in could insert a TableVisit
+     * for this table after the (unlocked) history check passed but before the row is
+     * actually deleted, hitting the table_visit -> restaurant_table FK constraint (an
+     * ugly 500) instead of the clean 409 TableHasVisitHistoryException below. See
+     * TenantService.checkIn's matching PESSIMISTIC_READ lock, the other side of the race.
+     */
+    @Transactional
+    public void deleteTable(UUID businessId, UUID branchId, UUID tableId, UUID actorStaffUserId) {
+        RestaurantTable table = getTableForUpdate(businessId, branchId, tableId);
+        if (customerSessionService.hasVisitHistoryForTable(table.getId())) {
+            throw new TableHasVisitHistoryException(
+                    "Table has visit history and cannot be hard-deleted, archive it instead: " + tableId);
+        }
+        String label = table.getLabel();
+        tableRepository.delete(table);
+        auditService.record(businessId, actorStaffUserId, "RestaurantTable", tableId, "DELETED", Map.of("label", label));
+    }
+
     @Transactional
     public void revokeQrToken(UUID businessId, UUID qrTokenId, UUID actorStaffUserId) {
         TableQrToken token = qrTokenRepository
@@ -276,6 +327,59 @@ public class TenantService {
     @Transactional(readOnly = true)
     public Optional<RestaurantTable> findTable(UUID businessId, UUID tableId) {
         return tableRepository.findByIdAndBusinessId(tableId, businessId);
+    }
+
+    /**
+     * Locks the table row (PESSIMISTIC_WRITE) for the archive flow - held until the
+     * caller's transaction commits, so a concurrent order/check-in reaching this same
+     * table cannot slip past the caller's active-visit/active-order check before the
+     * archive write lands. See OrderingService.archiveTable, the only caller.
+     */
+    @Transactional
+    public RestaurantTable getTableForUpdate(UUID businessId, UUID branchId, UUID tableId) {
+        RestaurantTable table = tableRepository
+                .findByIdAndBusinessIdForUpdate(tableId, businessId)
+                .orElseThrow(() -> new ResourceNotFoundException("Table not found for business: " + tableId));
+        if (!table.getBranchId().equals(branchId)) {
+            throw new ResourceNotFoundException("Table not found in active branch: " + tableId);
+        }
+        return table;
+    }
+
+    /**
+     * Archives a table already loaded (and locked) via getTableForUpdate - see that
+     * method's Javadoc. Revokes the table's active QR token first (archived table
+     * accepts no new check-in) but never deletes it - QR history stays intact, same
+     * "revoke, never delete" policy as regenerateQrToken/revokeQrToken.
+     */
+    @Transactional
+    public RestaurantTable archiveLockedTable(RestaurantTable table, UUID actorStaffUserId) {
+        qrTokenRepository.findByTableIdAndStatus(table.getId(), QrTokenStatus.ACTIVE).ifPresent(existing -> {
+            existing.revoke();
+            qrTokenRepository.save(existing);
+        });
+        table.deactivate();
+        RestaurantTable saved = tableRepository.save(table);
+        auditService.record(
+                saved.getBusinessId(), actorStaffUserId, "RestaurantTable", saved.getId(), "ARCHIVED",
+                Map.of("label", saved.getLabel()));
+        return saved;
+    }
+
+    /**
+     * Re-enables an archived table for QR check-in. Deliberately does not re-issue a QR
+     * token automatically - staff regenerates one explicitly (regenerateQrToken) only if
+     * they actually want a working QR again, same "manuel yeniden üretim, no automatic
+     * rotation" reasoning as regenerateQrToken's own Javadoc.
+     */
+    @Transactional
+    public RestaurantTable reactivateTable(UUID businessId, UUID branchId, UUID tableId, UUID actorStaffUserId) {
+        RestaurantTable table = requireTableInBranch(businessId, branchId, tableId);
+        table.activate();
+        RestaurantTable saved = tableRepository.save(table);
+        auditService.record(
+                businessId, actorStaffUserId, "RestaurantTable", saved.getId(), "REACTIVATED", Map.of("label", saved.getLabel()));
+        return saved;
     }
 
     /** Section 9, Milestone 8: BUSINESS_ADMIN/BRANCH_MANAGER can toggle ordering on/off for their branch. */
@@ -368,14 +472,23 @@ public class TenantService {
     @Transactional
     public BusinessContact updateBusinessContact(
             UUID businessId, UUID contactId, String name, String phone, String email, boolean whatsappEnabled,
-            boolean dailyReportRecipient, boolean monthlyReportRecipient, boolean active, UUID actorStaffUserId) {
+            boolean dailyReportRecipient, boolean monthlyReportRecipient, UUID actorStaffUserId) {
         BusinessContact contact = businessContactRepository
                 .findByIdAndBusinessId(contactId, businessId)
                 .orElseThrow(() -> new ResourceNotFoundException("Business contact not found: " + contactId));
-        contact.update(name, phone, email, whatsappEnabled, dailyReportRecipient, monthlyReportRecipient, active);
+        contact.update(name, phone, email, whatsappEnabled, dailyReportRecipient, monthlyReportRecipient);
         businessContactRepository.save(contact);
         auditService.record(businessId, actorStaffUserId, "BusinessContact", contact.getId(), "UPDATED", Map.of());
         return contact;
+    }
+
+    @Transactional
+    public void deleteBusinessContact(UUID businessId, UUID contactId, UUID actorStaffUserId) {
+        BusinessContact contact = businessContactRepository
+                .findByIdAndBusinessId(contactId, businessId)
+                .orElseThrow(() -> new ResourceNotFoundException("Business contact not found: " + contactId));
+        businessContactRepository.delete(contact);
+        auditService.record(businessId, actorStaffUserId, "BusinessContact", contactId, "DELETED", Map.of());
     }
 
     @Transactional(readOnly = true)
@@ -517,7 +630,7 @@ public class TenantService {
      * new orders, and new payments with a dedicated status (BusinessUnavailableException
      * -> 503) so customer-web can show "not currently in service" instead of the generic
      * ordering-not-allowed message. Existing order tracking/receipt access never calls
-     * this - only new check-in (TenantService.resolveActiveQrToken), new cart items
+     * this - only new check-in (TenantService.checkIn), new cart items
      * (OrderingService.addItem), and payment start (assertOrderingCurrentlyAllowed above).
      */
     @Transactional(readOnly = true)
@@ -618,20 +731,33 @@ public class TenantService {
     }
 
     /**
-     * Resolves a scanned QR token to the table/branch/business it belongs to. Only
+     * Resolves a scanned QR token to the table/branch/business it belongs to and
+     * creates/continues the caller's TableVisit for it - all in one transaction. Only
      * ACTIVE tokens resolve - a revoked or unknown token looks identical to the caller
      * (404), which is exactly the "QR only starts a new TableVisit, and only while
      * still active" guarantee from Section 5.
+     *
+     * <p>Locks the table row (PESSIMISTIC_READ, via findByIdForShare) and re-confirms
+     * it's still active before delegating to CustomerSessionService.checkIn - closes the
+     * check-in vs archive/hard-delete race: a plain unlocked read here (as this method
+     * used to do, split across two separate transactions with CustomerSessionService.
+     * checkIn) can be stale by the time the TableVisit insert actually runs, so an
+     * archive or hard-delete landing in that gap could let a new TableVisit get created
+     * for a table that's already archived/gone. PESSIMISTIC_READ, not _WRITE: this must
+     * only exclude archive/delete's PESSIMISTIC_WRITE, not serialize concurrent
+     * check-ins to the same table against each other. See archiveTable/deleteTable's
+     * matching PESSIMISTIC_WRITE lock, the other side of this race.
      */
-    @Transactional(readOnly = true)
-    public TableReference resolveActiveQrToken(String rawToken) {
+    @Transactional
+    public QrCheckInOutcome checkIn(String rawToken, UUID existingSessionId) {
         TableQrToken qrToken = qrTokenRepository
                 .findByToken(rawToken)
                 .filter(t -> t.getStatus() == QrTokenStatus.ACTIVE)
                 .orElseThrow(() -> new ResourceNotFoundException("QR token not found or inactive"));
         RestaurantTable table = tableRepository
-                .findById(qrToken.getTableId())
-                .orElseThrow(() -> new IllegalStateException("Table missing for QR token " + qrToken.getId()));
+                .findByIdForShare(qrToken.getTableId())
+                .filter(RestaurantTable::isActive)
+                .orElseThrow(() -> new ResourceNotFoundException("QR token not found or inactive"));
         Branch branch = branchRepository
                 .findById(table.getBranchId())
                 .orElseThrow(() -> new IllegalStateException("Branch missing for table " + table.getId()));
@@ -642,7 +768,8 @@ public class TenantService {
         // tracking/receipt access even after the business/branch is deactivated later
         // (see assertBusinessAndBranchActive's Javadoc).
         assertBusinessAndBranchActive(business, branch);
-        return new TableReference(
+        TableReference tableReference = new TableReference(
                 business.getId(), branch.getId(), table.getId(), business.getName(), branch.getName(), table.getLabel());
+        return new QrCheckInOutcome(tableReference, customerSessionService.checkIn(tableReference, existingSessionId));
     }
 }

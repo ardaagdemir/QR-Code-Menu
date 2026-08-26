@@ -14,6 +14,16 @@ public interface TableVisitRepository extends JpaRepository<TableVisit, UUID> {
     Optional<TableVisit> findFirstByAnonymousCustomerSessionIdAndTableIdOrderByStartedAtDesc(
             UUID anonymousCustomerSessionId, UUID tableId);
 
+    /** Masa yaşam döngüsü: hard-delete yalnızca hiç TableVisit geçmişi olmayan masa için mümkün. */
+    boolean existsByTableId(UUID tableId);
+
+    /** Masa yaşam döngüsü: archive gate - açık (closedAt IS NULL) ziyaretler, expiry kontrolü çağıran tarafta (isExpired). */
+    List<TableVisit> findAllByTableIdAndClosedAtIsNull(UUID tableId);
+
+    /** Masa yaşam döngüsü: bu masaya ait tüm ziyaretlerin id'leri - OrderingService'in aktif sipariş kontrolü için. */
+    @Query("SELECT t.id FROM TableVisit t WHERE t.tableId = :tableId")
+    List<UUID> findIdsByTableId(@Param("tableId") UUID tableId);
+
     /**
      * Gap-analysis #13: visits still open despite having passed either expiry clock -
      * inactivity (lastActivityAt) or absolute lifetime (startedAt) - for the closing

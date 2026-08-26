@@ -48,8 +48,14 @@ export default function ExpensesPage() {
             categories={categories}
             isBusinessAdmin={isBusinessAdmin}
             onCategoryCreated={(category) => setCategories((current) => [...current, category])}
+            onCategoryRenamed={(category) =>
+              setCategories((current) => current.map((c) => (c.id === category.id ? category : c)))
+            }
             onCategoryDeactivated={(categoryId) =>
               setCategories((current) => current.map((c) => (c.id === categoryId ? { ...c, active: false } : c)))
+            }
+            onCategoryActivated={(categoryId) =>
+              setCategories((current) => current.map((c) => (c.id === categoryId ? { ...c, active: true } : c)))
             }
           />
 

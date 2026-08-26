@@ -27,6 +27,9 @@ public interface OrderRepository extends JpaRepository<CustomerOrder, UUID> {
     /** Platform admin panel: is any order for this branch still operationally in flight (OrderingService.ACTIVE_ORDER_STATUSES)? */
     boolean existsByBranchIdAndStatusIn(UUID branchId, List<OrderStatus> statuses);
 
+    /** Masa yaşam döngüsü archive gate: bu masanın (herhangi bir TableVisit'i üzerinden) hâlâ operasyonel olarak devam eden bir siparişi var mı? */
+    boolean existsByTableVisitIdInAndStatusIn(List<UUID> tableVisitIds, List<OrderStatus> statuses);
+
     Optional<CustomerOrder> findByTrackingTokenHash(String trackingTokenHash);
 
     /** Serializes refund attempts for one order so item-level remaining quantities cannot race. */

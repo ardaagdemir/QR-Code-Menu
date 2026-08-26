@@ -9,15 +9,19 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.UUID;
 
 /**
  * Gap-analysis #11 (product-requirements.md Section 15): one row per delivery attempt - AUTO
  * (fired once per report+recipient, guarded by {@link
- * com.qrmenu.ownernotification.repository.OwnerNotificationLogRepository#existsByDailyCloseReportIdAndBusinessContactId})
- * or MANUAL (staff "resend", always creates a fresh row regardless of prior attempts). Rows are
- * never updated after insert - an audit trail of what was actually sent/attempted, not a
- * current-state cache.
+ * com.qrmenu.ownernotification.repository.OwnerNotificationLogRepository#existsByDailyCloseReportIdAndBusinessContactId}
+ * for DAILY, or the backoff/advisory-lock check in {@code MonthlyReportContactDispatcher} for
+ * MONTHLY) or MANUAL (staff "resend", always creates a fresh row regardless of prior attempts).
+ * Rows are never updated after insert - an audit trail of what was actually sent/attempted, not
+ * a current-state cache. {@code reportType} distinguishes DAILY (dailyCloseReportId set,
+ * reportPeriod null) from MONTHLY (dailyCloseReportId null, reportPeriod = first day of the
+ * reported month) - see V40 migration's consistency CHECK constraint.
  */
 @Entity
 @Table(name = "owner_notification_log")
@@ -27,8 +31,15 @@ public class OwnerNotificationLog {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Column(name = "daily_close_report_id", nullable = false)
+    @Column(name = "daily_close_report_id")
     private UUID dailyCloseReportId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "report_type", nullable = false, length = 10)
+    private OwnerNotificationReportType reportType;
+
+    @Column(name = "report_period")
+    private LocalDate reportPeriod;
 
     @Column(name = "business_id", nullable = false)
     private UUID businessId;
@@ -36,7 +47,7 @@ public class OwnerNotificationLog {
     @Column(name = "branch_id", nullable = false)
     private UUID branchId;
 
-    @Column(name = "business_contact_id", nullable = false)
+    @Column(name = "business_contact_id")
     private UUID businessContactId;
 
     @Column(name = "recipient_email", nullable = false)
@@ -78,7 +89,9 @@ public class OwnerNotificationLog {
             String errorMessage,
             OwnerNotificationTrigger triggeredBy,
             UUID triggeredByStaffUserId,
-            Instant attemptedAt) {
+            Instant attemptedAt,
+            OwnerNotificationReportType reportType,
+            LocalDate reportPeriod) {
         this.dailyCloseReportId = dailyCloseReportId;
         this.businessId = businessId;
         this.branchId = branchId;
@@ -90,6 +103,8 @@ public class OwnerNotificationLog {
         this.triggeredBy = triggeredBy;
         this.triggeredByStaffUserId = triggeredByStaffUserId;
         this.attemptedAt = attemptedAt;
+        this.reportType = reportType;
+        this.reportPeriod = reportPeriod;
     }
 
     public UUID getId() {
@@ -98,6 +113,14 @@ public class OwnerNotificationLog {
 
     public UUID getDailyCloseReportId() {
         return dailyCloseReportId;
+    }
+
+    public OwnerNotificationReportType getReportType() {
+        return reportType;
+    }
+
+    public LocalDate getReportPeriod() {
+        return reportPeriod;
     }
 
     public UUID getBusinessId() {

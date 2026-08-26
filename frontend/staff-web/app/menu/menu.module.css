@@ -41,6 +41,145 @@
   color: var(--color-primary);
 }
 
+.categoryRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.categoryRow .categoryButton {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.rowIconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-fg-muted);
+  cursor: pointer;
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.rowIconButton:hover:not(:disabled) {
+  background: var(--color-surface-soft);
+  color: var(--color-fg);
+}
+
+.rowIconButton:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.rowIconButtonDanger:hover:not(:disabled) {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+}
+
+.optionsLoading {
+  color: var(--color-fg-muted);
+  font-size: var(--font-size-sm);
+}
+
+.optionGroupsPanel,
+.optionsPanel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.optionGroupList,
+.optionList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.optionGroupItem {
+  border: 1px solid var(--color-panel-border);
+  border-radius: 8px;
+  background: var(--color-surface-raised);
+  overflow: hidden;
+}
+
+.optionGroupHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+}
+
+.optionGroupToggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--color-fg);
+  font-weight: var(--font-weight-medium);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  text-align: left;
+}
+
+.optionGroupType {
+  color: var(--color-fg-muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-regular);
+}
+
+.optionGroupBody {
+  padding: var(--space-3);
+  border-top: 1px solid var(--color-panel-border);
+  background: var(--color-surface-soft);
+}
+
+.optionRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-panel-border);
+  border-radius: 8px;
+  background: var(--color-surface-raised);
+}
+
+.optionName {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.optionPrice {
+  color: var(--color-fg-muted);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+}
+
+.optionRowActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: 0 0 auto;
+}
+
 .productPanel {
   min-width: 0;
 }

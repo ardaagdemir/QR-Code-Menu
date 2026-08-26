@@ -20,6 +20,8 @@ import {
   setSidebarCollapsed,
   subscribeSidebarCollapsed,
 } from "@/lib/sidebarCollapse";
+import { getStaffContextSnapshot, setStaffContext, subscribeStaffContext } from "@/lib/staffContextStore";
+import { getIsDesktopSnapshot, subscribeIsDesktop } from "@/lib/viewport";
 import ThemeToggle from "./ThemeToggle";
 import styles from "./AppShell.module.css";
 
@@ -47,7 +49,7 @@ type Props = {
  * development-progress.md "staff-web Görsel Yön Değişikliği".
  */
 export default function AppShell({ children, accessDenied = false }: Props) {
-  const [context, setContext] = useState<StaffContext | null>(null);
+  const context = useSyncExternalStore(subscribeStaffContext, getStaffContextSnapshot, () => null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const collapsed = useSyncExternalStore(
     subscribeSidebarCollapsed,
@@ -72,7 +74,7 @@ export default function AppShell({ children, accessDenied = false }: Props) {
     me()
       .then((ctx) => {
         if (!cancelled) {
-          setContext(ctx);
+          setStaffContext(ctx);
         }
       })
       .catch(() => {
@@ -84,6 +86,24 @@ export default function AppShell({ children, accessDenied = false }: Props) {
       cancelled = true;
     };
   }, [router]);
+
+  /* The drawer is a mobile-only concept - once the live breakpoint (see lib/viewport)
+   * crosses into desktop, any drawerOpen left over from a mobile interaction is stale
+   * and must be cleared. Without this, opening the drawer on mobile and then widening
+   * the window (no refresh) leaves drawerOpen=true sitting in state; shrinking back down
+   * later would then flash the drawer open again with no click involved.
+   *
+   * Subscribes directly to the same matchMedia "change" event lib/viewport tracks, and
+   * closes the drawer from within that event callback - not from a value compared during
+   * render - so this never calls setState mid-render. Doesn't touch the desktop collapsed
+   * preference (a separate store, see toggleCollapsed/toggleDrawer below). */
+  useEffect(() => {
+    return subscribeIsDesktop(() => {
+      if (getIsDesktopSnapshot()) {
+        setDrawerOpen(false);
+      }
+    });
+  }, []);
 
   async function handleLogout() {
     await logout().catch(() => undefined);
@@ -130,26 +150,31 @@ export default function AppShell({ children, accessDenied = false }: Props) {
     return pathname?.startsWith(matchPrefix) ?? false;
   }
 
-  /* One button drives two different toggles: the mobile drawer (drawerOpen) and the
-   * desktop collapsed rail (collapsed, persisted via lib/sidebarCollapse). Both flip on
-   * every click - which one has any visible effect is decided purely by the existing
-   * @media (max-width: 1023px) breakpoint in AppShell.module.css, so no matchMedia/JS
-   * viewport check is needed here. */
-  function toggleSidebar() {
-    setDrawerOpen((open) => !open);
+  /* Two distinct triggers, two distinct states - each only ever touches its own:
+   * .menuToggle (desktop rail, inside the sidebar) flips the persisted collapse
+   * preference; .hamburger (mobile topbar) flips only the transient drawer-open state.
+   * They used to share one handler that flipped both together, which is what let a
+   * mobile drawer click silently persist a desktop "collapsed" preference the user never
+   * asked for. */
+  function toggleCollapsed() {
     setSidebarCollapsed(!collapsed);
+  }
+
+  function toggleDrawer() {
+    setDrawerOpen((open) => !open);
   }
 
   const navContent = (
     <>
       {/* Hamburger stays pinned at the sidebar's top-left corner in both expanded and
        *  collapsed states (see .brand/.menuToggle padding math in the CSS module) -
-       *  drives the same toggleSidebar as the mobile topbar trigger below. */}
+       *  desktop-only (see .menuToggle in AppShell.module.css), drives the collapse
+       *  preference only. */}
       <div className={styles.brand}>
         <IconButton
           aria-label={collapsed ? "Kenar çubuğunu genişlet" : "Kenar çubuğunu daralt"}
           className={styles.menuToggle}
-          onClick={toggleSidebar}
+          onClick={toggleCollapsed}
         >
           <Menu size={18} aria-hidden="true" />
         </IconButton>
@@ -234,8 +259,9 @@ export default function AppShell({ children, accessDenied = false }: Props) {
             {/* Mobile-only: the sidebar itself is off-canvas until opened, so its own
              *  toggle (near the logo) can't be the thing that opens it on this breakpoint -
              *  this stays as the mobile drawer trigger, upgraded from the old plain "☰"
-             *  glyph to a proper icon. Hidden on desktop via CSS (see .hamburger). */}
-            <IconButton aria-label="Menüyü aç" className={styles.hamburger} onClick={toggleSidebar}>
+             *  glyph to a proper icon. Hidden on desktop via CSS (see .hamburger). Drives
+             *  drawerOpen only - never touches the desktop collapse preference. */}
+            <IconButton aria-label="Menüyü aç" className={styles.hamburger} onClick={toggleDrawer}>
               <Menu size={18} />
             </IconButton>
             {context ? (

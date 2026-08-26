@@ -60,6 +60,17 @@ public class ProductOptionGroup {
         this.updatedAt = now;
     }
 
+    public void update(String name, SelectionType selectionType) {
+        this.name = name;
+        this.selectionType = selectionType;
+        this.updatedAt = Instant.now();
+    }
+
+    public void updateDisplayOrder(int displayOrder) {
+        this.displayOrder = displayOrder;
+        this.updatedAt = Instant.now();
+    }
+
     public UUID getId() {
         return id;
     }

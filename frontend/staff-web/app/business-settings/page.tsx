@@ -1,17 +1,20 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ContactRound, Plus } from "lucide-react";
 import {
   createBusinessContact,
+  deleteBusinessContact,
   getBusiness,
   listBusinessContacts,
   updateBusinessContact,
+  updateBusinessName,
   updateBusinessSettings,
   type BusinessContact,
   type BusinessContactInput,
 } from "@/lib/api";
 import AppShell from "@/components/layout/AppShell";
+import { patchStaffContext } from "@/lib/staffContextStore";
 import PageHeader from "@/components/ui/PageHeader";
 import Table from "@/components/ui/Table";
 import EmptyState from "@/components/ui/EmptyState";
@@ -19,11 +22,12 @@ import ErrorState from "@/components/ui/ErrorState";
 import TableSkeleton from "@/components/ui/TableSkeleton";
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
-import Dialog from "@/components/ui/Dialog";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import FormField from "@/components/ui/FormField";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import { useToast } from "@/components/ui/ToastProvider";
+import ContactFormDialog from "./ContactFormDialog";
 import tableStyles from "@/components/ui/Table.module.css";
 import styles from "@/styles/admin.module.css";
 import pageStyles from "./page.module.css";
@@ -99,9 +103,17 @@ function getSupportedIntlValues(key: "currency" | "timeZone", fallback: string[]
  * Section 12.3 BusinessContact (rapor alıcıları) yönetimi. Şube bazlı adres/saat
  * dilimi/çalışma saatleri zaten /branches/[branchId]'de.
  */
+type ContactFormState =
+  | { mode: "create"; value: BusinessContactInput }
+  | { mode: "edit"; contactId: string; value: BusinessContactInput };
+
 export default function BusinessSettingsPage() {
   const { showToast } = useToast();
-  const dialogTitleId = useId();
+
+  const [nameInput, setNameInput] = useState("");
+  const [savingName, setSavingName] = useState(false);
+  const [nameError, setNameError] = useState<string | null>(null);
+  const savingNameRef = useRef(false);
 
   const [currencyInput, setCurrencyInput] = useState("");
   const [timeZoneInput, setTimeZoneInput] = useState("");
@@ -119,10 +131,10 @@ export default function BusinessSettingsPage() {
   const [contacts, setContacts] = useState<BusinessContact[]>([]);
   const [loadingContacts, setLoadingContacts] = useState(true);
   const [contactsError, setContactsError] = useState<string | null>(null);
-  const [createOpen, setCreateOpen] = useState(false);
-  const [newContact, setNewContact] = useState<BusinessContactInput>(EMPTY_CONTACT_INPUT);
-  const [creatingContact, setCreatingContact] = useState(false);
-  const [busyContactId, setBusyContactId] = useState<string | null>(null);
+  const [contactForm, setContactForm] = useState<ContactFormState | null>(null);
+  const [savingContact, setSavingContact] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<BusinessContact | null>(null);
+  const [deletingContactId, setDeletingContactId] = useState<string | null>(null);
 
   function loadContacts() {
     listBusinessContacts()
@@ -138,6 +150,7 @@ export default function BusinessSettingsPage() {
     async function fetchAll() {
       try {
         const businessResult = await getBusiness();
+        setNameInput(businessResult.name);
         setCurrencyInput(businessResult.defaultCurrency);
         setTimeZoneInput(businessResult.defaultTimeZone);
       } catch {
@@ -147,6 +160,32 @@ export default function BusinessSettingsPage() {
     void fetchAll();
     loadContacts();
   }, []);
+
+  async function handleSaveName(event: React.FormEvent) {
+    event.preventDefault();
+    if (savingNameRef.current) {
+      return;
+    }
+    const trimmed = nameInput.trim();
+    if (!trimmed) {
+      setNameError("İşletme adı boş olamaz.");
+      return;
+    }
+    savingNameRef.current = true;
+    setSavingName(true);
+    try {
+      const updated = await updateBusinessName(trimmed);
+      setNameInput(updated.name);
+      patchStaffContext({ businessName: updated.name });
+      setNameError(null);
+      showToast("İşletme adı güncellendi.", "success");
+    } catch {
+      showToast("İşletme adı güncellenemedi.", "error");
+    } finally {
+      savingNameRef.current = false;
+      setSavingName(false);
+    }
+  }
 
   async function handleSaveSettings(event: React.FormEvent) {
     event.preventDefault();
@@ -169,42 +208,63 @@ export default function BusinessSettingsPage() {
     }
   }
 
-  async function handleCreateContact(event: React.FormEvent) {
-    event.preventDefault();
-    if (!newContact.name.trim()) {
-      return;
-    }
-    setCreatingContact(true);
-    try {
-      await createBusinessContact({ ...newContact, name: newContact.name.trim() });
-      setNewContact(EMPTY_CONTACT_INPUT);
-      setCreateOpen(false);
-      loadContacts();
-      showToast("Kişi eklendi.", "success");
-    } catch {
-      showToast("Kişi oluşturulamadı.", "error");
-    } finally {
-      setCreatingContact(false);
-    }
+  function openCreateContact() {
+    setContactForm({ mode: "create", value: EMPTY_CONTACT_INPUT });
   }
 
-  async function handleToggleActive(contact: BusinessContact) {
-    setBusyContactId(contact.id);
-    try {
-      await updateBusinessContact(contact.id, {
+  function openEditContact(contact: BusinessContact) {
+    setContactForm({
+      mode: "edit",
+      contactId: contact.id,
+      value: {
         name: contact.name,
         phone: contact.phone ?? "",
         email: contact.email ?? "",
         whatsappEnabled: contact.whatsappEnabled,
         dailyReportRecipient: contact.dailyReportRecipient,
         monthlyReportRecipient: contact.monthlyReportRecipient,
-        active: !contact.active,
-      });
+      },
+    });
+  }
+
+  async function handleSubmitContact(event: React.FormEvent) {
+    event.preventDefault();
+    if (!contactForm || !contactForm.value.name.trim()) {
+      return;
+    }
+    setSavingContact(true);
+    try {
+      const value = { ...contactForm.value, name: contactForm.value.name.trim() };
+      if (contactForm.mode === "create") {
+        await createBusinessContact(value);
+        showToast("Kişi eklendi.", "success");
+      } else {
+        await updateBusinessContact(contactForm.contactId, value);
+        showToast("Kişi güncellendi.", "success");
+      }
+      setContactForm(null);
       loadContacts();
     } catch {
-      showToast("Kişi güncellenemedi.", "error");
+      showToast(contactForm.mode === "create" ? "Kişi oluşturulamadı." : "Kişi güncellenemedi.", "error");
     } finally {
-      setBusyContactId(null);
+      setSavingContact(false);
+    }
+  }
+
+  async function handleConfirmDeleteContact() {
+    if (!deleteTarget) {
+      return;
+    }
+    setDeletingContactId(deleteTarget.id);
+    try {
+      await deleteBusinessContact(deleteTarget.id);
+      setDeleteTarget(null);
+      loadContacts();
+      showToast("Kişi silindi.", "success");
+    } catch {
+      showToast("Kişi silinemedi.", "error");
+    } finally {
+      setDeletingContactId(null);
     }
   }
 
@@ -256,12 +316,27 @@ export default function BusinessSettingsPage() {
           </form>
         </section>
 
+        <section className={`${styles.section} ${styles.panel} ${pageStyles.settingsPanel}`}>
+          <h2 className={styles.sectionTitle}>İşletme Adı</h2>
+          {nameError ? <ErrorState message={nameError} /> : null}
+          <form className={`${styles.form} ${pageStyles.settingsForm}`} onSubmit={handleSaveName}>
+            <FormField label="İşletme Adı" required>
+              {(controlProps) => (
+                <Input {...controlProps} value={nameInput} onChange={(event) => setNameInput(event.target.value)} required />
+              )}
+            </FormField>
+            <Button type="submit" disabled={savingName}>
+              {savingName ? "Kaydediliyor…" : "Adı Kaydet"}
+            </Button>
+          </form>
+        </section>
+
         <section className={`${styles.section} ${styles.panel} ${pageStyles.contactsPanel}`}>
           <PageHeader
             title="Rapor Alıcıları"
             description="Günlük ve aylık rapor tercihlerini kişi bazında yönetin."
             actions={
-              <Button onClick={() => setCreateOpen(true)}>
+              <Button onClick={openCreateContact}>
                 <Plus size={16} aria-hidden="true" /> Kişi Ekle
               </Button>
             }
@@ -282,7 +357,6 @@ export default function BusinessSettingsPage() {
                   <th>Ad</th>
                   <th>İletişim</th>
                   <th>Rapor tercihleri</th>
-                  <th>Durum</th>
                   <th className={pageStyles.actionsHeader}>İşlemler</th>
                 </tr>
               </thead>
@@ -290,7 +364,7 @@ export default function BusinessSettingsPage() {
                 {contacts.map((contact) => (
                   <tr key={contact.id}>
                     <td className={tableStyles.primary}>{contact.name}</td>
-                    <td className={tableStyles.muted}>{[contact.phone, contact.email].filter(Boolean).join(" · ") || "İletişim bilgisi yok"}</td>
+                    <td className={tableStyles.muted}>{contact.email || "İletişim bilgisi yok"}</td>
                     <td>
                       <div className={pageStyles.reportPreferences}>
                         {contact.dailyReportRecipient ? <Badge tone="info">Günlük rapor</Badge> : null}
@@ -301,12 +375,17 @@ export default function BusinessSettingsPage() {
                       </div>
                     </td>
                     <td>
-                      <Badge tone={contact.active ? "success" : "danger"}>{contact.active ? "Aktif" : "Devre dışı"}</Badge>
-                    </td>
-                    <td>
                       <div className={tableStyles.actions}>
-                        <Button className={contact.active ? pageStyles.dangerAction : undefined} size="md" variant={contact.active ? "ghost" : "secondary"} disabled={busyContactId === contact.id} onClick={() => handleToggleActive(contact)}>
-                          {contact.active ? "Devre Dışı Bırak" : "Aktif Et"}
+                        <Button size="md" variant="ghost" onClick={() => openEditContact(contact)}>
+                          Düzenle
+                        </Button>
+                        <Button
+                          size="md"
+                          variant="danger"
+                          disabled={deletingContactId === contact.id}
+                          onClick={() => setDeleteTarget(contact)}
+                        >
+                          Sil
                         </Button>
                       </div>
                     </td>
@@ -318,66 +397,27 @@ export default function BusinessSettingsPage() {
         </section>
       </main>
 
-      {createOpen ? (
-        <Dialog onClose={() => setCreateOpen(false)} labelledBy={dialogTitleId}>
-          <h2 id={dialogTitleId} className={styles.sectionTitle}>
-            Yeni Kişi
-          </h2>
-          <form className={styles.section} onSubmit={handleCreateContact}>
-            <FormField label="Ad" required>
-              {(controlProps) => (
-                <Input
-                  {...controlProps}
-                  value={newContact.name}
-                  onChange={(event) => setNewContact((current) => ({ ...current, name: event.target.value }))}
-                  required
-                />
-              )}
-            </FormField>
-            <FormField label="Telefon">
-              {(controlProps) => (
-                <Input
-                  {...controlProps}
-                  value={newContact.phone}
-                  onChange={(event) => setNewContact((current) => ({ ...current, phone: event.target.value }))}
-                />
-              )}
-            </FormField>
-            <FormField label="E-posta">
-              {(controlProps) => (
-                <Input
-                  {...controlProps}
-                  type="email"
-                  value={newContact.email}
-                  onChange={(event) => setNewContact((current) => ({ ...current, email: event.target.value }))}
-                />
-              )}
-            </FormField>
+      {contactForm ? (
+        <ContactFormDialog
+          mode={contactForm.mode}
+          value={contactForm.value}
+          onChange={(value) => setContactForm((current) => (current ? { ...current, value } : current))}
+          onSubmit={handleSubmitContact}
+          onClose={() => setContactForm(null)}
+          submitting={savingContact}
+        />
+      ) : null}
 
-            <div className={styles.rowActions}>
-              <label className={styles.checkboxLabel}>
-                <input
-                  type="checkbox"
-                  checked={newContact.dailyReportRecipient}
-                  onChange={(event) => setNewContact((current) => ({ ...current, dailyReportRecipient: event.target.checked }))}
-                />
-                Günlük rapor alsın
-              </label>
-              <label className={styles.checkboxLabel}>
-                <input
-                  type="checkbox"
-                  checked={newContact.monthlyReportRecipient}
-                  onChange={(event) => setNewContact((current) => ({ ...current, monthlyReportRecipient: event.target.checked }))}
-                />
-                Aylık rapor alsın
-              </label>
-            </div>
-
-            <Button type="submit" disabled={creatingContact}>
-              {creatingContact ? "Ekleniyor…" : "Kişi Ekle"}
-            </Button>
-          </form>
-        </Dialog>
+      {deleteTarget ? (
+        <ConfirmDialog
+          title="Kişiyi sil"
+          message={`"${deleteTarget.name}" adlı kişiyi silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`}
+          confirmLabel="Sil"
+          tone="danger"
+          confirmLoading={deletingContactId === deleteTarget.id}
+          onConfirm={handleConfirmDeleteContact}
+          onCancel={() => setDeleteTarget(null)}
+        />
       ) : null}
     </AppShell>
   );

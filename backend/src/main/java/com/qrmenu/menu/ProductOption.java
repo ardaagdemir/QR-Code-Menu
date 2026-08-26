@@ -53,6 +53,17 @@ public class ProductOption {
         this.updatedAt = now;
     }
 
+    public void update(String name, long priceDeltaMinorUnits) {
+        this.name = name;
+        this.priceDeltaMinorUnits = priceDeltaMinorUnits;
+        this.updatedAt = Instant.now();
+    }
+
+    public void updateDisplayOrder(int displayOrder) {
+        this.displayOrder = displayOrder;
+        this.updatedAt = Instant.now();
+    }
+
     public UUID getId() {
         return id;
     }

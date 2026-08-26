@@ -10,6 +10,7 @@ import com.qrmenu.expense.web.dto.CreateRecurringExpenseTemplateRequest;
 import com.qrmenu.expense.web.dto.ExpenseCategoryResponse;
 import com.qrmenu.expense.web.dto.ExpenseResponse;
 import com.qrmenu.expense.web.dto.RecurringExpenseTemplateResponse;
+import com.qrmenu.expense.web.dto.UpdateExpenseCategoryRequest;
 import com.qrmenu.expense.web.dto.UpdateExpenseRequest;
 import com.qrmenu.expense.web.dto.UpdateRecurringExpenseTemplateRequest;
 import com.qrmenu.shared.media.LoadedMedia;
@@ -67,12 +68,30 @@ public class StaffExpenseController {
         return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(category));
     }
 
+    @PostMapping("/api/staff/expense-categories/{categoryId}")
+    public ExpenseCategoryResponse renameCategory(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
+            @PathVariable UUID categoryId,
+            @Valid @RequestBody UpdateExpenseCategoryRequest request) {
+        StaffContext context = requireManage(sessionCookie);
+        ExpenseCategory category = expenseService.renameCategory(context, categoryId, request.name());
+        return toResponse(category);
+    }
+
     @PostMapping("/api/staff/expense-categories/{categoryId}/deactivate")
     public void deactivateCategory(
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
             @PathVariable UUID categoryId) {
         StaffContext context = requireManage(sessionCookie);
         expenseService.deactivateCategory(context, categoryId);
+    }
+
+    @PostMapping("/api/staff/expense-categories/{categoryId}/activate")
+    public void activateCategory(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
+            @PathVariable UUID categoryId) {
+        StaffContext context = requireManage(sessionCookie);
+        expenseService.activateCategory(context, categoryId);
     }
 
     @GetMapping("/api/staff/expenses")

@@ -141,6 +141,11 @@ public class Product {
         this.updatedAt = Instant.now();
     }
 
+    public void updateDisplayOrder(int displayOrder) {
+        this.displayOrder = displayOrder;
+        this.updatedAt = Instant.now();
+    }
+
     public UUID getId() {
         return id;
     }

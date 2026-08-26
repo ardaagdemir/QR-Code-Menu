@@ -1,5 +1,6 @@
 package com.qrmenu.tenant.web;
 
+import com.qrmenu.ordering.OrderingService;
 import com.qrmenu.staffaccess.Permission;
 import com.qrmenu.staffaccess.StaffAuthService;
 import com.qrmenu.staffaccess.StaffContext;
@@ -28,6 +29,7 @@ import com.qrmenu.tenant.web.dto.SetOrderingEnabledRequest;
 import com.qrmenu.tenant.web.dto.SetStoreAcceptanceTimeoutRequest;
 import com.qrmenu.tenant.web.dto.TableResponse;
 import com.qrmenu.tenant.web.dto.UpdateBusinessContactRequest;
+import com.qrmenu.tenant.web.dto.UpdateBusinessNameRequest;
 import com.qrmenu.tenant.web.dto.UpdateBusinessSettingsRequest;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -35,6 +37,7 @@ import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CookieValue;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -57,10 +60,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class StaffTenantController {
 
     private final TenantService tenantService;
+    private final OrderingService orderingService;
     private final StaffAuthService staffAuthService;
 
-    public StaffTenantController(TenantService tenantService, StaffAuthService staffAuthService) {
+    public StaffTenantController(TenantService tenantService, OrderingService orderingService, StaffAuthService staffAuthService) {
         this.tenantService = tenantService;
+        this.orderingService = orderingService;
         this.staffAuthService = staffAuthService;
     }
 
@@ -78,6 +83,15 @@ public class StaffTenantController {
         StaffContext context = resolveContext(sessionCookie, Permission.BUSINESS_SETTINGS_MANAGE);
         Business business = tenantService.updateBusinessSettings(
                 context.businessId(), request.defaultCurrency(), request.defaultTimeZone(), context.staffUserId());
+        return toResponse(business);
+    }
+
+    @PostMapping("/business/name")
+    public BusinessResponse updateBusinessName(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
+            @Valid @RequestBody UpdateBusinessNameRequest request) {
+        StaffContext context = resolveContext(sessionCookie, Permission.BUSINESS_SETTINGS_MANAGE);
+        Business business = tenantService.updateBusinessName(context.businessId(), request.name(), context.staffUserId());
         return toResponse(business);
     }
 
@@ -107,8 +121,17 @@ public class StaffTenantController {
         StaffContext context = resolveContext(sessionCookie, Permission.BUSINESS_SETTINGS_MANAGE);
         BusinessContact contact = tenantService.updateBusinessContact(
                 context.businessId(), contactId, request.name(), request.phone(), request.email(), request.whatsappEnabled(),
-                request.dailyReportRecipient(), request.monthlyReportRecipient(), request.active(), context.staffUserId());
+                request.dailyReportRecipient(), request.monthlyReportRecipient(), context.staffUserId());
         return ResponseEntity.ok(toResponse(contact));
+    }
+
+    @DeleteMapping("/business/contacts/{contactId}")
+    public ResponseEntity<Void> deleteBusinessContact(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
+            @PathVariable UUID contactId) {
+        StaffContext context = resolveContext(sessionCookie, Permission.BUSINESS_SETTINGS_MANAGE);
+        tenantService.deleteBusinessContact(context.businessId(), contactId, context.staffUserId());
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping({"/branch", "/branches"})
@@ -222,6 +245,40 @@ public class StaffTenantController {
         return ResponseEntity.ok(toResponse(table));
     }
 
+    /** Hard-delete: only a table with no TableVisit history at all (409 TableHasVisitHistoryException otherwise, see archive below). */
+    @DeleteMapping({"/tables/{tableId}", "/branches/{branchId}/tables/{tableId}"})
+    public ResponseEntity<Void> deleteTable(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
+            @PathVariable(required = false) UUID branchId,
+            @PathVariable UUID tableId) {
+        StaffContext context = resolveActiveContext(sessionCookie, Permission.BRANCH_MANAGE, branchId);
+        tenantService.deleteTable(context.businessId(), context.activeBranchId(), tableId, context.staffUserId());
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Archive: for a table with visit/order history. Rejects with 409 if a visit or order is still active (see OrderingService.archiveTable). */
+    @PostMapping({"/tables/{tableId}/archive", "/branches/{branchId}/tables/{tableId}/archive"})
+    public ResponseEntity<TableResponse> archiveTable(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
+            @PathVariable(required = false) UUID branchId,
+            @PathVariable UUID tableId) {
+        StaffContext context = resolveActiveContext(sessionCookie, Permission.BRANCH_MANAGE, branchId);
+        RestaurantTable table = orderingService.archiveTable(context.businessId(), context.activeBranchId(), tableId, context.staffUserId());
+        return ResponseEntity.ok(toResponse(table));
+    }
+
+    /** Re-enables an archived table for QR check-in - never auto-generates a QR, staff regenerates one explicitly if needed. */
+    @PostMapping({"/tables/{tableId}/reactivate", "/branches/{branchId}/tables/{tableId}/reactivate"})
+    public ResponseEntity<TableResponse> reactivateTable(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
+            @PathVariable(required = false) UUID branchId,
+            @PathVariable UUID tableId) {
+        StaffContext context = resolveActiveContext(sessionCookie, Permission.BRANCH_MANAGE, branchId);
+        RestaurantTable table = tenantService.reactivateTable(
+                context.businessId(), context.activeBranchId(), tableId, context.staffUserId());
+        return ResponseEntity.ok(toResponse(table));
+    }
+
     @PostMapping({"/tables/{tableId}/qr-tokens", "/branches/{branchId}/tables/{tableId}/qr-tokens"})
     public ResponseEntity<QrTokenResponse> regenerateQrToken(
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
@@ -294,7 +351,7 @@ public class StaffTenantController {
     private static BusinessContactResponse toResponse(BusinessContact contact) {
         return new BusinessContactResponse(
                 contact.getId(), contact.getName(), contact.getPhone(), contact.getEmail(), contact.isWhatsappEnabled(),
-                contact.isDailyReportRecipient(), contact.isMonthlyReportRecipient(), contact.isActive());
+                contact.isDailyReportRecipient(), contact.isMonthlyReportRecipient());
     }
 
     private static BranchBusinessHoursResponse toResponse(BranchBusinessHours hours) {
@@ -302,7 +359,7 @@ public class StaffTenantController {
     }
 
     private TableResponse toResponse(RestaurantTable table) {
-        return new TableResponse(table.getId(), table.getBusinessId(), table.getBranchId(), table.getLabel());
+        return new TableResponse(table.getId(), table.getBusinessId(), table.getBranchId(), table.getLabel(), table.isActive());
     }
 
     private QrTokenResponse toResponse(TableQrToken token) {

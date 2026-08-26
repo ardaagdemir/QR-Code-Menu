@@ -203,8 +203,8 @@ export default function AuditPage() {
 
   useEffect(load, []);
 
-  function actorLabel(actorStaffUserId: string | null): string {
-    if (!actorStaffUserId) return "Sistem";
+  function actorLabel(actorStaffUserId: string | null, actorAccountDeleted: boolean): string {
+    if (!actorStaffUserId) return actorAccountDeleted ? "Silinmiş kullanıcı" : "Sistem";
     return staffUsers.find((user) => user.id === actorStaffUserId)?.email ?? "Bilinmeyen kullanıcı";
   }
 
@@ -224,7 +224,7 @@ export default function AuditPage() {
                 {entries.map((entry) => (
                   <tr key={entry.id}>
                     <td className={`${tableStyles.muted} ${pageStyles.dateCell}`}>{formatAuditDate(entry.createdAt)}</td>
-                    <td className={tableStyles.primary}>{actorLabel(entry.actorStaffUserId)}</td>
+                    <td className={tableStyles.primary}>{actorLabel(entry.actorStaffUserId, entry.actorAccountDeleted)}</td>
                     <td>
                       <div className={pageStyles.operationCell}>
                         <span className={pageStyles.entityLabel}>{entityLabel(entry.entityType)}</span>

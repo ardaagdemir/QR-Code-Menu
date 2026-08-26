@@ -7,9 +7,11 @@ import com.qrmenu.staffaccess.StaffContext;
 import com.qrmenu.staffaccess.StaffCookieSupport;
 import com.qrmenu.staffaccess.StaffRole;
 import com.qrmenu.staffaccess.StaffUser;
+import com.qrmenu.staffaccess.web.dto.ChangeStaffUserRoleRequest;
 import com.qrmenu.staffaccess.web.dto.CreateStaffUserRequest;
 import com.qrmenu.staffaccess.web.dto.ResetPasswordRequest;
 import com.qrmenu.staffaccess.web.dto.StaffUserResponse;
+import com.qrmenu.staffaccess.web.dto.UpdateStaffUserEmailRequest;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
@@ -63,11 +65,53 @@ public class StaffUserController {
                 .toList();
     }
 
+    /** Rejected for the caller's own account (self-deactivate must go through no admin endpoint
+     * at all - self-management is exclusively /api/staff/auth/change-password) and for the
+     * business's last active BUSINESS_ADMIN - both enforced in StaffAuthService.deactivateStaffUser. */
     @PostMapping("/{staffUserId}/deactivate")
     public ResponseEntity<Void> deactivate(
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie, @PathVariable UUID staffUserId) {
         StaffContext context = requireStaffManage(sessionCookie);
-        staffAuthService.deactivateStaffUser(context.businessId(), context.activeBranchId(), staffUserId);
+        staffAuthService.deactivateStaffUser(context.businessId(), context.activeBranchId(), context.staffUserId(), staffUserId);
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Reactivates a deactivated staff member. Rejected for the caller's own account and for
+     * staff outside this admin's branch, both enforced in StaffAuthService.activateStaffUser -
+     * never touches the target's password. */
+    @PostMapping("/{staffUserId}/activate")
+    public ResponseEntity<Void> activate(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie, @PathVariable UUID staffUserId) {
+        StaffContext context = requireStaffManage(sessionCookie);
+        staffAuthService.activateStaffUser(context.businessId(), context.activeBranchId(), context.staffUserId(), staffUserId);
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Rejected for the caller's own account, for staff outside this admin's branch, for granting
+     * PLATFORM_ADMIN, and for demoting the business's last active BUSINESS_ADMIN - all enforced in
+     * StaffAuthService.changeStaffUserRoleAsBusinessAdmin. Invalidates every session of the target. */
+    @PostMapping("/{staffUserId}/role")
+    public ResponseEntity<Void> changeRole(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
+            @PathVariable UUID staffUserId,
+            @Valid @RequestBody ChangeStaffUserRoleRequest request) {
+        StaffContext context = requireStaffManage(sessionCookie);
+        staffAuthService.changeStaffUserRoleAsBusinessAdmin(
+                context.businessId(), context.activeBranchId(), context.staffUserId(), staffUserId, request.role());
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Rejected for the caller's own account and for staff outside this admin's branch. Email is
+     * trimmed/lowercased and checked for uniqueness in StaffAuthService.updateStaffUserEmail, which
+     * also invalidates every session of the target. */
+    @PostMapping("/{staffUserId}/email")
+    public ResponseEntity<Void> updateEmail(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
+            @PathVariable UUID staffUserId,
+            @Valid @RequestBody UpdateStaffUserEmailRequest request) {
+        StaffContext context = requireStaffManage(sessionCookie);
+        staffAuthService.updateStaffUserEmail(
+                context.businessId(), context.activeBranchId(), context.staffUserId(), staffUserId, request.email());
         return ResponseEntity.noContent().build();
     }
 

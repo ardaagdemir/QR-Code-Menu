@@ -1,5 +1,6 @@
 package com.qrmenu.platformadmin.web;
 
+import com.qrmenu.branchprovisioning.BranchProvisioningService;
 import com.qrmenu.common.web.StaffPermissionDeniedException;
 import com.qrmenu.platformadmin.PlatformAdminBranchService;
 import com.qrmenu.platformadmin.web.dto.UpdateBranchInfoRequest;
@@ -14,6 +15,7 @@ import com.qrmenu.tenant.web.dto.BranchResponse;
 import com.qrmenu.tenant.web.dto.BusinessResponse;
 import com.qrmenu.tenant.web.dto.CreateBranchRequest;
 import com.qrmenu.tenant.web.dto.CreateBusinessRequest;
+import com.qrmenu.tenant.web.dto.UpdateBusinessNameRequest;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
@@ -44,12 +46,17 @@ public class PlatformAdminBusinessController {
     private final TenantService tenantService;
     private final StaffAuthService staffAuthService;
     private final PlatformAdminBranchService platformAdminBranchService;
+    private final BranchProvisioningService branchProvisioningService;
 
     public PlatformAdminBusinessController(
-            TenantService tenantService, StaffAuthService staffAuthService, PlatformAdminBranchService platformAdminBranchService) {
+            TenantService tenantService,
+            StaffAuthService staffAuthService,
+            PlatformAdminBranchService platformAdminBranchService,
+            BranchProvisioningService branchProvisioningService) {
         this.tenantService = tenantService;
         this.staffAuthService = staffAuthService;
         this.platformAdminBranchService = platformAdminBranchService;
+        this.branchProvisioningService = branchProvisioningService;
     }
 
     @GetMapping
@@ -72,6 +79,15 @@ public class PlatformAdminBusinessController {
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie, @PathVariable UUID businessId) {
         requirePlatformAdmin(sessionCookie);
         return toResponse(tenantService.getBusiness(businessId));
+    }
+
+    @PutMapping("/{businessId}/name")
+    public BusinessResponse updateName(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
+            @PathVariable UUID businessId,
+            @Valid @RequestBody UpdateBusinessNameRequest request) {
+        StaffContext context = requirePlatformAdmin(sessionCookie);
+        return toResponse(tenantService.updateBusinessName(businessId, request.name(), context.staffUserId()));
     }
 
     @PostMapping("/{businessId}/activate")
@@ -101,7 +117,7 @@ public class PlatformAdminBusinessController {
             @PathVariable UUID businessId,
             @Valid @RequestBody CreateBranchRequest request) {
         StaffContext context = requirePlatformAdmin(sessionCookie);
-        Branch branch = tenantService.createBranch(
+        Branch branch = branchProvisioningService.createBranchWithDefaultCatalog(
                 businessId, request.name(), request.orderingEnabledOrDefault(), request.address(), request.deliveryModelOrDefault(),
                 context.staffUserId());
         return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(branch));

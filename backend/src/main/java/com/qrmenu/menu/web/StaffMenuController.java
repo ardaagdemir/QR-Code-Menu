@@ -16,6 +16,10 @@ import com.qrmenu.menu.web.dto.MenuCategoryAdminResponse;
 import com.qrmenu.menu.web.dto.OptionAdminResponse;
 import com.qrmenu.menu.web.dto.OptionGroupAdminResponse;
 import com.qrmenu.menu.web.dto.ProductAdminResponse;
+import com.qrmenu.menu.web.dto.RenameMenuCategoryRequest;
+import com.qrmenu.menu.web.dto.ReorderRequest;
+import com.qrmenu.menu.web.dto.UpdateOptionGroupRequest;
+import com.qrmenu.menu.web.dto.UpdateOptionRequest;
 import com.qrmenu.menu.web.dto.UpdateProductDetailsRequest;
 import com.qrmenu.menu.web.dto.UpsertBranchProductRequest;
 import com.qrmenu.common.web.StaffPermissionDeniedException;
@@ -30,6 +34,7 @@ import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CookieValue;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -104,6 +109,123 @@ public class StaffMenuController {
         MenuCategory category = menuService.createCategory(
                 context.businessId(), request.name(), request.displayOrderOrDefault(), context.staffUserId());
         return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(category));
+    }
+
+    @PatchMapping("/menu-categories/reorder")
+    public List<MenuCategoryAdminResponse> reorderCategories(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
+            @Valid @RequestBody ReorderRequest request) {
+        StaffContext context = requireMenuManage(sessionCookie);
+        return menuService.reorderCategories(context.businessId(), request.orderedIds(), context.staffUserId()).stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    @PatchMapping("/menu-categories/{categoryId}")
+    public ResponseEntity<MenuCategoryAdminResponse> renameCategory(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
+            @PathVariable UUID categoryId,
+            @Valid @RequestBody RenameMenuCategoryRequest request) {
+        StaffContext context = requireMenuManage(sessionCookie);
+        MenuCategory category = menuService.renameCategory(context.businessId(), categoryId, request.name(), context.staffUserId());
+        return ResponseEntity.ok(toResponse(category));
+    }
+
+    @DeleteMapping("/menu-categories/{categoryId}")
+    public ResponseEntity<Void> deleteCategory(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
+            @PathVariable UUID categoryId) {
+        StaffContext context = requireMenuManage(sessionCookie);
+        menuService.deleteCategory(context.businessId(), categoryId, context.staffUserId());
+        return ResponseEntity.noContent().build();
+    }
+
+    @PatchMapping("/menu-categories/{categoryId}/products/reorder")
+    public List<ProductAdminResponse> reorderProducts(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
+            @PathVariable UUID categoryId,
+            @Valid @RequestBody ReorderRequest request) {
+        StaffContext context = requireMenuManage(sessionCookie);
+        return menuService
+                .reorderProducts(context.businessId(), categoryId, request.orderedIds(), context.staffUserId())
+                .stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    @DeleteMapping("/products/{productId}")
+    public ResponseEntity<Void> deleteProduct(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
+            @PathVariable UUID productId) {
+        StaffContext context = requireMenuManage(sessionCookie);
+        menuService.deleteProduct(context.businessId(), productId, context.staffUserId());
+        return ResponseEntity.noContent().build();
+    }
+
+    @PatchMapping("/products/{productId}/option-groups/reorder")
+    public List<OptionGroupAdminResponse> reorderOptionGroups(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
+            @PathVariable UUID productId,
+            @Valid @RequestBody ReorderRequest request) {
+        StaffContext context = requireMenuManage(sessionCookie);
+        return menuService
+                .reorderOptionGroups(context.businessId(), productId, request.orderedIds(), context.staffUserId())
+                .stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    @PatchMapping("/option-groups/{optionGroupId}")
+    public ResponseEntity<OptionGroupAdminResponse> updateOptionGroup(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
+            @PathVariable UUID optionGroupId,
+            @Valid @RequestBody UpdateOptionGroupRequest request) {
+        StaffContext context = requireMenuManage(sessionCookie);
+        ProductOptionGroup group = menuService.updateOptionGroup(
+                context.businessId(), optionGroupId, request.name(), request.selectionType(), context.staffUserId());
+        return ResponseEntity.ok(toResponse(group));
+    }
+
+    @DeleteMapping("/option-groups/{optionGroupId}")
+    public ResponseEntity<Void> deleteOptionGroup(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
+            @PathVariable UUID optionGroupId) {
+        StaffContext context = requireMenuManage(sessionCookie);
+        menuService.deleteOptionGroup(context.businessId(), optionGroupId, context.staffUserId());
+        return ResponseEntity.noContent().build();
+    }
+
+    @PatchMapping("/option-groups/{optionGroupId}/options/reorder")
+    public List<OptionAdminResponse> reorderOptions(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
+            @PathVariable UUID optionGroupId,
+            @Valid @RequestBody ReorderRequest request) {
+        StaffContext context = requireMenuManage(sessionCookie);
+        return menuService
+                .reorderOptions(context.businessId(), optionGroupId, request.orderedIds(), context.staffUserId())
+                .stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    @PatchMapping("/options/{optionId}")
+    public ResponseEntity<OptionAdminResponse> updateOption(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
+            @PathVariable UUID optionId,
+            @Valid @RequestBody UpdateOptionRequest request) {
+        StaffContext context = requireMenuManage(sessionCookie);
+        ProductOption option = menuService.updateOption(
+                context.businessId(), optionId, request.name(), request.priceDeltaOrDefault(), context.staffUserId());
+        return ResponseEntity.ok(toResponse(option));
+    }
+
+    @DeleteMapping("/options/{optionId}")
+    public ResponseEntity<Void> deleteOption(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
+            @PathVariable UUID optionId) {
+        StaffContext context = requireMenuManage(sessionCookie);
+        menuService.deleteOption(context.businessId(), optionId, context.staffUserId());
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/products")

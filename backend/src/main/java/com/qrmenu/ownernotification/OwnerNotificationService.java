@@ -10,7 +10,10 @@ import com.qrmenu.tenant.Business;
 import com.qrmenu.tenant.BusinessContact;
 import com.qrmenu.tenant.TenantService;
 import java.time.Instant;
+import java.time.YearMonth;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import org.slf4j.Logger;
@@ -39,16 +42,19 @@ public class OwnerNotificationService {
     private final ReportingService reportingService;
     private final OwnerNotificationLogRepository repository;
     private final OwnerNotificationPort emailPort;
+    private final MonthlyReportContactDispatcher monthlyReportContactDispatcher;
 
     public OwnerNotificationService(
             TenantService tenantService,
             ReportingService reportingService,
             OwnerNotificationLogRepository repository,
-            OwnerNotificationPort emailPort) {
+            OwnerNotificationPort emailPort,
+            MonthlyReportContactDispatcher monthlyReportContactDispatcher) {
         this.tenantService = tenantService;
         this.reportingService = reportingService;
         this.repository = repository;
         this.emailPort = emailPort;
+        this.monthlyReportContactDispatcher = monthlyReportContactDispatcher;
     }
 
     /**
@@ -72,9 +78,76 @@ public class OwnerNotificationService {
         return repository.findAllByDailyCloseReportIdOrderByAttemptedAtAsc(dailyCloseReportId);
     }
 
+    /**
+     * Monthly counterpart of {@link #dispatchAutoForDailyClose}: reuses the same reporting/email
+     * infrastructure (branch/business lookup, {@link ReportingService}, {@link
+     * OwnerNotificationPort}) but filters recipients by {@link BusinessContact#isMonthlyReportRecipient}
+     * and hands each contact off to {@link MonthlyReportContactDispatcher}, which owns the
+     * per-contact concurrency-safety and retry/backoff decision (see its javadoc). Called by
+     * {@code MonthlyReportScheduler} once per branch whose local date is the 1st of the month, for
+     * the previous calendar month.
+     */
+    @Async
+    public CompletableFuture<Void> dispatchAutoForMonthlyReport(UUID businessId, UUID branchId, YearMonth periodMonth) {
+        List<BusinessContact> recipients = tenantService.listBusinessContacts(businessId).stream()
+                .filter(BusinessContact::isMonthlyReportRecipient)
+                .filter(contact -> contact.getEmail() != null && !contact.getEmail().isBlank())
+                .toList();
+        if (recipients.isEmpty()) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        Branch branch = tenantService.getBranch(businessId, branchId);
+        Business business = tenantService.getBusiness(businessId);
+        String body = buildMonthlyBody(businessId, branchId, periodMonth, branch, business);
+        String subject = "Aylık Rapor - " + branch.getName() + " - " + formatPeriod(periodMonth);
+
+        for (BusinessContact contact : recipients) {
+            monthlyReportContactDispatcher.attemptForContact(businessId, branchId, periodMonth, contact, subject, body);
+        }
+        return CompletableFuture.completedFuture(null);
+    }
+
+    private String buildMonthlyBody(UUID businessId, UUID branchId, YearMonth periodMonth, Branch branch, Business business) {
+        BranchSalesReportView salesView = reportingService.getBranchReport(
+                businessId, branchId, periodMonth.atDay(1), periodMonth.atEndOfMonth());
+        String currency = business.getDefaultCurrency();
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("Şube: ").append(branch.getName()).append('\n');
+        sb.append("Dönem: ").append(formatPeriod(periodMonth)).append('\n');
+        sb.append('\n');
+        sb.append("Brüt satış: ").append(formatMoney(salesView.grossSalesMinorUnits(), currency)).append('\n');
+        sb.append("Net satış: ").append(formatMoney(salesView.netSalesMinorUnits(), currency)).append('\n');
+        sb.append("İade: ").append(formatMoney(salesView.refundTotalMinorUnits(), currency)).append('\n');
+        sb.append("Sipariş sayısı: ").append(salesView.orderCount()).append('\n');
+        sb.append('\n');
+
+        List<ProductSalesView> topProducts =
+                salesView.productBreakdown().stream().limit(TOP_PRODUCTS_LIMIT).toList();
+        if (topProducts.isEmpty()) {
+            sb.append("En çok satan ürün: kayıt yok\n");
+        } else {
+            sb.append("En çok satan ürünler:\n");
+            for (ProductSalesView p : topProducts) {
+                sb.append("- ")
+                        .append(p.productName())
+                        .append(" (")
+                        .append(p.quantitySold())
+                        .append(" adet, ")
+                        .append(formatMoney(p.revenueMinorUnits(), currency))
+                        .append(")\n");
+            }
+        }
+        return sb.toString();
+    }
+
+    private static String formatPeriod(YearMonth periodMonth) {
+        return periodMonth.atDay(1).format(DateTimeFormatter.ofPattern("LLLL yyyy", new Locale("tr")));
+    }
+
     private void dispatch(DailyBranchCloseReport report, OwnerNotificationTrigger trigger, UUID actorStaffUserId) {
         List<BusinessContact> recipients = tenantService.listBusinessContacts(report.getBusinessId()).stream()
-                .filter(BusinessContact::isActive)
                 .filter(BusinessContact::isDailyReportRecipient)
                 .filter(contact -> contact.getEmail() != null && !contact.getEmail().isBlank())
                 .toList();
@@ -138,7 +211,9 @@ public class OwnerNotificationService {
                 errorMessage,
                 trigger,
                 actorStaffUserId,
-                Instant.now()));
+                Instant.now(),
+                OwnerNotificationReportType.DAILY,
+                null));
     }
 
     private String buildBody(DailyBranchCloseReport report, Branch branch, Business business) {

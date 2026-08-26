@@ -539,20 +539,38 @@ function NotificationCell({
     return <span className={adminStyles.empty}>…</span>;
   }
   const sent = logs.filter((log) => log.status === "SENT").length;
-  const failed = logs.filter((log) => log.status === "FAILED").length;
+  const failedLogs = logs.filter((log) => log.status === "FAILED");
+  const failed = failedLogs.length;
+  const alreadySent = logs.length > 0;
+  const failedTitle = failedLogs
+    .map((log) => `${log.recipientEmail}: ${log.errorMessage ?? "bilinmeyen hata"}`)
+    .join("\n");
 
   return (
     <div className={styles.notificationCell}>
-      {logs.length === 0 ? (
-        <Badge tone="neutral">Gönderilmedi</Badge>
-      ) : (
+      {alreadySent ? (
         <>
           {sent > 0 ? <Badge tone="success">{sent} gönderildi</Badge> : null}
-          {failed > 0 ? <Badge tone="danger">{failed} başarısız</Badge> : null}
+          {failed > 0 ? (
+            <Badge tone="danger" title={failedTitle}>
+              {failed} başarısız
+            </Badge>
+          ) : null}
         </>
+      ) : (
+        <Badge tone="neutral">Gönderilmedi</Badge>
       )}
-      <Button type="button" variant="secondary" onClick={onResend} disabled={resending}>
-        {resending ? "Gönderiliyor…" : "Tekrar gönder"}
+      <Button
+        type="button"
+        variant="secondary"
+        className={styles.notificationResendButton}
+        onClick={onResend}
+        disabled={resending}
+      >
+        {resending ? (
+          <RotateCcw size={13} className={styles.notificationSpinner} aria-hidden="true" />
+        ) : null}
+        {resending ? "Gönderiliyor…" : alreadySent ? "Tekrar Gönder" : "Gönder"}
       </Button>
     </div>
   );

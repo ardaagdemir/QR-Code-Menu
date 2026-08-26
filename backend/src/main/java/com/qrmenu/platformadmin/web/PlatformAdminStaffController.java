@@ -16,6 +16,7 @@ import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CookieValue;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -102,6 +103,16 @@ public class PlatformAdminStaffController {
         StaffContext context = requirePlatformAdmin(sessionCookie);
         staffAuthService.resetPasswordAsPlatformAdmin(
                 businessId, context.staffUserId(), staffUserId, request.newPassword(), request.confirmNewPassword());
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/{staffUserId}")
+    public ResponseEntity<Void> hardDelete(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
+            @PathVariable UUID businessId,
+            @PathVariable UUID staffUserId) {
+        StaffContext context = requirePlatformAdmin(sessionCookie);
+        staffAuthService.hardDeleteStaffUserAsPlatformAdmin(businessId, staffUserId, context.staffUserId());
         return ResponseEntity.noContent().build();
     }
 

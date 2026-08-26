@@ -2,11 +2,15 @@
 
 import { useCallback, useEffect, useId, useState } from "react";
 import QRCode from "qrcode";
-import { Ban, Download, Pencil, Plus, Printer, QrCode, RefreshCw, Table2 } from "lucide-react";
+import { Archive, Ban, Download, Pencil, Plus, Printer, QrCode, RefreshCw, RotateCcw, Table2, Trash2 } from "lucide-react";
 import {
+  ApiError,
+  archiveTable,
   createTable,
+  deleteTable,
   getActiveQrToken,
   listTables,
+  reactivateTable,
   regenerateQrToken,
   renameTable,
   revokeQrToken,
@@ -56,6 +60,8 @@ export default function TablesPage() {
   const [renameTarget, setRenameTarget] = useState<{ tableId: string } | null>(null);
   const [renameLabel, setRenameLabel] = useState("");
   const [renaming, setRenaming] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ tableId: string; label: string } | null>(null);
+  const [archiveTarget, setArchiveTarget] = useState<{ tableId: string; label: string } | null>(null);
 
   const loadTables = useCallback(() => {
     return listTables()
@@ -148,6 +154,67 @@ export default function TablesPage() {
     } finally {
       setBusyTableId(null);
       setRevokeTarget(null);
+    }
+  }
+
+  async function handleConfirmDelete() {
+    if (!deleteTarget) {
+      return;
+    }
+    setBusyTableId(deleteTarget.tableId);
+    try {
+      await deleteTable(deleteTarget.tableId);
+      setTables((current) => current.filter((table) => table.id !== deleteTarget.tableId));
+      setQrTokens((current) => {
+        const next = { ...current };
+        delete next[deleteTarget.tableId];
+        return next;
+      });
+      showToast("Masa silindi.", "success");
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        showToast("Bu masanın sipariş/ziyaret geçmişi var, silinemez. Bunun yerine arşivleyin.", "error");
+      } else {
+        showToast("Masa silinemedi.", "error");
+      }
+    } finally {
+      setBusyTableId(null);
+      setDeleteTarget(null);
+    }
+  }
+
+  async function handleConfirmArchive() {
+    if (!archiveTarget) {
+      return;
+    }
+    setBusyTableId(archiveTarget.tableId);
+    try {
+      const updated = await archiveTable(archiveTarget.tableId);
+      setTables((current) => current.map((table) => (table.id === updated.id ? updated : table)));
+      setQrTokens((current) => ({ ...current, [updated.id]: null }));
+      showToast("Masa arşivlendi.", "success");
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        showToast("Bu masada aktif bir ziyaret veya sipariş var, önce onun bitmesini bekleyin.", "error");
+      } else {
+        showToast("Masa arşivlenemedi.", "error");
+      }
+    } finally {
+      setBusyTableId(null);
+      setArchiveTarget(null);
+    }
+  }
+
+  async function handleReactivate(tableId: string) {
+    setBusyTableId(tableId);
+    try {
+      const updated = await reactivateTable(tableId);
+      setTables((current) => current.map((table) => (table.id === updated.id ? updated : table)));
+      showToast("Masa tekrar aktifleştirildi.", "success");
+    } catch {
+      showToast("Masa tekrar aktifleştirilemedi.", "error");
+    } finally {
+      setBusyTableId(null);
     }
   }
 
@@ -263,49 +330,91 @@ export default function TablesPage() {
                           </div>
                         </td>
                         <td>
-                          <span className={token ? pageStyles.statusActive : pageStyles.statusEmpty}>
-                            <span className={pageStyles.statusDot} aria-hidden="true" />
-                            {token ? "Aktif" : "QR yok"}
-                          </span>
+                          {table.active ? (
+                            <span className={token ? pageStyles.statusActive : pageStyles.statusEmpty}>
+                              <span className={pageStyles.statusDot} aria-hidden="true" />
+                              {token ? "Aktif" : "QR yok"}
+                            </span>
+                          ) : (
+                            <span className={pageStyles.statusEmpty}>
+                              <span className={pageStyles.statusDot} aria-hidden="true" />
+                              Pasif (arşivlendi)
+                            </span>
+                          )}
                         </td>
                         <td>
                           <div className={tableStyles.actions}>
-                            <Button
-                              className={token ? pageStyles.secondaryButton : pageStyles.primaryButton}
-                              size="md"
-                              variant={token ? "secondary" : "primary"}
-                              disabled={busyTableId === table.id}
-                              onClick={() =>
-                                token
-                                  ? setRefreshTarget({ tableId: table.id, label: table.label })
-                                  : void handleRegenerate(table.id)
-                              }
-                            >
-                              {token ? <RefreshCw size={15} aria-hidden="true" /> : <QrCode size={15} aria-hidden="true" />}
-                              {token ? "QR’ı Yenile" : "QR Oluştur"}
-                            </Button>
-                            {token ? (
+                            {table.active ? (
                               <>
-                                <Button className={pageStyles.actionButton} size="md" variant="ghost" onClick={() => handleDownloadQr(table, token)}>
-                                  <Download size={15} aria-hidden="true" />
-                                  PNG İndir
+                                <Button
+                                  className={token ? pageStyles.secondaryButton : pageStyles.primaryButton}
+                                  size="md"
+                                  variant={token ? "secondary" : "primary"}
+                                  disabled={busyTableId === table.id}
+                                  onClick={() =>
+                                    token
+                                      ? setRefreshTarget({ tableId: table.id, label: table.label })
+                                      : void handleRegenerate(table.id)
+                                  }
+                                >
+                                  {token ? <RefreshCw size={15} aria-hidden="true" /> : <QrCode size={15} aria-hidden="true" />}
+                                  {token ? "QR’ı Yenile" : "QR Oluştur"}
                                 </Button>
-                                <Button className={pageStyles.actionButton} size="md" variant="ghost" onClick={() => handlePrintQr(table, token)}>
-                                  <Printer size={15} aria-hidden="true" />
-                                  Yazdır
+                                {token ? (
+                                  <>
+                                    <Button className={pageStyles.actionButton} size="md" variant="ghost" onClick={() => handleDownloadQr(table, token)}>
+                                      <Download size={15} aria-hidden="true" />
+                                      PNG İndir
+                                    </Button>
+                                    <Button className={pageStyles.actionButton} size="md" variant="ghost" onClick={() => handlePrintQr(table, token)}>
+                                      <Printer size={15} aria-hidden="true" />
+                                      Yazdır
+                                    </Button>
+                                    <Button
+                                      className={pageStyles.revokeButton}
+                                      size="md"
+                                      variant="ghost"
+                                      disabled={busyTableId === table.id}
+                                      onClick={() => setRevokeTarget({ tableId: table.id, qrTokenId: token.id, label: table.label })}
+                                    >
+                                      <Ban size={15} aria-hidden="true" />
+                                      QR’ı İptal Et
+                                    </Button>
+                                  </>
+                                ) : null}
+                                <Button
+                                  className={pageStyles.revokeButton}
+                                  size="md"
+                                  variant="ghost"
+                                  disabled={busyTableId === table.id}
+                                  onClick={() => setArchiveTarget({ tableId: table.id, label: table.label })}
+                                >
+                                  <Archive size={15} aria-hidden="true" />
+                                  Arşivle
                                 </Button>
                                 <Button
                                   className={pageStyles.revokeButton}
                                   size="md"
                                   variant="ghost"
                                   disabled={busyTableId === table.id}
-                                  onClick={() => setRevokeTarget({ tableId: table.id, qrTokenId: token.id, label: table.label })}
+                                  onClick={() => setDeleteTarget({ tableId: table.id, label: table.label })}
                                 >
-                                  <Ban size={15} aria-hidden="true" />
-                                  QR’ı İptal Et
+                                  <Trash2 size={15} aria-hidden="true" />
+                                  Sil
                                 </Button>
                               </>
-                            ) : null}
+                            ) : (
+                              <Button
+                                className={pageStyles.primaryButton}
+                                size="md"
+                                variant="primary"
+                                disabled={busyTableId === table.id}
+                                onClick={() => void handleReactivate(table.id)}
+                              >
+                                <RotateCcw size={15} aria-hidden="true" />
+                                Tekrar Aktifleştir
+                              </Button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -373,6 +482,30 @@ export default function TablesPage() {
           confirmLoading={busyTableId === revokeTarget.tableId}
           onConfirm={handleConfirmRevoke}
           onCancel={() => setRevokeTarget(null)}
+        />
+      ) : null}
+
+      {archiveTarget ? (
+        <ConfirmDialog
+          title="Masayı Arşivle"
+          message={`"${archiveTarget.label}" masası arşivlenecek: aktif QR kodu iptal edilir ve masa yeni QR/check-in kabul etmez. Geçmiş ziyaret ve sipariş kayıtları korunur, istenirse daha sonra tekrar aktifleştirilebilir.`}
+          confirmLabel="Arşivle"
+          tone="danger"
+          confirmLoading={busyTableId === archiveTarget.tableId}
+          onConfirm={handleConfirmArchive}
+          onCancel={() => setArchiveTarget(null)}
+        />
+      ) : null}
+
+      {deleteTarget ? (
+        <ConfirmDialog
+          title="Masayı Sil"
+          message={`"${deleteTarget.label}" masası kalıcı olarak silinecek. Bu işlem geri alınamaz. (Bu masanın sipariş/ziyaret geçmişi varsa silme işlemi reddedilir; bunun yerine arşivleme kullanılmalıdır.)`}
+          confirmLabel="Kalıcı Olarak Sil"
+          tone="danger"
+          confirmLoading={busyTableId === deleteTarget.tableId}
+          onConfirm={handleConfirmDelete}
+          onCancel={() => setDeleteTarget(null)}
         />
       ) : null}
     </AppShell>

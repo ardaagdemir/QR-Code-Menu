@@ -3,6 +3,7 @@ package com.qrmenu.ordering;
 import com.qrmenu.audit.AuditService;
 import com.qrmenu.common.web.ProductNotOrderableException;
 import com.qrmenu.common.web.ResourceNotFoundException;
+import com.qrmenu.common.web.TableInUseException;
 import com.qrmenu.customersession.CustomerSessionService;
 import com.qrmenu.customersession.TableVisit;
 import com.qrmenu.menu.BranchProduct;
@@ -184,12 +185,16 @@ public class OrderingService {
     /**
      * Entry point for the payment module (Section 9, Milestone 5): resolves the
      * caller's payable order (DRAFT, or PAYMENT_FAILED for a retry), runs the
-     * authoritative pre-payment checks - non-empty cart, branch ordering-enabled +
-     * opening hours (TenantService.assertOrderingCurrentlyAllowed) - and transitions it
-     * to AWAITING_PAYMENT. The order's own price/availability data was already
-     * backend-computed at add-to-cart time (Section 9, Milestone 4); this method does
-     * not re-run that revalidation, only the ordering-allowed gate that is new in this
-     * milestone.
+     * authoritative pre-payment checks - non-empty cart, every item still purchasable
+     * (see requireEveryItemStillOrderable below), branch ordering-enabled + opening
+     * hours (TenantService.assertOrderingCurrentlyAllowed) - and transitions it to
+     * AWAITING_PAYMENT. The order's own price data was already backend-computed at
+     * add-to-cart time (Section 9, Milestone 4) and is never recomputed here (an
+     * OrderItem's unit price is a frozen snapshot, not re-priced at checkout); what
+     * *is* re-checked is whether the product behind each snapshot is still allowed to
+     * be sold at all - a menu edit made after add-to-cart but before payment (most
+     * notably a staff hard-delete, Section "menü yaşam döngüsü") must not let a
+     * customer pay for something no longer on the menu.
      */
     @Transactional
     public CustomerOrder beginPaymentForDraftOrder(UUID tableVisitId, UUID callerSessionId) {
@@ -197,12 +202,79 @@ public class OrderingService {
         CustomerOrder order = orderRepository
                 .findFirstByTableVisitIdAndStatusIn(tableVisitId, PAYABLE_STATUSES)
                 .orElseThrow(() -> new ResourceNotFoundException("No payable cart for this table visit: " + tableVisitId));
-        if (orderItemRepository.findAllByOrderId(order.getId()).isEmpty()) {
+        List<OrderItem> items = orderItemRepository.findAllByOrderId(order.getId());
+        if (items.isEmpty()) {
             throw new IllegalStateException("Cannot start payment for an empty cart: " + order.getId());
         }
+        requireEveryItemStillOrderable(order, items);
         tenantService.assertOrderingCurrentlyAllowed(order.getBusinessId(), order.getBranchId());
         order.markAwaitingPayment();
         return orderRepository.save(order);
+    }
+
+    /**
+     * A product added to the cart earlier may since have been hard-deleted, deactivated
+     * business-wide, or opted out of this branch - any of those must block payment with
+     * a clear 409 (ProductNotOrderableException, same class addItem already throws for
+     * the equivalent add-to-cart-time checks) rather than silently letting the frozen
+     * OrderItem snapshot go through. The customer's fix is the existing removeItem
+     * endpoint; this method only blocks, it never mutates the cart itself. The same
+     * re-validation applies to each item's selected options (resolveAndValidateOptions'
+     * own logic, re-run here): an option or its whole option group may have been
+     * hard-deleted, or a group's selection-type may have changed so the item's frozen
+     * selection no longer satisfies it (e.g. now SINGLE with two selections snapshotted).
+     */
+    private void requireEveryItemStillOrderable(CustomerOrder order, List<OrderItem> items) {
+        Map<UUID, List<OrderItemOption>> selectedOptionsByItemId = orderItemOptionRepository
+                .findAllByOrderItemIdIn(items.stream().map(OrderItem::getId).toList())
+                .stream()
+                .collect(Collectors.groupingBy(OrderItemOption::getOrderItemId));
+
+        for (OrderItem item : items) {
+            Product product = menuService
+                    .findProductForBusiness(order.getBusinessId(), item.getProductId())
+                    .filter(Product::isActive)
+                    .orElseThrow(() -> new ProductNotOrderableException(
+                            "Product is no longer available, remove it from the cart to continue: " + item.getProductId()));
+            menuService
+                    .getBranchProduct(order.getBranchId(), product.getId())
+                    .filter(bp -> bp.getAvailability() == BranchProductAvailability.AVAILABLE)
+                    .orElseThrow(() -> new ProductNotOrderableException(
+                            "Product is no longer available at this branch, remove it from the cart to continue: "
+                                    + product.getId()));
+            requireSelectedOptionsStillValid(
+                    product, selectedOptionsByItemId.getOrDefault(item.getId(), List.of()));
+        }
+    }
+
+    private void requireSelectedOptionsStillValid(Product product, List<OrderItemOption> selectedOptions) {
+        if (selectedOptions.isEmpty()) {
+            return;
+        }
+        List<ProductOptionGroup> groups = menuService.getOptionGroupsForProducts(List.of(product.getId()));
+        List<UUID> groupIds = groups.stream().map(ProductOptionGroup::getId).toList();
+        Map<UUID, ProductOption> optionsById = menuService.getOptionsForGroups(groupIds).stream()
+                .collect(Collectors.toMap(ProductOption::getId, option -> option));
+
+        Map<UUID, List<ProductOption>> currentSelectionByGroupId = new LinkedHashMap<>();
+        for (OrderItemOption selected : selectedOptions) {
+            ProductOption option = optionsById.get(selected.getOptionId());
+            if (option == null) {
+                throw new ProductNotOrderableException(
+                        "A selected option is no longer available, remove this item from the cart to continue: "
+                                + selected.getOptionId());
+            }
+            currentSelectionByGroupId
+                    .computeIfAbsent(option.getOptionGroupId(), key -> new ArrayList<>())
+                    .add(option);
+        }
+        for (ProductOptionGroup group : groups) {
+            int selectedCount = currentSelectionByGroupId.getOrDefault(group.getId(), List.of()).size();
+            if (group.getSelectionType() == SelectionType.SINGLE && selectedCount != 1) {
+                throw new ProductNotOrderableException("Option selection for \"" + group.getName()
+                        + "\" is no longer valid, remove this item from the cart to continue: " + product.getId());
+            }
+        }
     }
 
     /**
@@ -621,6 +693,45 @@ public class OrderingService {
     @Transactional(readOnly = true)
     public boolean hasActiveOrders(UUID branchId) {
         return orderRepository.existsByBranchIdAndStatusIn(branchId, ACTIVE_ORDER_STATUSES);
+    }
+
+    /**
+     * Masa yaşam döngüsü archive gate: bu masaya ait (herhangi bir TableVisit'i
+     * üzerinden) hâlâ ACTIVE_ORDER_STATUSES'ta olan bir sipariş var mı? CustomerOrder
+     * masaya doğrudan değil TableVisit üzerinden bağlı (CustomerOrder.tableVisitId), bu
+     * yüzden önce CustomerSessionService'ten bu masanın tüm visit id'leri alınır.
+     */
+    @Transactional(readOnly = true)
+    public boolean hasActiveOrderForTable(UUID tableId) {
+        List<UUID> tableVisitIds = customerSessionService.findTableVisitIdsForTable(tableId);
+        if (tableVisitIds.isEmpty()) {
+            return false;
+        }
+        return orderRepository.existsByTableVisitIdInAndStatusIn(tableVisitIds, ACTIVE_ORDER_STATUSES);
+    }
+
+    /**
+     * Orchestrates the staff table-archive flow across the tenant/customer-session/
+     * ordering modules - tenant cannot depend on ordering directly (would cycle back,
+     * since ordering already depends on tenant), so this lives here instead, the same
+     * reasoning as PlatformAdminBranchService.deactivateBranch for branch deactivate.
+     *
+     * <p>Everything below runs in one physical transaction: TenantService.getTableForUpdate
+     * takes a PESSIMISTIC_WRITE lock on the table row first, then the active-visit and
+     * active-order checks are read under that same lock, then the archive write happens -
+     * so a concurrent check-in/order creation can never slip past this check, and this
+     * check can never archive a table out from under a visit/order that's mid-transition.
+     */
+    @Transactional
+    public RestaurantTable archiveTable(UUID businessId, UUID branchId, UUID tableId, UUID actorStaffUserId) {
+        RestaurantTable table = tenantService.getTableForUpdate(businessId, branchId, tableId);
+        if (customerSessionService.hasActiveVisitForTable(table.getId())) {
+            throw new TableInUseException("Table has an active visit and cannot be archived: " + tableId);
+        }
+        if (hasActiveOrderForTable(table.getId())) {
+            throw new TableInUseException("Table has an active order and cannot be archived: " + tableId);
+        }
+        return tenantService.archiveLockedTable(table, actorStaffUserId);
     }
 
     /** Gap-analysis #7 chain comparison: non-financial order volume per branch since a cutoff. */

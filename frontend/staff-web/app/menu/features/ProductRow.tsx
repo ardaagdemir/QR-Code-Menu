@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
 import {
   updateProductDetails,
   upsertBranchProduct,
@@ -15,6 +16,7 @@ import ProductFormFields, {
   productFormValuesFromProduct,
   type ProductFormValues,
 } from "./ProductFormFields";
+import OptionGroupsSection from "./OptionGroupsSection";
 import tableStyles from "@/components/ui/Table.module.css";
 import styles from "@/styles/admin.module.css";
 import menuStyles from "../menu.module.css";
@@ -24,12 +26,29 @@ type Props = {
   branchProduct: BranchProductAdmin | undefined;
   onProductUpdated: (product: ProductAdmin) => void;
   onBranchProductUpdated: (branchProduct: BranchProductAdmin) => void;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  reorderDisabled: boolean;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  onRequestDelete: () => void;
 };
 
-type Panel = "none" | "edit";
+type Panel = "none" | "edit" | "options";
 
 /** Menü Yönetimi'nde tek bir ürün satırı: müsaitlik/aktiflik toggle'ları + genişleyen düzenle/ata panelleri. */
-export default function ProductRow({ product, branchProduct, onProductUpdated, onBranchProductUpdated }: Props) {
+export default function ProductRow({
+  product,
+  branchProduct,
+  onProductUpdated,
+  onBranchProductUpdated,
+  canMoveUp,
+  canMoveDown,
+  reorderDisabled,
+  onMoveUp,
+  onMoveDown,
+  onRequestDelete,
+}: Props) {
   const { showToast } = useToast();
   const [panel, setPanel] = useState<Panel>("none");
   const [busy, setBusy] = useState(false);
@@ -41,6 +60,10 @@ export default function ProductRow({ product, branchProduct, onProductUpdated, o
   function openEdit() {
     setFormValues(productFormValuesFromProduct(product));
     setPanel(panel === "edit" ? "none" : "edit");
+  }
+
+  function openOptions() {
+    setPanel(panel === "options" ? "none" : "options");
   }
 
   async function handleToggleAvailability() {
@@ -115,12 +138,44 @@ export default function ProductRow({ product, branchProduct, onProductUpdated, o
         </td>
         <td>
           <div className={tableStyles.actions}>
+            <button
+              type="button"
+              className={menuStyles.rowIconButton}
+              disabled={!canMoveUp || reorderDisabled}
+              onClick={onMoveUp}
+              aria-label={`${product.name} ürününü yukarı taşı`}
+              title="Yukarı taşı"
+            >
+              <ArrowUp size={14} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className={menuStyles.rowIconButton}
+              disabled={!canMoveDown || reorderDisabled}
+              onClick={onMoveDown}
+              aria-label={`${product.name} ürününü aşağı taşı`}
+              title="Aşağı taşı"
+            >
+              <ArrowDown size={14} aria-hidden="true" />
+            </button>
             <Button size="md" variant="secondary" disabled={busy} onClick={handleToggleAvailability}>
               {isAvailable ? "Satıştan Kaldır" : "Satışa Aç"}
             </Button>
             <Button size="md" variant="ghost" disabled={busy} onClick={openEdit}>
               {panel === "edit" ? "Vazgeç" : "Düzenle"}
             </Button>
+            <Button size="md" variant="ghost" disabled={busy} onClick={openOptions}>
+              {panel === "options" ? "Vazgeç" : "Seçenekler"}
+            </Button>
+            <button
+              type="button"
+              className={`${menuStyles.rowIconButton} ${menuStyles.rowIconButtonDanger}`}
+              onClick={onRequestDelete}
+              aria-label={`${product.name} ürününü sil`}
+              title="Sil"
+            >
+              <Trash2 size={14} aria-hidden="true" />
+            </button>
           </div>
         </td>
       </tr>
@@ -138,6 +193,16 @@ export default function ProductRow({ product, branchProduct, onProductUpdated, o
                   {busy ? "Kaydediliyor…" : "Kaydet"}
                 </Button>
               </div>
+            </div>
+          </td>
+        </tr>
+      ) : null}
+
+      {panel === "options" ? (
+        <tr className={tableStyles.expandedRow}>
+          <td colSpan={5}>
+            <div className={styles.section}>
+              <OptionGroupsSection productId={product.id} />
             </div>
           </td>
         </tr>

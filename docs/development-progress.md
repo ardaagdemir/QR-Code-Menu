@@ -4199,3 +4199,728 @@ söylüyordu - ya reset sonrası bir volume/veri kaybı ya da o hesap hiç kalı
 (bu oturumun kapsamı dışında, kullanıcıya ayrıca bildirildi).
 
 Commit/push yapılmadı.
+
+## 2026-08-24 — Sidebar responsive state bug: mobil drawer ile desktop collapse birbirine karışıyordu
+
+Rapor edilen kusur: mobilde hamburger doğru çalışıyor, ama ekranı desktop genişliğine büyütünce
+sidebar bozuk/collapsed görünümde takılı kalıyor; fullscreen'de refresh yapınca doğru expanded
+hale dönüyor.
+
+**Kök neden:** Bir önceki günün "Sidebar collapse" girdisinde bilinçli olarak alınan tasarım kararı
+(`AppShell.tsx`'teki tek `toggleSidebar()` fonksiyonu hem `drawerOpen` hem `collapsed` state'ini
+her tıklamada birlikte flip'liyor, hangisinin görünür olacağını salt `@media (max-width: 1023px)`
+CSS breakpoint'i belirliyor, "ayrı bir JS matchMedia kontrolüne gerek yok" varsayımıyla) hatalıydı.
+Mobilde hamburger'a basmak sessizce desktop `collapsed` tercihini de `localStorage`'a yazıyordu;
+sonra pencere desktop genişliğine büyütülünce (sayfa yenilenmeden) CSS o `collapsed` class'ını
+gösteriyordu - kullanıcının hiç istemediği bir "yanlışlıkla collapse" görünümü.
+
+**Çözüm:**
+1. `lib/viewport.ts` (yeni) - `lib/theme.ts`/`lib/sidebarCollapse.ts` ile aynı
+   `useSyncExternalStore` deseniyle, `window.matchMedia("(min-width: 1024px)")`'i canlı takip eden
+   bir `isDesktop` store'u (change event'e abone, tek seferlik `window.innerWidth` kontrolü değil).
+2. `AppShell.tsx` - `toggleSidebar()` ikiye ayrıldı: `toggleCollapsed()` (sidebar içindeki
+   `.menuToggle`, yalnızca desktop'ta görünür) ve `toggleDrawer()` (topbar'daki `.hamburger`,
+   yalnızca mobilde görünür) artık yalnızca kendi state'lerine dokunuyor.
+3. Mobil drawer'dan kalan `drawerOpen=true` desktop'a geçildiğinde bayatlamasın diye (aksi halde
+   pencere tekrar mobile küçültüldüğünde drawer hiç tıklanmadan açık görünürdü) - React'in "render
+   sırasında state ayarlama" deseniyle (`wasDesktop` mirror state, useEffect değil - hem
+   `react-hooks/set-state-in-effect` lint kuralını hem gereksiz ikinci render'ı önlüyor) `isDesktop`
+   `true`'ya geçtiği anda `drawerOpen` sıfırlanıyor.
+4. CSS'e (`AppShell.module.css`) dokunulmadı - mevcut tasarım/breakpoint'ler aynı kaldı, sadece JS
+   state ayrımı düzeltildi.
+
+**Test:** `AppShell.test.tsx`'e 3 yeni regresyon testi + `vitest.setup.ts`'e jsdom'un desteklemediği
+`matchMedia` için stub eklendi (mevcut 3 test de bu stub olmadan `window.matchMedia is not a
+function` ile kırılıyordu - jsdom'da hiç yok). Yeni testler `matchMedia`'yı sahte bir
+`MediaQueryList` ile taklit edip gerçek `change` event'i tetikliyor: (a) mobil hamburger tıklaması
+`collapsed` localStorage değerine dokunmuyor, (b) desktop collapse tıklaması drawer'ı açmıyor
+(backdrop hiç render olmuyor), (c) `isDesktop` `true`'ya geçince (canlı resize simülasyonu) açık
+kalmış drawer kapanıyor. `npm test` (10 node:test + 7 vitest) ve `npx tsc --noEmit` yeşil.
+
+**Canlı doğrulama - kısmi:** Docker'daki `infra-staff-web-1` eski build olduğundan geçici olarak
+durdurulup yerine `next dev -p 3002` (aynı port, `NEXT_PUBLIC_API_BASE_URL=http://localhost:8080`)
+başlatıldı (backend CORS'u yalnızca 3002 origin'ine izin veriyor); `arda@qrmenu.local` ile giriş
+yapılıp `/platform-admin/businesses`'te collapse toggle'ın yalnızca kendi state'ini değiştirdiği
+(drawer/backdrop hiç tetiklenmiyor), refresh sonrası collapsed tercihinin doğru kalıcı olduğu ve
+konsolda hata/hydration mismatch olmadığı doğrulandı. Test bitince Docker container eski haline
+(`docker start infra-staff-web-1`) döndürüldü. **Gerçek pencere resize'ı (mobil genişliğe küçültme)
+bu oturumun sanal ekranında denenemedi** - `resize_window` aracı OS pencere boyutunu değiştirse de
+sayfanın `window.innerWidth`/`screen.width` değeri sabit (1800×1009) kaldı, muhtemelen bu ortamın
+Chrome'u sabit boyutlu bir sanal display'de çalışıyor. Bu yüzden üç senaryodan ("desktop→mobile→
+desktop", "mobile refresh→desktop resize", "desktop collapsed→mobile→desktop") sadece state-machine
+seviyesindeki mantık vitest'teki matchMedia simülasyonuyla uçtan uca doğrulandı; gerçek tarayıcıda
+pencereyi fiziksel olarak mobil genişliğe küçültüp gözle kontrol edilemedi - kullanıcının kendi
+tarayıcısında bir kez manuel doğrulaması faydalı olur.
+
+Commit/push yapılmadı (kullanıcı talebi).
+
+## 2026-08-24 — Platform admin panelinde StaffUser hard delete
+
+**Tasarım (implementasyondan önce onaylandı):** Platform admin panelinde şimdiye kadar sadece
+deactivate (active=false, geri alınabilir) vardı; kullanıcı gerçek/kalıcı silme istedi.
+Engel: `expense.created_by_staff_user_id`, `expense.cancelled_by_staff_user_id`,
+`owner_notification_log.triggered_by_staff_user_id`, `audit_log_entry.actor_staff_user_id`
+hepsi `staff_user(id)`'e FK - hiçbiri `ON DELETE SET NULL` değildi (cancelled_by'ın FK'si hiç
+yoktu), yani DELETE bunlardan biriyle çakışırsa constraint violation ile patlardı. Ayrıca
+audit_log_entry zaten null actor'ı "Sistem" (gerçek sistem-kaynaklı, örn. /internal bootstrap)
+olarak yorumluyordu - hard delete sonrası null olan actor'ları bundan ayırt edecek bir alan yoktu.
+
+Onaylanan tasarım: V33 migration'da 4 FK'nin hepsi `ON DELETE SET NULL`'a çevrildi (cancelled_by
+için sıfırdan eklendi), `audit_log_entry`'ye `actor_account_deleted BOOLEAN NOT NULL DEFAULT false`
+eklendi. `staff_user_branch`/`staff_session` bilinçli olarak DB cascade'siz bırakıldı - servis
+katmanında (`StaffAuthService.hardDeleteStaffUserAsPlatformAdmin`) explicit
+`deleteAllByStaffUserId` çağrılarıyla temizleniyor. Silme sırası: sessions → branch atamaları →
+audit anonimizasyonu → asıl DELETE → yeni bir `STAFF_USER_HARD_DELETED` audit kaydı (actor: işlemi
+yapan platform admin). Guard'lar: PLATFORM_ADMIN hedef → 403 (mevcut `requireNonPlatformAdminTarget`
+genişletildi), kendi hesabını silme → 403 (pratikte actor her zaman PLATFORM_ADMIN olduğu için bu
+durum zaten ilk guard'a takılıyor, ama niyeti açık ettiği için ayrı kontrol olarak tutuldu - kullanıcı
+onayı, "ekstra karmaşıklık yaratmıyorsa dokunma").
+
+Onay sırasında yakalanan 3 düzeltme: (1) "PLATFORM_ADMIN satırları listede görünmüyor" varsayımı
+yanlıştı - `PlatformAdminStaffController.list()` PLATFORM_ADMIN'i filtrelemiyor, sadece o satırda
+aksiyon butonları render edilmiyor (`role === "PLATFORM_ADMIN"` dalı); yeni butonu aynı dala
+eklemek yeterli. (2) Self-delete guard'ın fiilen ölü kod olduğu netleştirildi ama kullanıcı isteğiyle
+korundu. (3) `actorAccountDeleted`'ın taşınması gereken tüm zincir (entity → view/service mapping →
+response DTO/controller → frontend type → UI label) netleştirildi.
+
+**Implementasyon:**
+- `V33__staff_user_hard_delete.sql` - FK constraint isimleri canlı Docker DB'sinden doğrulandı
+  (`audit_log_entry_actor_staff_user_id_fkey`, `expense_created_by_staff_user_id_fkey`,
+  `owner_notification_log_triggered_by_staff_user_id_fkey`) - varsayılan Postgres adlandırmasına
+  güvenmek yerine gerçek isimler kullanıldı.
+- `AuditLogEntry`/`AuditEntryView`/`AuditEntryResponse`/`AuditController`/`AuditService` zinciri
+  boyunca `actorAccountDeleted` taşındı; `AuditLogEntryRepository`'ye `@Modifying` bulk
+  `anonymizeActor` metodu eklendi. `AuditLogEntry`'nin "immutable, no update mutators" javadoc'u bu
+  kontrollü istisnayı belirtecek şekilde güncellendi.
+- `StaffAuthService.hardDeleteStaffUserAsPlatformAdmin` eklendi. İlk yazımda
+  `AuditLogEntryRepository`'yi doğrudan enjekte etmiştim - `ModuleBoundaryTest` (ArchUnit) bunu
+  modül sınırı ihlali olarak yakaladı ("cross-module access must go through AuditService, not its
+  repositories"). Düzeltme: anonimizasyon `AuditService.anonymizeActor(UUID)` adında yeni bir public
+  facade metoduna taşındı, `StaffAuthService` artık repository'ye değil sadece `AuditService`'e
+  bağımlı.
+- `PlatformAdminStaffController`'a `DELETE /api/platform-admin/businesses/{businessId}/staff-users/{staffUserId}`
+  eklendi (mevcut `requirePlatformAdmin` pattern'i).
+- Frontend: `lib/api.ts`'e `hardDeletePlatformStaffUser` + `AuditEntry.actorAccountDeleted`;
+  `audit/page.tsx`'te `actorLabel` artık "Sistem" / "Silinmiş kullanıcı" ayrımı yapıyor; işletme
+  detay sayfasında personel satırlarına "Kalıcı Olarak Sil" butonu (mevcut PLATFORM_ADMIN-gizleme
+  dalının içinde, kendi hesabı için disabled) + geri alınamazlık checkbox'ıyla gated bir onay
+  dialogu eklendi. `me()` çağrısı sayfanın kendi `load()`'ına eklendi (AppShell'in kendi `me()`
+  çağrısı child'lara expose edilmiyordu - aktif kullanıcının id'sini bilmek için gerekliydi).
+
+**Test:** Yeni `PlatformAdminStaffHardDeleteIntegrationTest` (4 test: cross-business silme +
+liste/login'den kaybolma, PLATFORM_ADMIN hedef→403, kendi hesabı→403, session invalidation +
+audit/expense geçmişinin actor/creator null + `actorAccountDeleted=true` ile korunduğu). İlk
+suite-genelinde çalıştırmada audit/expense retention testi başarısız oldu - sebep, paylaşılan
+Testcontainers Postgres'te (bkz. `AbstractIntegrationTest`) başka test sınıflarının bıraktığı
+Expense/ExpenseCategory audit satırlarını da yakalıyordu; assertion entityType yerine bu testin
+kendi entityId'lerine daraltıldı. Backend tam suite: 207/207 yeşil. Frontend: `npx tsc --noEmit`
+temiz, `npm test` 17/17 yeşil (10 node:test + 7 vitest). UI canlı tarayıcıda denenmedi (kullanıcı
+tarafından istenmedi, sadece implementasyon + otomatik test onayı istendi).
+
+Commit/push yapılmadı (kullanıcı talebi).
+
+## 2026-08-25 — Hard delete: session cleanup ile final DELETE arasındaki login race'i doğrulama ve düzeltme
+
+Kullanıcı, hard delete transaction'ı boyunca hedef StaffUser satırının locklandığını ve session
+cleanup ile final DELETE arasında aynı kullanıcı için yeni bir login/session oluşamayacağını
+doğrulamamı istedi. Kontrol ettim: **eksikti** - `hardDeleteStaffUserAsPlatformAdmin` hedefi düz bir
+`findByIdAndBusinessId` (kilitsiz SELECT) ile okuyordu. Teorik risk: `staff_session.staff_user_id`
+FK'si `ON DELETE`'siz (RESTRICT/NO ACTION default) olduğu için, session cleanup adımından sonra
+ama asıl `DELETE FROM staff_user`'dan önce araya giren bir `login()` yeni bir session INSERT
+edebilir; bu INSERT commit olursa asıl DELETE FK ihlaliyle patlar ve **tüm transaction** (session
+cleanup dahil) rollback olur - yani "silme sessiz şekilde başarılı olurken canlı bir session hayatta
+kalır" senaryosu Postgres FK'si sayesinde zaten imkansızdı, ama race'in kendisi engellenmiyordu:
+silme isteği host-seviyesinde çirkin bir 500 ile tamamen başarısız olabilir, hedef kullanıcı da o
+sırada gerçekten login olabilirdi.
+
+**Düzeltme:** `BranchRepository.findByIdAndBusinessIdForUpdate`'teki mevcut pattern'e bakıp
+`StaffUserRepository`'ye eşdeğerini eklemeye çalıştım - ama `@Lock(LockModeType.PESSIMISTIC_WRITE)`
+kullandığımda yazdığım concurrency testi (`hardDeleteRowLockBlocksAConcurrentLogin...`) login'in
+hâlâ **bloklanmadan** anında geçtiğini gösterdi. SQL logunu açıp kök nedeni buldum: Hibernate'in
+Postgres dialect'i JPA `PESSIMISTIC_WRITE`'ı `FOR NO KEY UPDATE`'e çeviriyor - bu mod, tam olarak
+"anahtar değişmeyen UPDATE'lerin başka tablolardaki FK-referanslı INSERT'leri bloklamaması" için var
+ve `FOR KEY SHARE` (session INSERT'inin FK kontrolü için ihtiyaç duyduğu kilit) ile **çakışmıyor**.
+`BranchRepository`'nin kendi kullanım şeklinde bu sorun yok çünkü orada iki taraf da aynı
+PESSIMISTIC_WRITE kilidini alıyor (yazar-yazar çakışması, PESSIMISTIC_WRITE kendisiyle çakışıyor) -
+benim senaryom farklı: yazar (hard delete) vs. başka bir tabloya FK-referanslı insert (login). Bu
+ayrım BranchRepository'nin javadoc'unda da yoktu, muhtemelen hiç test edilmemiş bir varsayımdı.
+
+Çözüm: `StaffUserRepository.findByIdAndBusinessIdForUpdate` artık `@Lock` yerine literal `FOR UPDATE`
+içeren bir native query (`nativeQuery = true`) - gerçek `FOR UPDATE`, `FOR KEY SHARE` ile çakışıyor.
+Düzeltmeden sonra concurrency testi: kilit tutulduğu sürece login bloklanıyor (500ms sonra hâlâ
+`isDone()==false`), kilit serbest kalıp kullanıcı gerçekten silindiğinde bekleyen session INSERT'i
+FK ihlaliyle temiz şekilde başarısız oluyor (`staff_session_staff_user_id_fkey`), DB'de ne kullanıcı
+ne de yetim bir session kalıyor.
+
+**Test:** `PlatformAdminStaffHardDeleteIntegrationTest`'e yeni
+`hardDeleteRowLockBlocksAConcurrentLoginUntilTheLockIsReleasedAndTheLoginThenFailsOnceTheUserIsGone`
+eklendi - `TransactionTemplate` + `CountDownLatch` ile deterministik iki taraflı race (hard delete'in
+adımlarını birebir tekrarlayan bir thread + gerçek `StaffAuthService.login` çağıran bir thread).
+Kilit alma adımı gerçek repository metodunu kullanıyor, bu yüzden birisi tekrar `@Lock`'a dönerse
+test kırılır. Tam backend suite: 208/208 yeşil (207 + bu yeni test).
+
+Commit/push yapılmadı (kullanıcı talebi).
+
+## 2026-08-25 — Personel ekranı self-management bug'ı: self reset/deactivate + son aktif BUSINESS_ADMIN koruması
+
+Kullanıcı raporu: Personel ekranında login olan kullanıcı kendi satırında "Şifre Sıfırla" ve
+"Hesabı Devre Dışı Bırak" aksiyonlarını görüyordu. Kod okuması: `app/staff/page.tsx` hiç `me()`
+çağırmıyordu, dolayısıyla "bu satır benim mi" diye bir kontrolü yoktu - hem reset hem deactivate
+butonu her satırda koşulsuz render ediliyordu. Backend tarafında `resetPassword` zaten
+`actorStaffUserId.equals(targetStaffUserId)` kontrolüyle self-reset'i reddediyordu (400), ama
+`deactivateStaffUser`'ın imzasında actor id hiç yoktu - business-scoped deactivate endpoint'i
+kendi hesabını devre dışı bırakmaya karşı **tamamen korumasızdı**. "Son aktif BUSINESS_ADMIN"
+koruması ise kod tabanında hiç yoktu (grep ile doğrulandı).
+
+Platform-admin panelindeki self-reset/self-deactivate ise yapısal olarak zaten imkansızdı:
+`requireNonPlatformAdminTarget` her zaman hedefin PLATFORM_ADMIN olmadığını şart koşuyor, ama bu
+paneldeki actor her zaman PLATFORM_ADMIN - kendi satırını hedeflemek `staffUserId == actorStaffUserId`
+demek, ki bu satırın rolü zorunlu olarak PLATFORM_ADMIN, yani zaten 403 ile reddediliyor (aynı mantık
+`hardDeleteStaffUserAsPlatformAdmin`'in kendi self-check yorumunda da var). Bunun için kod değişikliği
+gerekmedi, sadece regresyon testiyle kilitlendi.
+
+**Backend değişiklikleri:**
+- `StaffAuthService.deactivateStaffUser` imzasına `actorStaffUserId` eklendi; `actorStaffUserId.equals(staffUserId)`
+  ise `StaffPermissionDeniedException` (403) - `StaffUserController.deactivate` artık `context.staffUserId()`'i
+  geçiyor.
+- Yeni `LastActiveBusinessAdminException` (`common/web`, `BranchHasActiveOrdersException` ile aynı
+  409 CONFLICT grubuna eklendi) + `requireNotLastActiveBusinessAdmin` helper'ı: hedef aktif bir
+  BUSINESS_ADMIN ise ve business'ta ondan başka aktif BUSINESS_ADMIN kalmıyorsa deactivate reddediliyor.
+  Hem `deactivateStaffUser` (business-scoped) hem `deactivateStaffUserAsPlatformAdmin`'e eklendi -
+  business-scoped tarafta pratikte self-check'le örtüşüyor (STAFF_MANAGE sadece BUSINESS_ADMIN'de var,
+  tek admin kalmışsa self-deactivate zaten bloklanıyor), ama gerçek/erişilebilir senaryo platform-admin
+  tarafı: platform admin herhangi bir business'ın tek aktif BUSINESS_ADMIN'ini deactivate edebiliyordu.
+
+**Frontend değişiklikleri:** `app/staff/page.tsx` artık `load()` içinde `listStaffUsers()` ile birlikte
+`me()` çağırıp `currentStaffUserId`'i state'e alıyor; kendi satırında (`user.id === currentStaffUserId`)
+reset/deactivate butonları yerine "Kendi hesabınızı buradan yönetemezsiniz." mesajı gösteriliyor.
+Şifre değişikliği zaten ayrı bir akış (AppShell'deki "Şifremi Değiştir" → `changePassword`,
+`currentPassword` doğrulaması gerektiriyor) - dokunulmadı.
+
+**Test (TDD, RED önce doğrulandı):** Yeni `StaffSelfManagementIntegrationTest` (6 test): business-scoped
+self-deactivate → 403 (last-admin guard'la karışmasın diye 2 aktif BUSINESS_ADMIN'li senaryo), diğer
+personeli deactivate etmenin değişmediği regresyon testi, platform-admin'in bir business'ın son aktif
+BUSINESS_ADMIN'ini deactivate edememesi → 409, ikinci bir aktif admin varken deactivate'in çalışması
+(guard'ın aşırı tetiklenmediği regresyonu), platform-admin'in kendi hesabını deactivate/reset
+edememesi → 403 (kod değişikliği gerektirmeyen, yapısal korumayı kilitleyen regresyon testleri).
+İlk çalıştırmada 6 testten 2'si beklenen şekilde kırmızıydı (self-deactivate 204 dönüyordu,
+last-admin guard yoktu), implementasyondan sonra 6/6 yeşil. Tam `staffaccess` + `platformadmin`
+paket suite'i (regresyon): yeşil. Frontend: `npx tsc --noEmit` temiz. UI canlı tarayıcıda denendi
+(staff-web image rebuild edilip container restart edildi - dev'de volume mount yok, hot reload
+çalışmıyor): business-admin@qrmenu.local ile giriş yapılıp `/staff` sayfasında kendi satırında
+butonlar yerine mesajın göründüğü doğrulandı.
+
+Commit/push yapılmadı (kullanıcı talebi).
+
+## 2026-08-25 — Rapor Alıcıları: Devre Dışı Bırak yerine hard delete, Düzenle eklendi
+
+Kullanıcı raporu: İşletme Ayarları → Rapor Alıcıları'nda kayıt düzenleme hiç yoktu (sadece
+Create + aktif/pasif toggle vardı), "Devre Dışı Bırak" pasif kayıtların veritabanında
+gereksiz birikmesine yol açıyordu. İstenen: gerçek Düzenle, hard delete (Sil), aktif/pasif
+modelinin tamamen kaldırılması, silme öncesi onay, Create/Edit'in aynı form component'ini
+paylaşması.
+
+Kod okuması: özellik `BusinessContact` entity'si (`tenant` modülü) olarak zaten vardı ama
+`active` alanı hem DB kolonu hem `OwnerNotificationService.dispatch`'te `.filter(BusinessContact::isActive)`
+olarak canlı kullanılıyordu; `owner_notification_log.business_contact_id` `NOT NULL` FK,
+cascade yoktu - hard delete için önce bunu ele almak gerekiyordu.
+
+**Backend değişiklikleri:**
+- V34 migration: `owner_notification_log.business_contact_id` nullable + `ON DELETE SET NULL`
+  yapıldı (recipient_email zaten satırda snapshot olarak duruyor, bu yüzden geçmiş loglar
+  kaybolmuyor); ardından `active = false` olan legacy kayıtlar silindi; son olarak
+  `business_contact.active` kolonu tamamen drop edildi.
+- `BusinessContact` entity'sinden `active` alanı/`isActive()`/`update()` parametresi kaldırıldı -
+  artık bir kayıt varsa aktiftir, yoksa silinmiştir.
+- `OwnerNotificationService.dispatch`'teki `.filter(BusinessContact::isActive)` satırı kaldırıldı.
+- `TenantService.deleteBusinessContact` eklendi (tenant-scoped bul + hard delete + audit
+  "DELETED" - `Map.of()`, kullanıcı talebiyle telefon/e-posta gibi PII audit'e yazılmıyor).
+- `StaffTenantController`'a `DELETE /api/staff/business/contacts/{contactId}` eklendi (aynı
+  `BUSINESS_SETTINGS_MANAGE` izni), `UpdateBusinessContactRequest`/`BusinessContactResponse`'dan
+  `active` kaldırıldı.
+
+**Frontend değişiklikleri:** Yeni paylaşılan `app/business-settings/ContactFormDialog.tsx`
+(`mode: "create" | "edit"`) - eski inline create dialog buraya taşındı, edit aynı component'i
+prefilled değerlerle açıyor. `page.tsx`: "Durum" kolonu ve toggle butonu kaldırıldı, yerine
+"Düzenle" (ContactFormDialog'u edit modunda açar) ve "Sil" (mevcut `ConfirmDialog` ile onay
+ister, `variant="danger"`) butonları geldi. `lib/api.ts`: `BusinessContact`/`updateBusinessContact`'tan
+`active` kaldırıldı, `deleteBusinessContact(contactId)` eklendi.
+
+**Test:** `BusinessSettingsFlowIntegrationTest`e edit testi (name/phone/email/rapor tercihlerini
+gerçekten değiştiren, sadece flag çeviren değil) + hard delete testi (204, listeden düşme, ikinci
+silme 404) + izinsiz kullanıcının silemediği test eklendi. `OwnerNotificationFlowIntegrationTest`teki
+"inactive contact atlanır" senaryosu kaldırıldı (artık öyle bir kavram yok), yerine yeni
+`deletingBusinessContactPreservesNotificationLogHistory` testi eklendi - bir contact'a bildirim
+gönderildikten sonra silindiğinde `owner_notification_log` satırının `business_contact_id`'si NULL
+olarak kalıp `recipient_email`'in korunduğunu doğruluyor. Tam backend suite (ilgili paketler):
+`BusinessSettingsFlowIntegrationTest` 12/12, `OwnerNotificationFlowIntegrationTest` 4/4 yeşil.
+Frontend: `page.test.tsx`e edit (prefill + submit) ve delete (cancel + confirm) testleri eklendi,
+4/4 yeşil; `npx tsc --noEmit` temiz. `AppShell.test.tsx`teki 6 test başarısız ama önceki oturumdan
+kalma ilgisiz bir `window.localStorage.clear` sorunu - bu görevle alakasız, dokunulmadı.
+
+Commit/push yapılmadı (kullanıcı talebi - backend ve frontend ayrı commit'ler halinde, sadece bu
+göreve ait dosyalarla; `lib/api.ts`'teki önceki oturumdan kalma ilgisiz hunk'lar `git apply --cached`
+ile ayıklanarak commit dışı bırakıldı).
+
+## 2026-08-25 — Yeni branch'te customer menu boş kalıyor (BranchProduct opt-in kök neden)
+
+Kullanıcı raporu: mevcut ürünleri olan bir işletmeye yeni branch oluşturulunca, staff Menü
+ekranı işletmenin tüm ürünlerini dolu gösteriyor ama customer-web QR menüsü "Bu şube için
+henüz menüde ürün bulunmuyor" diyor.
+
+**Kök neden (systematic-debugging, Explore agent ile kod okuması):** Bug değil, kasıtlı ama
+eksik bir tasarım. `BranchProduct` (`menu` modülü) bilinçli olarak opt-in: `Product` işletme
+seviyesinde tutuluyor (`Product.businessId`, branch'e bağlı değil), bir (branch, product)
+çiftinin `branch_product` tablosunda satırı yoksa o ürün o branch'in public menüsünde hiç
+görünmüyor (`PublicMenuController.getMenu`, satır ~74-76: `containsKey` filtresi). Staff Menü
+ekranı (`StaffMenuController.listCategories/listProducts`) ürünleri **business_id**'ye göre
+listeliyor - branch'ten bağımsız, hep dolu görünür; ayrı bir `listBranchProducts` çağrısı
+branch'e özel satırları getirip `ProductRow.tsx`'te "Şubede satışta"/"Şubede yok" rozetini
+doğru gösteriyor (frontend zaten doğru, ek bir bug yok orada). Ama `TenantService.createBranch`
+yeni branch'e hiçbir `BranchProduct` satırı yazmıyor - staff manuel olarak her ürünü
+`PUT /api/staff/branch-products/{productId}` veya `POST /api/staff/products/{id}/branch-assignments`
+("tüm şubelere ata") ile tek tek eklemek zorunda. Yeni açılan branch'te bu hiç yapılmadığı
+için customer menü boş kalıyor; staff ekranı da aslında ürünleri "Şubede yok" olarak
+işaretli gösteriyor ama bu görünürdeki tutarsızlık yeterince öne çıkmıyor.
+
+**Karar (istenen davranış):** Yeni branch oluşturulduğunda business'ın aktif (`Product.active`)
+katalog ürünleri otomatik olarak `AVAILABLE`, fiyat override'sız `BranchProduct` satırı olarak
+o branch'e atanacak - idempotent (sadece eksik olan (branch, product) çiftleri eklenir, var
+olan satırlara/override'lara dokunulmaz). Mevcut hatalı oluşturulmuş branch'ler için tek
+seferlik, idempotent bir SQL backfill migration'ı (`NOT EXISTS`) eklenecek - aynı yöntem.
+`upsertBranchProduct`/"Satıştan Kaldır" (UNAVAILABLE) davranışı **değişmiyor**: kullanıcıya
+soruldu, mevcut tasarım korunacak - UNAVAILABLE bir ürün customer menüden tamamen kaybolmuyor,
+listede "Tükendi" rozetiyle kalmaya devam ediyor (sadece sipariş edilemiyor); tamamen kaybolma
+sadece `Product.active=false` (business seviyesi kill switch) durumunda oluyor - bu zaten
+`PublicMenuIntegrationTest.inactiveProductIsOmittedEvenWithABranchProductRow` ile test edilen,
+belgelenmiş bir davranış, dokunulmuyor.
+
+**Plan:**
+- `ProductRepository.findAllByBusinessIdAndActiveTrue` eklenecek.
+- `MenuService.assignActiveCatalogToBranch(businessId, branchId, actorStaffUserId)` eklenecek -
+  eksik (branch, product) çiftlerini toplu insert eder, audit'e tek bir "CATALOG_DEFAULTED" kaydı
+  yazar.
+- `InternalTenantController.createBranch` ve `PlatformAdminBusinessController.createBranch`
+  (branch oluşturmanın tek iki giriş noktası - `StaffTenantController`'da branch create yok)
+  `tenantService.createBranch(...)` sonrası bu yeni metodu çağıracak. `TenantService`'e
+  bağımlılık eklenmiyor (menu zaten tenant'a bağımlı, tersi circular olurdu) - orkestrasyon
+  controller seviyesinde, `PublicMenuController`'ın zaten TenantService+MenuService'i birlikte
+  kullandığı mevcut kod deseniyle aynı.
+- Yeni Flyway migration `V35__backfill_branch_product_defaults.sql`: `branch` × aktif `product`
+  (aynı `business_id`) çiftlerinden `branch_product`'ta karşılığı olmayanlara `AVAILABLE` satırı
+  ekler (`INSERT ... WHERE NOT EXISTS`, `gen_random_uuid()` - V13'teki business-hours backfill'iyle
+  aynı desen).
+- Entegrasyon testi: mevcut katalog → ikinci branch oluştur → QR token/table üzerinden branch'i
+  çöz → customer menu'de ürünlerin göründüğünü doğrula.
+- Entegrasyon testi: yeni branch'te bir ürünü "Satıştan Kaldır" (UNAVAILABLE) → o branch'in
+  customer menüsünde ürün "Tükendi"/sipariş edilemez olarak kalıyor (listeden düşmüyor) ama
+  aynı ürünün diğer (ilk) branch'teki `BranchProduct` satırı hâlâ `AVAILABLE` - branch'ler
+  arası izolasyon bozulmuyor.
+
+**Uygulandı:** `ProductRepository.findAllByBusinessIdAndActiveTrue` eklendi.
+`MenuService.assignActiveCatalogToBranch(businessId, branchId, actorStaffUserId)` eklendi -
+eksik (branch, product) çiftlerini toplu insert edip tek "CATALOG_DEFAULTED" audit kaydı
+yazıyor. `InternalTenantController` ve `PlatformAdminBusinessController`'ın `createBranch`
+metotları `tenantService.createBranch(...)` sonrası bu metodu çağırıyor (StaffTenantController'da
+zaten branch create endpoint'i yok). `V35__backfill_branch_product_defaults.sql` migration'ı
+eklendi (var olan branch × aktif product çiftlerinden `branch_product`ta karşılığı olmayanlara
+`NOT EXISTS` ile `AVAILABLE` satırı ekliyor - V13'teki business-hours backfill'iyle aynı desen).
+
+Yeni test dosyası `BranchProductAutoProvisioningIntegrationTest` (3 test): (1) mevcut katalog
+varken oluşturulan ikinci branch, hiçbir manuel `upsertBranchProduct` çağrısı olmadan QR
+check-in üzerinden çözülen branchId ile customer menüde ürünü `AVAILABLE`/doğru fiyatla
+gösteriyor; (2) başka bir business'ın kataloğu yeni branch'e sızmıyor (boş menü); (3) iki
+kardeş branch'te de otomatik atanan bir ürün, birinde "Satıştan Kaldır" (UNAVAILABLE) yapılınca
+sadece o branch'te "Tükendi" oluyor, diğeri `AVAILABLE` kalıyor. Frontend'de değişiklik
+gerekmedi - `ProductRow.tsx`/`ProductCard.tsx` zaten `branchProduct` yoksa/`UNAVAILABLE`'sa
+doğru rozeti gösteriyordu, eksik olan sadece backend'in branch'e satır atamasıydı.
+
+Kullanıcıya "Satıştan Kaldır" testinin beklentisi ("customer'da kaybolur") ile mevcut,
+belgelenmiş, test edilen davranış (ürün "Tükendi" olarak kalır, tamamen kaybolma sadece
+`Product.active=false` business-level kill switch'inde olur) arasındaki çelişki soruldu -
+kullanıcı mevcut davranışın korunmasını onayladı, geniş etkili bir davranış değişikliği
+(tüm branch'lerde UNAVAILABLE ürünleri menüden komple gizleme) yapılmadı.
+
+**Doğrulama:** `./mvnw test` - tam backend suite (47 sınıf, 220 test) 0 failure/0 error,
+`ModuleBoundaryTest` dahil (yeni controller→MenuService bağımlılığı repository sınırını
+ihlal etmiyor). Frontend'e dokunulmadığı için ayrı bir frontend test/tsc koşumu yapılmadı.
+
+Commit/push yapılmadı (kullanıcı talebi).
+
+## Branch oluşturma + default katalog provisioning: atomic orchestration'a taşındı
+
+Code review feedback: yukarıdaki iki-ayrı-çağrı tasarımı (`createBranch` + ayrı
+`assignActiveCatalogToBranch`, her ikisi de kendi `@Transactional` sınırında,
+`InternalTenantController` ve `PlatformAdminBusinessController`'da aynı iki satır tekrar
+ediyordu) doğru çalışıyordu ama atomik değildi: provisioning ikinci çağrı olarak başarısız
+olsaydı branch zaten commit edilmiş olurdu - yarım oluşturulmuş, kataloğu eksik bir branch
+kalırdı. İstenen: tek transactional orchestration metodu, her iki controller'ın onu kullanması,
+provisioning hatasında branch creation'ın da rollback olması, modül sınırlarının bozulmaması.
+
+**Plan:** Yeni `com.qrmenu.branchprovisioning.BranchProvisioningService` (tek
+`@Transactional createBranchWithDefaultCatalog(...)` metodu) - `TenantService.createBranch` ve
+`MenuService.assignActiveCatalogToBranch`'i aynı transaction içinde çağırır. Bu iki metot zaten
+kendi `@Transactional`'ına sahip (default REQUIRED propagation) - orkestratörün transaction'ına
+katılırlar, biri throw ederse ikisi de rollback olur. Modül sınırı: `chain.ChainComparisonService`
+ile aynı desen (TenantService+MenuService gibi iki modülün public facade'ını compose eden,
+kendi repository'si olmayan ayrı bir servis paketi) - `TenantService`'i `MenuService`'e
+bağımlı yapmak (ya da tersi) circular bağımlılık yaratırdı, o yüzden üçüncü, nötr bir paket.
+Her iki controller `tenantService`+`menuService`'i ayrı ayrı enjekte etmek yerine sadece
+`BranchProvisioningService`'i enjekte edip tek çağrı yapacak.
+
+**Uygulandı:** `BranchProvisioningService` eklendi. `InternalTenantController` ve
+`PlatformAdminBusinessController`'ın `createBranch` metotları artık
+`branchProvisioningService.createBranchWithDefaultCatalog(...)` çağırıyor; ikisinde de
+`MenuService` alanı kaldırıldı (başka hiçbir yerde kullanılmıyordu). Provisioning zaten
+idempotent olan filtre mantığına (`branch_product`ta karşılığı olmayan (branch, product)
+çiftlerini insert et) ve `V35` backfill migration'ına dokunulmadı.
+
+Regresyon testi: `BranchProvisioningRollbackIntegrationTest` (`@MockitoBean MenuService`,
+`assignActiveCatalogToBranch` çağrısında `RuntimeException` fırlatacak şekilde stub'landı) -
+`createBranchWithDefaultCatalog` çağrısının exception'ı yukarı fırlattığını ve branch'in
+`tenantService.listBranches(businessId)` ile hiç görünmediğini (rollback gerçekleşti)
+doğruluyor.
+
+**Doğrulama:** `./mvnw -o test -Dtest=ModuleBoundaryTest,BranchProductAutoProvisioningIntegrationTest,BranchProvisioningRollbackIntegrationTest`
+- 15 test, 0 failure/0 error. Mevcut 3 provisioning testi ve `ModuleBoundaryTest`'in 11 kuralı
+korundu, yeni rollback testi geçti.
+
+**Ürün notu (kod değişikliği gerektirmedi):** UNAVAILABLE bir ürünün customer menüde
+"Tükendi" olarak görünmeye devam etmesi - kullanıcı bunun mevcut, kasıtlı tasarım kararı
+olduğunu (yukarıdaki `BranchProductAutoProvisioningIntegrationTest` bölümünde zaten
+belgelenmiş/test edilmiş) teyit etti; sadece staff tarafındaki "Satıştan Kaldır" ifadesinin
+"ürünü menüden gizle" anlamına gelmediğinin bilinerek kullanıldığını netleştirdi.
+
+Commit/push yapılmadı (kullanıcı talebi).
+
+## Menü yaşam döngüsü: kategori/ürün/option-group/option rename+reorder+silme
+
+Gap-analysis: kategori rename/reorder, ürün reorder, option group/option yönetiminin
+staff-web'e bağlanması (backend'de sadece CREATE vardı, staff-web'de option group/option
+için hiç UI yoktu), kategori/ürün/option/group silme, ve bunların hepsinde geçmiş sipariş
+verisinin kaybolmaması eksikti.
+
+**FK/hard-delete analizi:** `V5__ordering_draft_cart.sql`'de bilinçli tasarım -
+`order_item.product_id`/`order_item_option.option_id` katalog tablolarına FK'siz, sadece
+isim/fiyat SNAPSHOT'ı taşıyorlar. Yani `MenuCategory`/`Product`/`ProductOptionGroup`/
+`ProductOption` sipariş geçmişini hiç etkilemeden hard-delete edilebilir. Tek gerçek risk
+canlı katalog zinciri: `branch_product.product_id`/`product_option_group.product_id`/
+`product_option.option_group_id` FK'leri RESTRICT'ti, cascade yoktu.
+
+**Karar:** Product silme → option group/option'ları ve her branch'teki `BranchProduct`
+satırlarını da cascade siler (DB seviyesinde `ON DELETE CASCADE`, V36). Category silme →
+cascade YOK, içinde ürün varsa 409 (`CategoryHasProductsException`) ile engellenir - tek
+tıkla bütün ürün hattını silmek riskli. OptionGroup silme → altındaki option'ları cascade
+siler. Option silme → çocuğu yok, düz silme.
+
+**Uygulandı (backend):** `V36__menu_lifecycle_cascades.sql` - `branch_product_product_id_fkey`,
+`product_option_group_product_id_fkey`, `product_option_option_group_id_fkey`'e
+`ON DELETE CASCADE` eklendi; `product.category_id` FK bilinçli olarak RESTRICT bırakıldı.
+`MenuService`'e rename/reorder/delete metotları eklendi (category/product/optionGroup/option
+için); reorder metotları paylaşılan `validateReorderIds` ile çağıranın tam ve mevcut sibling
+setini gönderdiğini doğruluyor (duplicate/eksik/başka-business'a-ait id → 400). `StaffMenuController`'a
+karşılık gelen `PATCH .../reorder`, `PATCH .../{id}` (rename), `DELETE .../{id}` endpoint'leri
+eklendi. Yeni DTO'lar: `RenameMenuCategoryRequest`, `ReorderRequest` (4 seviyede paylaşılan
+generic gövde), `UpdateOptionGroupRequest`, `UpdateOptionRequest`. Yeni exception
+`CategoryHasProductsException` (409, `ApiExceptionHandler`'a eklendi).
+
+**Ek kontroller (kullanıcı talebi):**
+1. **Draft cart'ta silinmiş ürün ödeme koruması** - `OrderingService.beginPaymentForDraftOrder`
+   önceden sepetin ürün/availability durumunu ödeme başlangıcında tekrar doğrulamıyordu
+   (yorum: "does not re-run that revalidation"). Yeni `requireEveryItemStillOrderable` her
+   cart item için product hâlâ var mı/`active` mi/branch'te `AVAILABLE` mı kontrol ediyor,
+   değilse `ProductNotOrderableException` (409, addItem'ın kullandığıyla aynı sınıf) fırlatıyor.
+   `PaymentFlowIntegrationTest`e yeni test: sepete ürün eklenip ürün staff tarafından
+   hard-delete edilince `POST .../payments` 409 dönüyor.
+2. **Product silme global etki, ama business-izole** - `deleteProduct` her business kendi
+   `product_id`'sine sahip olduğu için yapısal olarak başka business'a sızamıyor; yine de
+   `MenuLifecycleIntegrationTest`te açık regresyon testi var: business A'nın 2 branch'inde
+   atanmış ürünü silince her iki branch'in `BranchProduct` satırı da gidiyor, business B'nin
+   kendi ürünü/option group'u/option'ı/branch_product'ı tamamen dokunulmamış kalıyor.
+3. **Reorder validasyonu** - `validateReorderIds` duplicate id (set/list boyut karşılaştırması)
+   ve eksik/fazla/başka-business id (set eşitliği) durumlarını tek kontrolle yakalıyor, tek
+   transaction'da `displayOrder = index` yazıyor. Test: duplicate/eksik/foreign id → 400,
+   geçerli ters sıralama → doğru `displayOrder` sırası.
+4. **Product silme → orphan image temizliği** - `MediaStoragePort`'a `delete(key)` eklendi
+   (`LocalFileMediaStorageAdapter` implementasyonuyla, `Files.deleteIfExists`). `deleteProduct`
+   silmeden önce `imageUrl`'i `resolveKeyFromUrl`'den geçirip varsa dosyayı da siliyor. Test:
+   ürüne resim yükleyip attach edip sil, `mediaStoragePort.load(key)` sonrasında boş dönüyor.
+
+**Uygulandı (frontend, staff-web):** `lib/api.ts`'e yeni tipler/client fonksiyonları
+(`OptionGroupAdmin`, `OptionAdmin` + tüm rename/reorder/delete çağrıları - option group/option
+için önceden hiç client kodu yoktu). `CategoriesSection.tsx`: satır içi yukarı/aşağı taşı
+(sürükle-bırak yerine ok butonları - yeni bağımlılık eklemeden), rename dialog'u, sil +
+`ConfirmDialog` (409'u "hâlâ ürün var" mesajıyla ayrı yakalıyor). `ProductsSection.tsx`/
+`ProductRow.tsx`: aynı desen ürünler için. Yeni `OptionGroupsSection.tsx` + `OptionsSection.tsx`
+(`ProductRow`'un yeni "Seçenekler" panelinde nested) - create (backend zaten vardı, sadece UI
+eksikti), rename, reorder, delete, her ikisi de tam CRUD. `ConfirmDialog`'un `<tbody>` içine
+`<div>` olarak sızmaması için (invalid HTML) delete-confirm state'i her yerde satır bileşeninden
+üst section bileşenine taşındı (`ExpenseList.tsx`'teki mevcut desenle aynı).
+
+Product.active hiçbir yeni UI/permission'a açılmadı - `Permission.MENU_MANAGE` hâlâ sadece
+BUSINESS_ADMIN'de, branch-level `BranchProduct.availability` modeli değişmedi.
+
+**Doğrulama:** `./mvnw -o test` - tam backend suite (230 test) 0 failure/0 error (yeni
+`MenuLifecycleIntegrationTest` 8 test + `PaymentFlowIntegrationTest`e eklenen 1 test dahil).
+Frontend: `npx eslint app/menu lib/api.ts`, `npx tsc --noEmit`, `npm run build` (Next.js
+production build) - hepsi temiz.
+
+Commit/push yapılmadı (kullanıcı talebi).
+
+## 2026-08-25 — İşletme adı lifecycle eksikliği (rename)
+
+**Sorun:** Business oluşturulurken isim veriliyor ama sonradan hiçbir akıştan
+değiştirilemiyordu - ne BUSINESS_ADMIN (İşletme Ayarları sadece currency/timeZone
+yönetiyordu), ne PLATFORM_ADMIN (branch rename var, business rename yok). `Business.name`'de
+DB NOT NULL dışında validation yoktu; `Branch.rename()` bile trim/blank kontrolü yapmıyordu.
+
+**Tasarım (onaylandı):**
+- `TenantService.updateBusinessName(businessId, name, actorStaffUserId)` tek source of
+  truth - hem staff (BUSINESS_ADMIN, kendi `context.businessId()`'i) hem platform-admin
+  (PLATFORM_ADMIN, path'ten herhangi bir businessId) akışı aynı metodu çağırıyor, duplicate
+  logic yok. `Business.rename()` trim + blank reddi kendi içinde yapıyor (mevcut
+  `validateCurrency`/`validateTimeZone` static-validator deseniyle aynı).
+- Audit: `"NAME_CHANGED"` action, entityType `"Business"`, details `oldName`/`newName`.
+- Yetkilendirme: BUSINESS_ADMIN tarafı `Permission.BUSINESS_SETTINGS_MANAGE` ile korunan
+  yeni `POST /api/staff/business/name` (businessId hep context'ten, hiçbir zaman body/path'ten
+  - cross-business mümkün değil). PLATFORM_ADMIN tarafı `requirePlatformAdmin` ile korunan
+  yeni `PUT /api/platform-admin/businesses/{businessId}/name` (branch-rename endpoint'iyle
+  birebir aynı desen - businessId path'ten, PLATFORM_ADMIN zaten cross-business).
+- Test matrisi (kullanıcı düzeltmesiyle): PLATFORM_ADMIN → başka business'ın adını 200 ile
+  değiştirebilir (cross-business bu rol için beklenen davranış, 403 değil); normal staff
+  `/api/platform-admin/**`'e 403; BUSINESS_ADMIN sadece kendi business'ını değiştirebilir
+  (endpoint zaten businessId almadığı için başka business'ı hedefleyemiyor).
+- Frontend stale-state: `AppShell`'in topbar'da gösterdiği `businessName` şu ana kadar her
+  sayfa mount'unda lokal `useState` + `me()` ile geliyordu, aynı oturum içinde anında
+  güncellenmiyordu. Mevcut `lib/sidebarCollapse.ts` subscribe/snapshot deseniyle aynı şekilde
+  küçük bir `lib/staffContextStore.ts` eklenip `AppShell` `useSyncExternalStore`'a geçiriliyor;
+  `business-settings` sayfası rename sonrası `patchStaffContext(...)` ile topbar'ı anında
+  güncelliyor. Platform admin business listesi zaten her mount'ta taze fetch ediyor (cache
+  yok) - ekstra iş gerekmiyor. Customer-web zaten her check-in'de taze `businessName` çekiyor
+  (cache yok) - sonraki check-in'de otomatik yeni ad görünüyor, ekstra iş gerekmiyor.
+
+Uygulama adım adım aşağıda loglanıyor.
+
+**Uygulandı (backend):** `Business.rename(name)` (`validateName` - trim + blank reddi,
+`validateCurrency`/`validateTimeZone` ile aynı static-validator deseni). `TenantService.
+updateBusinessName(businessId, name, actorStaffUserId)` - eski adı okuyup `rename()` çağırıyor,
+audit'e `"NAME_CHANGED"` (entityType `"Business"`, details `{oldName, newName}`) yazıyor. Yeni
+DTO `UpdateBusinessNameRequest(@NotBlank String name)` (`tenant.web.dto`, iki controller de
+buradan import ediyor). `StaffTenantController`e `POST /api/staff/business/name`
+(`Permission.BUSINESS_SETTINGS_MANAGE`, businessId hep `context.businessId()`).
+`PlatformAdminBusinessController`e `PUT /api/platform-admin/businesses/{businessId}/name`
+(`requirePlatformAdmin`, businessId path'ten - branch-rename endpoint'iyle aynı desen).
+
+**Uygulandı (frontend, staff-web):** `lib/api.ts`'e `updateBusinessName(name)` ve
+`updatePlatformBusinessName(businessId, name)`. Yeni `lib/staffContextStore.ts`
+(`lib/sidebarCollapse.ts` ile aynı subscribe/snapshot deseni, in-memory) -
+`AppShell.tsx` artık `StaffContext`'i local `useState` yerine bu store'dan
+`useSyncExternalStore` ile okuyor (mount effect'i hâlâ `me()` çağırıp store'a yazıyor,
+davranış aynı), böylece `business-settings` sayfası rename sonrası `patchStaffContext(...)`
+ile topbar'ı aynı oturumda anında güncelleyebiliyor. `business-settings/page.tsx`'e "İşletme
+Adı" formu (currency/timezone formunun altına, mevcut form ilk önceki testin `container.
+querySelector("form")` varsayımını bozmasın diye). `platform-admin/businesses/[businessId]/
+page.tsx`'e `PageHeader` başlığının yanına "Düzenle" butonu + branch-edit dialog'uyla aynı
+desende isim düzenleme dialog'u, kaydedince `setBusiness(updated)` ile anında güncelleniyor.
+
+**Test matrisi düzeltmesi (kullanıcı geri bildirimi):** İlk tasarımda "PLATFORM_ADMIN başka
+business'ı değiştirmeye çalışırsa 403" yazılmıştı - bu yanlıştı, PLATFORM_ADMIN zaten
+cross-business bir rol (branch-rename'de de aynı). Düzeltilmiş matris: PLATFORM_ADMIN → başka
+business'ı 200 ile yeniden adlandırabilir; normal staff (BUSINESS_ADMIN) → `/api/platform-
+admin/**`'e 403; BUSINESS_ADMIN → endpoint hiç businessId almadığı için yapısal olarak sadece
+kendi business'ını değiştirebiliyor (regresyon testiyle doğrulandı: A'nın adminı rename edince
+B'nin adı değişmiyor).
+
+**Test sırasında bulunan iki gerçek regresyon (ilgisiz testler, benim değişikliğimden
+etkilendi):**
+1. `business-settings/page.test.tsx`'teki mevcut "çift gönderim" testi `container.
+   querySelector("form")` ile "ilk form" varsayımı yapıyordu - yeni "İşletme Adı" formunu
+   ayarlar formunun ÜSTÜNE koyunca yanlış formu submit etmeye başladı. Çözüm: yeni formu
+   ayarlar formunun ALTINA taşıdım (varsayım hâlâ geçerli, davranış değişmedi).
+2. Aynı dosyadaki "Rapor Alıcısı düzenleme" testi `getByLabelText("Ad", {exact:false})`
+   kullanıyordu - artık sayfada "İşletme Adı" alanı da olduğu için substring eşleşmesi iki
+   alanı da buluyordu. Çözüm: o testi `within(getByRole("dialog"))` ile kişi diyalog'una
+   scope'ladım (testin niyeti değişmedi, sadece ambiguity giderildi).
+
+**Test sırasında bulunan bir test-mock kusuru (üretim kodu etkilenmedi):** `AppShell.test.tsx`
+içindeki `useRouter` mock'u her render'da yeni bir `{ replace }` literali dönüyordu; gerçek
+Next.js'te `useRouter()` referans olarak stabildir ama mock'ta değildi. `AppShell`'in `/me`
+effect'i `[router]`'a bağımlı olduğu için, context her `patchStaffContext` sonrası re-render'da
+mock'un ürettiği yeni router referansı effect'i tekrar tetikleyip `me()`'yi yeniden çağırıyor ve
+patch'i eziyordu (yalnızca test ortamında - üretimde router referansı sabit olduğu için bu
+döngü hiç oluşmuyor). Düzeltme: mock'ta router objesini modül seviyesinde sabitledim.
+
+**Doğrulama:** Backend `./mvnw -o test` - tam suite 246 test, 0 failure/0 error (yeni
+rename testleri dahil: `BusinessSettingsFlowIntegrationTest` +4,
+`PlatformAdminFlowIntegrationTest` +2/1 güncelleme). Frontend: `npm run test:unit` (10/10),
+`npm run test:components` (3 dosya, 15/15 - `AppShell.test.tsx`, `business-settings/
+page.test.tsx`, yeni `platform-admin/businesses/[businessId]/page.test.tsx`), `npx tsc
+--noEmit` temiz, `npx eslint` değişen dosyalarda temiz, `npm run build` (Next.js production
+build) temiz.
+
+Commit/push yapılmadı (kullanıcı talebi).
+
+## 2026-08-25 — Personel lifecycle: reaktifleştirme, rol değişimi, e-posta düzenleme (BUSINESS_ADMIN)
+
+**Tasarım (onaylandı, bounded):** Mevcut `StaffUserController`/`StaffAuthService`/`app/staff/
+page.tsx` akışına business-scoped 3 yeni aksiyon eklendi: reactivate, role change, email edit.
+Guard'lar deactivate'in üzerine kuruldu (self-block, PLATFORM_ADMIN hedef reddi, branch
+isolation, son aktif BUSINESS_ADMIN koruması, session invalidation). Kullanıcı onay sırasında 2
+ek güvenlik kontrolü istedi: (1) email uniqueness sadece servis-seviyesi `findByEmail` kontrolüne
+bırakılmasın, DB'de de case-insensitive garanti olsun; (2) deactivate edilen kullanıcının eski
+session'ı reactivate sonrası dirilmesin.
+
+**Uygulandı (backend):**
+- `V38__staff_user_email_case_insensitive_uniqueness.sql`: var olan satırları `LOWER(TRIM(email))`
+  ile normalize edip case-sensitive `uq_staff_user_email` constraint'ini kaldırıp yerine
+  `CREATE UNIQUE INDEX uq_staff_user_email_lower ON staff_user (LOWER(email))` koydu.
+- `StaffAuthService`: `normalizeEmail` (trim+lowercase) artık `createStaffUser` ve `login`'de de
+  kullanılıyor (login normalize edilmeden bırakılsaydı, normalize edilmiş şekilde saklanan bir
+  email'e karışık case ile login denemesi kırılırdı - kendi değişikliğimin yol açacağı bir
+  regresyonu fark edip düzelttim). `requireEmailNotTaken` (app-layer fast-fail) +
+  `saveWithDuplicateEmailHandling` (DB constraint violation'ı `DuplicateEmailException`'a çeviren
+  gerçek race-condition güvencesi) ikilisi hem create hem email-edit'te kullanılıyor.
+  Yeni business-scoped metodlar: `activateStaffUser`, `changeStaffUserRoleAsBusinessAdmin`,
+  `updateStaffUserEmail` - üçü de self-block + PLATFORM_ADMIN hedef reddi + branch isolation
+  paylaşıyor; rol değişimi ve email değişimi ayrıca `staffSessionRepository.
+  deleteAllByStaffUserId` ile hedefin tüm session'larını invalidate ediyor.
+- **Bulunan gerçek bug (session revival):** `deactivateStaffUser` ve
+  `deactivateStaffUserAsPlatformAdmin` hiçbir zaman hedefin session'larını silmiyordu - deaktif
+  kullanıcı sadece `resolveStaffContext`'in `isActive()` filtresiyle dışarıda tutuluyordu, yani
+  reactivate sonrası deactivation-öncesi eski bir session cookie'si TTL içindeyse yeniden geçerli
+  hale geliyordu. Her iki deactivate metoduna da `deleteAllByStaffUserId` eklendi; ayrıca
+  business-scoped `deactivateStaffUser`'a hiç olmayan audit kaydı (`"DEACTIVATED"`) eklendi
+  (platform-admin karşılığıyla tutarlılık için).
+- **Bulunan ikinci gerçek bug (last-active-admin koruması eksikliği):** Platform admin panelindeki
+  `changeStaffUserRole` son aktif BUSINESS_ADMIN korumasını hiç uygulamıyordu (yalnızca deactivate
+  uyguluyordu) - bir PLATFORM_ADMIN, business-scoped aktörün asla yapamayacağı şekilde (kendi
+  hesabı değil, STAFF_MANAGE'e sahip de değil, dolayısıyla "kalan admin" sayısına dahil olmuyor)
+  bir business'ın tek aktif BUSINESS_ADMIN'ini rolden düşürebiliyordu. Guard eklendi + session
+  invalidation eklendi. Business-scoped `changeStaffUserRoleAsBusinessAdmin`'e de aynı guard
+  eklendi (fakat STAFF_MANAGE yalnızca BUSINESS_ADMIN'de olduğu ve self-change zaten engellendiği
+  için bu path'te fiilen tetiklenemiyor - defense-in-depth olarak bırakıldı, testte belirtildi).
+- `DuplicateEmailException` (yeni, `common.web`) + `ApiExceptionHandler`'da 409 mapping.
+- Yeni DTO'lar: `staffaccess.web.dto.ChangeStaffUserRoleRequest`, `UpdateStaffUserEmailRequest`.
+- `StaffUserController`: `POST /{id}/activate`, `POST /{id}/role`, `POST /{id}/email`.
+
+**Uygulandı (frontend, staff-web):** `lib/api.ts`'e `activateStaffUser`, `changeStaffUserRole`,
+`updateStaffUserEmail`. `app/staff/page.tsx`: satır aksiyonları Düzenle (tek modal - email+rol,
+sadece değişeni PATCH eder, 409'da "zaten kullanımda" hatası) / Aktifleştir (yalnızca pasif
+kullanıcıda) / Devre Dışı Bırak (eski "Hesabı Devre Dışı Bırak" adı sadeleştirildi) / Şifre
+Sıfırla olarak düzenlendi. Kendi satırında hâlâ hiç aksiyon yok. PLATFORM_ADMIN'in business-scoped
+listeden filtrelenmesi zaten mevcuttu (`StaffAuthService.listStaffUsers(businessId, branchId)`),
+ek iş gerekmedi.
+
+**Test sırasında bulunan bir regresyon (ilgisiz test, benim last-active-admin guard'ımdan
+etkilendi):** `PlatformAdminFlowIntegrationTest.
+platformAdminIsNotScopedToItsOwnBusinessAndCanManageAnotherBusinessesBranchesAndStaff` tek
+BUSINESS_ADMIN'i BRANCH_MANAGER'a düşürüp 204 bekliyordu - artık haklı olarak 409. Teste ikinci bir
+aktif BUSINESS_ADMIN eklendi (testin asıl niyeti - platform admin'in role/deactivate/reactivate/
+reset-password akışını uçtan uca doğrulamak - korunarak).
+
+**Doğrulama:** Backend `./mvnw -o test` - tam suite 0 failure/0 error (yeni
+`StaffLifecycleManagementIntegrationTest` +11: reactivate, session-revival-yok, self-block'lar,
+rol değişimi + session invalidation, son-aktif-admin koruması hem business hem platform panelinde,
+email edit + normalize + session invalidation, case-insensitive duplicate 409, PLATFORM_ADMIN
+hedef reddi, branch isolation). Frontend: yeni `app/staff/page.test.tsx` (7/7), `npm run
+test:components` (4 dosya, 22/22), `npm run test:unit` (10/10), `npx tsc --noEmit` temiz, `npx
+eslint` değişen dosyalarda temiz (mevcut `ExpenseList.tsx` hatası ilgisiz/önceden var).
+
+## 2026-08-26 — Aylık rapor gönderimi gerçek implementasyon
+
+`BusinessContact.monthlyReportRecipient` Gap-analysis #6'dan beri "salt veri, tüketen modül yok"
+durumundaydı (bkz. yukarıdaki not). Bu oturumda gerçek gönderim eklendi - günlük rapor
+altyapısı (aynı `owner_notification_log`, aynı `OwnerNotificationService`/`OwnerNotificationPort`,
+aynı branch-timezone çözümleme) genelleştirilerek reuse edildi, ayrı paralel bir sistem
+kurulmadı.
+
+**Tasarım kararları (kullanıcı onayı sonrası 2 düzeltme ile):**
+- Idempotency: AUTO gönderimde yalnızca **SENT** kalıcı olarak engeller; **FAILED** 1 saatlik
+  backoff penceresinden sonra otomatik yeniden denenir (günlükteki "her attempt engeller" modeli
+  aylık için spam'e yol açardı - scheduler ayın 1'i boyunca 5 dakikada bir poll ediyor).
+- Concurrency: sadece application-layer `existsBy` kontrolüne güvenilmedi. İki katman: (1)
+  `pg_try_advisory_xact_lock` (native query, `EntityManager` üzerinden - `OrderNumberGenerator`
+  ile aynı codebase idiomu) gönderim öncesi (branch, ay, kişi) için transaction-scoped kilit;
+  (2) V40'ta partial unique index `(branch_id, report_period, business_contact_id) WHERE
+  report_type='MONTHLY' AND triggered_by='AUTO' AND status='SENT'` - V38'deki case-insensitive
+  email index'iyle aynı "app-check + DB backstop" deseni, iki SENT+AUTO satırının DB seviyesinde
+  fiziksel olarak var olamayacağını garanti eder.
+
+**Uygulandı (backend):**
+- `V40__owner_notification_log_monthly_report.sql`: `owner_notification_log`'a `report_type`
+  (DAILY/MONTHLY, mevcut satırlar DEFAULT'la geriye dönük DAILY dolduruluyor) + `report_period`
+  (DATE, ayın ilk günü) eklendi; `daily_close_report_id` nullable oldu (MONTHLY satırlarda boş);
+  tutarlılık CHECK constraint'i + yukarıdaki partial unique index + lookup index eklendi.
+- `OwnerNotificationLog`/`OwnerNotificationLogRepository`: yeni alanlar + `findTopByReportType...
+  OrderByAttemptedAtDesc` (backoff kontrolü için en son denemeyi bulur).
+- `OwnerNotificationService.dispatchAutoForMonthlyReport(businessId, branchId, YearMonth)`:
+  `monthlyReportRecipient` filtresiyle alıcı bulur, `ReportingService.getBranchReport` ile (aynı
+  günlük raporun kullandığı servis, sadece ay aralığıyla) body/subject üretir, her kişi için yeni
+  `MonthlyReportContactDispatcher.attemptForContact`'a devreder.
+- `MonthlyReportContactDispatcher` (yeni `@Component`, ayrı bean - `@Transactional`'ın proxy'den
+  geçmesi için `MockPaymentSimulationDispatcher`'daki self-invocation kaçınma deseniyle aynı):
+  advisory lock → backoff kontrolü → gönderim → log kaydı (`DataIntegrityViolationException`
+  yakalanıyor, "başka biri zaten göndermiş" olarak ele alınıyor).
+- `MonthlyReportScheduler` (yeni, `DailyCloseScheduler`'ın poll/timezone/izolasyon desenini
+  taklit eder ama iş saatine değil `resolveBranchTimeZone` ile yerel takvim gününe bağlı): yerel
+  tarih ayın 1'i olduğunda önceki ay için dispatch tetiklenir. Testlenebilirlik için `run(Instant)`
+  paket-private overload (`processBranch`'in Instant alan yapısıyla tutarlı).
+
+**Uygulandı (frontend, staff-web):** `ContactFormDialog.tsx`'ten Telefon input'u tamamen
+kaldırıldı (state'te pass-through kalıyor, düzenlemede mevcut değer silinmiyor - teste eklendi);
+aylık checkbox'taki "(gönderim henüz aktif değil)" ibaresi kaldırıldı. `page.tsx`: İletişim
+kolonu artık sadece e-posta gösteriyor, aylık rozet "(pasif)"/tooltip olmadan "Aylık rapor".
+
+**Test sırasında bulunan/düzeltilen kendi hatalarım:**
+- İlk backoff testim GreenMail'i `stop()`/`start()` ile aynı testte iki kez kullanmaya çalıştı -
+  restart sonrası dinleyici hemen hazır olmuyor (flaky). Backoff *zamanlama* kararı artık gerçek
+  SMTP mekaniğinden izole - sentetik bir FAILED satırı doğrudan (reflection ile package-private
+  constructor üzerinden) `attemptedAt` kontrollü şekilde ekleniyor; genuine SMTP-failure testi
+  ayrı ve tek denemelik (günlük suite'teki kanıtlanmış desenle birebir).
+- `AbstractIntegrationTest`'in Postgres container'ı (ve verisi) tüm test sınıfları arasında
+  paylaşılıyor - branch-timezone scheduler testim sabit bir `Instant` kullandığı için (gerçek
+  "now"a göre ayarlanan günlük testlerin aksine) suite'teki DİĞER testlerin varsayılan
+  Europe/Istanbul branch'lerini de "ayın 1'i" sayıp gerçekten mail attı, mailbox sayımlarını
+  bozdu. Düzeltme: ham `GREEN_MAIL.getReceivedMessages()` sayımı yerine alıcıya göre filtrelenmiş
+  `messagesTo(email)` kullanıldı - production kodunda bir sorun değildi, testin izolasyon
+  varsayımı yanlıştı.
+
+**Doğrulama:** Backend `./mvnw -o test` - tam suite 271/271, 0 failure/0 error (yeni
+`MonthlyReportFlowIntegrationTest` +7: branch-timezone tetikleme, duplicate-önleme, backoff
+retry, DB-seviyeli unique index reddi, gerçek eşzamanlı 5-thread testi, V40 backfill
+doğrulaması, genuine SMTP failure). Frontend: `app/business-settings/page.test.tsx` 6/6
+(telefon alanının kaldırılması + düzenlemede mevcut değerin korunması dahil).
+
+Commit/push yapılmadı (kullanıcı talebi).
+
+Commit/push yapılmadı (kullanıcı talebi).
+
+## 2026-08-26 — Son CRUD/lifecycle smoke testi (gerçek UI/API)
+
+Kapsam: menü (kategori/ürün/option oluştur→düzenle→reorder→sil), masa (oluştur→QR→unused hard
+delete; used archive→reactivate), personel (oluştur→email/rol değiştir→deactivate→reactivate),
+gider kategorisi (oluştur→rename→deactivate→reactivate), rapor alıcısı (oluştur→edit→sil),
+işletme adı değişikliği + staff-web/customer-web yansıması. `isletmesahibi@qrmenu.local`
+(BUSINESS_ADMIN, Meydan Bistro) ile gerçek tarayıcı üzerinden test edildi.
+
+**Bulunan gerçek bug (düzeltildi):** `frontend/staff-web/lib/api.ts`'teki `apiFetch`, sadece HTTP
+204'ü boş-body olarak ele alıyordu. `POST .../expense-categories/{id}/deactivate` ve `.../activate`
+(backend'de `void` dönen `@PostMapping`, Spring bunu 200 + boş body olarak yanıtlıyor, 204 değil)
+gibi endpoint'lerde `response.json()` boş string üzerinde `SyntaxError` fırlatıyor, işlem backend'de
+başarıyla tamamlanmasına rağmen UI "işlem başarısız" toast'ı gösteriyordu (network log: POST 200,
+ama catch bloğu tetikleniyordu). Düzeltme: `apiFetch` artık `response.text()` okuyup boşsa
+`undefined` dönüyor, doluysa `JSON.parse` ediyor — 204 özel durumuna ek olarak tüm boş-body 200
+yanıtlarını kapsıyor. Aynı fonksiyonu kullanan personel/masa/recurring-template activate-deactivate
+gibi diğer void POST endpoint'leri de bu sınıf hatadan kurtulmuş oldu. `docker compose build
+staff-web` ile yeniden derlenip doğrulandı (deactivate/activate artık doğru başarı toast'ı veriyor).
+
+**Ayrıca fark edilen (bug değil, stale image):** `PATCH /api/staff/option-groups/{id}/options/reorder`
+404 dönüyordu — backend kaynak kodunda endpoint mevcuttu ama çalışan Docker image'ı bu (ve menü
+CRUD'un geri kalanının, örn. kategori/ürün silme, option-group update gibi) uncommitted
+değişiklikleri içeren derlemeden önceki bir image'dı. `docker compose build backend` ile
+yeniden derlenip çözüldü; kod tarafında bir şey değişmedi.
+
+Test verisi (Smoke Test kategori/ürün/option/masa/personel/gider kategorisi/rapor alıcısı) test
+sonunda temizlendi; gider kategorisi ve personel için UI'da hard-delete olmadığından ikisi de
+pasif/devre-dışı bırakılarak temizlendi (kalıcı satır olarak DB'de kalıyor, listelerde aktif
+görünmüyor). İşletme adı "Meydan Bistro"ya geri döndürüldü. Commit/push yapılmadı (kullanıcı talebi).

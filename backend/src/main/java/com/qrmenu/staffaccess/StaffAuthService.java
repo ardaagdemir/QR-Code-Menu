@@ -1,6 +1,8 @@
 package com.qrmenu.staffaccess;
 
 import com.qrmenu.audit.AuditService;
+import com.qrmenu.common.web.DuplicateEmailException;
+import com.qrmenu.common.web.LastActiveBusinessAdminException;
 import com.qrmenu.common.web.ResourceNotFoundException;
 import com.qrmenu.common.web.StaffAuthenticationRequiredException;
 import com.qrmenu.common.web.StaffPermissionDeniedException;
@@ -17,6 +19,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -58,7 +61,7 @@ public class StaffAuthService {
     @Transactional
     public LoginResult login(String email, String rawPassword) {
         StaffUser staffUser = staffUserRepository
-                .findByEmail(email)
+                .findByEmail(normalizeEmail(email))
                 .filter(StaffUser::isActive)
                 .orElseThrow(() -> new StaffAuthenticationRequiredException("Invalid email or password"));
         if (!passwordEncoder.matches(rawPassword, staffUser.getPasswordHash())) {
@@ -212,8 +215,10 @@ public class StaffAuthService {
                 throw new StaffPermissionDeniedException("Branch does not belong to staff business");
             }
         }
-        StaffUser staffUser =
-                staffUserRepository.save(new StaffUser(businessId, email, passwordEncoder.encode(rawPassword), role));
+        String normalizedEmail = normalizeEmail(email);
+        requireEmailNotTaken(normalizedEmail, null);
+        StaffUser staffUser = saveWithDuplicateEmailHandling(
+                new StaffUser(businessId, normalizedEmail, passwordEncoder.encode(rawPassword), role));
         for (UUID branchId : effectiveBranchIds) {
             staffUserBranchRepository.save(new StaffUserBranch(staffUser.getId(), branchId));
         }
@@ -247,12 +252,17 @@ public class StaffAuthService {
     }
 
     /** Platform admin panel: cross-business, no branch scoping - never targets a PLATFORM_ADMIN
-     * (platform admin management is deliberately kept out of this panel, see resetPasswordAsPlatformAdmin). */
+     * (platform admin management is deliberately kept out of this panel, see resetPasswordAsPlatformAdmin).
+     * Kills every session of the target: without this, a session created before deactivation would
+     * still pass resolveStaffContext's isActive() filter the moment the account is reactivated later -
+     * deactivation must not leave a live session dormant, only to spring back to life on reactivate. */
     @Transactional
     public void deactivateStaffUserAsPlatformAdmin(UUID businessId, UUID staffUserId, UUID actorStaffUserId) {
         StaffUser staffUser = requireNonPlatformAdminTarget(businessId, staffUserId);
+        requireNotLastActiveBusinessAdmin(businessId, staffUser);
         staffUser.deactivate();
         staffUserRepository.save(staffUser);
+        staffSessionRepository.deleteAllByStaffUserId(staffUserId);
         auditService.record(businessId, actorStaffUserId, "StaffUser", staffUserId, "DEACTIVATED", Map.of());
     }
 
@@ -266,31 +276,86 @@ public class StaffAuthService {
 
     /** Platform admin panel role assignment - restricted to the existing non-PLATFORM_ADMIN roles
      * (BUSINESS_ADMIN/BRANCH_MANAGER/CASHIER); neither the target nor the new role may be PLATFORM_ADMIN.
-     * PLATFORM_ADMIN accounts are only ever created through the /internal/** bootstrap API. */
+     * PLATFORM_ADMIN accounts are only ever created through the /internal/** bootstrap API. Also
+     * refuses to demote a business's last active BUSINESS_ADMIN (same guard deactivate already
+     * enforces - demoting away the role has the identical effect on the business as deactivating). */
     @Transactional
     public void changeStaffUserRole(UUID businessId, UUID staffUserId, StaffRole newRole, UUID actorStaffUserId) {
         if (newRole == StaffRole.PLATFORM_ADMIN) {
             throw new StaffPermissionDeniedException("Cannot grant PLATFORM_ADMIN through the platform admin panel");
         }
         StaffUser staffUser = requireNonPlatformAdminTarget(businessId, staffUserId);
+        if (newRole != staffUser.getRole()) {
+            requireNotLastActiveBusinessAdmin(businessId, staffUser);
+        }
         staffUser.changeRole(newRole);
         staffUserRepository.save(staffUser);
+        staffSessionRepository.deleteAllByStaffUserId(staffUserId);
         auditService.record(
                 businessId, actorStaffUserId, "StaffUser", staffUserId, "ROLE_CHANGED", Map.of("newRole", newRole.name()));
+    }
+
+    /** Platform admin panel: irreversible - unlike deactivateStaffUserAsPlatformAdmin this
+     * actually removes the StaffUser row. Never targets a PLATFORM_ADMIN (requireNonPlatformAdminTarget)
+     * or the acting admin's own account. Sessions/branch assignments are cleared explicitly here
+     * rather than via a DB-level cascade (see V33's comment); expense/owner_notification_log FKs
+     * fall back to NULL automatically via their own ON DELETE SET NULL. Past audit_log_entry rows
+     * this user authored are anonymized (actorStaffUserId -> null, actorAccountDeleted -> true)
+     * before the delete so the audit trail survives it, distinguishably from genuine system actions.
+     *
+     * <p>The target row is loaded via findByIdAndBusinessIdForUpdate (a real SQL FOR UPDATE - see
+     * that method's Javadoc for why it's not the JPA PESSIMISTIC_WRITE lock mode), held for the
+     * rest of this transaction. That's what stops a login()
+     * racing in between the session cleanup below and the actual DELETE from leaving a live session
+     * pointing at a user that's either mid-deletion or already gone. */
+    @Transactional
+    public void hardDeleteStaffUserAsPlatformAdmin(UUID businessId, UUID staffUserId, UUID actorStaffUserId) {
+        StaffUser staffUser = staffUserRepository
+                .findByIdAndBusinessIdForUpdate(staffUserId, businessId)
+                .orElseThrow(() -> new ResourceNotFoundException("Staff user not found: " + staffUserId));
+        requireNotPlatformAdminRole(staffUser);
+        if (staffUserId.equals(actorStaffUserId)) {
+            throw new StaffPermissionDeniedException("Cannot hard-delete your own account");
+        }
+        staffSessionRepository.deleteAllByStaffUserId(staffUserId);
+        staffUserBranchRepository.deleteAllByStaffUserId(staffUserId);
+        auditService.anonymizeActor(staffUserId);
+        String email = staffUser.getEmail();
+        StaffRole role = staffUser.getRole();
+        staffUserRepository.delete(staffUser);
+        auditService.record(
+                businessId,
+                actorStaffUserId,
+                "StaffUser",
+                staffUserId,
+                "STAFF_USER_HARD_DELETED",
+                Map.of("email", email, "role", role.name(), "businessId", businessId.toString()));
     }
 
     private StaffUser requireNonPlatformAdminTarget(UUID businessId, UUID staffUserId) {
         StaffUser staffUser = staffUserRepository
                 .findByIdAndBusinessId(staffUserId, businessId)
                 .orElseThrow(() -> new ResourceNotFoundException("Staff user not found: " + staffUserId));
-        if (staffUser.getRole() == StaffRole.PLATFORM_ADMIN) {
-            throw new StaffPermissionDeniedException("PLATFORM_ADMIN accounts are not managed through this panel");
-        }
+        requireNotPlatformAdminRole(staffUser);
         return staffUser;
     }
 
+    private void requireNotPlatformAdminRole(StaffUser staffUser) {
+        if (staffUser.getRole() == StaffRole.PLATFORM_ADMIN) {
+            throw new StaffPermissionDeniedException("PLATFORM_ADMIN accounts are not managed through this panel");
+        }
+    }
+
+    /** Business-scoped staff screen: never targets the caller's own account (self-deactivate must
+     * not be possible from any entry point - self-management belongs exclusively to
+     * changePassword) and never leaves a business without an active BUSINESS_ADMIN. Kills every
+     * session of the target (see deactivateStaffUserAsPlatformAdmin's Javadoc for why: otherwise a
+     * pre-deactivation session would silently come back to life on a later reactivate). */
     @Transactional
-    public void deactivateStaffUser(UUID businessId, UUID branchId, UUID staffUserId) {
+    public void deactivateStaffUser(UUID businessId, UUID branchId, UUID actorStaffUserId, UUID staffUserId) {
+        if (actorStaffUserId.equals(staffUserId)) {
+            throw new StaffPermissionDeniedException("Cannot deactivate your own account");
+        }
         StaffUser staffUser = staffUserRepository
                 .findByIdAndBusinessId(staffUserId, businessId)
                 .orElseThrow(() -> new ResourceNotFoundException("Staff user not found: " + staffUserId));
@@ -300,8 +365,97 @@ public class StaffAuthService {
         if (!hasEffectiveBranchAssignment(staffUser, branchId)) {
             throw new ResourceNotFoundException("Staff user not found in active branch: " + staffUserId);
         }
+        requireNotLastActiveBusinessAdmin(businessId, staffUser);
         staffUser.deactivate();
         staffUserRepository.save(staffUser);
+        staffSessionRepository.deleteAllByStaffUserId(staffUserId);
+        auditService.record(businessId, actorStaffUserId, "StaffUser", staffUserId, "DEACTIVATED", Map.of());
+    }
+
+    /** Business-scoped reactivate: same self/PLATFORM_ADMIN/branch guards as deactivateStaffUser.
+     * StaffUser.activate() never touches passwordHash (see its Javadoc) - only changePassword and
+     * resetPassword can do that. No last-active-BUSINESS_ADMIN check: reactivating only ever adds
+     * capacity back, never removes it. No session invalidation either: a deactivated user has none
+     * left (deactivateStaffUser now clears them), so there is nothing here to revive. */
+    @Transactional
+    public void activateStaffUser(UUID businessId, UUID branchId, UUID actorStaffUserId, UUID staffUserId) {
+        if (actorStaffUserId.equals(staffUserId)) {
+            throw new StaffPermissionDeniedException("Cannot manage your own account");
+        }
+        StaffUser staffUser = staffUserRepository
+                .findByIdAndBusinessId(staffUserId, businessId)
+                .orElseThrow(() -> new ResourceNotFoundException("Staff user not found: " + staffUserId));
+        if (staffUser.getRole() == StaffRole.PLATFORM_ADMIN) {
+            throw new StaffPermissionDeniedException("Cannot activate a PLATFORM_ADMIN through business-scoped staff management");
+        }
+        if (!hasEffectiveBranchAssignment(staffUser, branchId)) {
+            throw new ResourceNotFoundException("Staff user not found in active branch: " + staffUserId);
+        }
+        staffUser.activate();
+        staffUserRepository.save(staffUser);
+        auditService.record(businessId, actorStaffUserId, "StaffUser", staffUserId, "ACTIVATED", Map.of());
+    }
+
+    /** Business-scoped role change: same self/PLATFORM_ADMIN/branch guards as deactivateStaffUser,
+     * plus the last-active-BUSINESS_ADMIN guard (demoting the last active BUSINESS_ADMIN has the
+     * same effect on the business as deactivating them). Kills every session of the target so a
+     * stale session can't keep operating under the old role's permissions. */
+    @Transactional
+    public void changeStaffUserRoleAsBusinessAdmin(
+            UUID businessId, UUID branchId, UUID actorStaffUserId, UUID staffUserId, StaffRole newRole) {
+        if (actorStaffUserId.equals(staffUserId)) {
+            throw new StaffPermissionDeniedException("Cannot manage your own account");
+        }
+        if (newRole == StaffRole.PLATFORM_ADMIN) {
+            throw new StaffPermissionDeniedException("Cannot grant PLATFORM_ADMIN through business-scoped staff management");
+        }
+        StaffUser staffUser = staffUserRepository
+                .findByIdAndBusinessId(staffUserId, businessId)
+                .orElseThrow(() -> new ResourceNotFoundException("Staff user not found: " + staffUserId));
+        if (staffUser.getRole() == StaffRole.PLATFORM_ADMIN) {
+            throw new StaffPermissionDeniedException("Cannot change a PLATFORM_ADMIN's role through business-scoped staff management");
+        }
+        if (!hasEffectiveBranchAssignment(staffUser, branchId)) {
+            throw new ResourceNotFoundException("Staff user not found in active branch: " + staffUserId);
+        }
+        if (newRole != staffUser.getRole()) {
+            requireNotLastActiveBusinessAdmin(businessId, staffUser);
+        }
+        staffUser.changeRole(newRole);
+        staffUserRepository.save(staffUser);
+        staffSessionRepository.deleteAllByStaffUserId(staffUserId);
+        auditService.record(
+                businessId, actorStaffUserId, "StaffUser", staffUserId, "ROLE_CHANGED", Map.of("newRole", newRole.name()));
+    }
+
+    /** Business-scoped email edit: same self/PLATFORM_ADMIN/branch guards as deactivateStaffUser.
+     * Email is normalized (trim+lowercase) before both the app-layer uniqueness check
+     * (requireEmailNotTaken) and the write, and the write is still guarded against a concurrent
+     * duplicate by the DB's uq_staff_user_email_lower index (see saveWithDuplicateEmailHandling) -
+     * the app-layer check alone can't close the race between two simultaneous requests. Kills every
+     * session of the target: a stale session must re-login to pick up the corrected identity. Audit
+     * metadata deliberately omits the old/new email values - no need to retain that PII once the
+     * change is applied. */
+    @Transactional
+    public void updateStaffUserEmail(UUID businessId, UUID branchId, UUID actorStaffUserId, UUID staffUserId, String newEmail) {
+        if (actorStaffUserId.equals(staffUserId)) {
+            throw new StaffPermissionDeniedException("Cannot manage your own account");
+        }
+        StaffUser staffUser = staffUserRepository
+                .findByIdAndBusinessId(staffUserId, businessId)
+                .orElseThrow(() -> new ResourceNotFoundException("Staff user not found: " + staffUserId));
+        if (staffUser.getRole() == StaffRole.PLATFORM_ADMIN) {
+            throw new StaffPermissionDeniedException("Cannot edit a PLATFORM_ADMIN's email through business-scoped staff management");
+        }
+        if (!hasEffectiveBranchAssignment(staffUser, branchId)) {
+            throw new ResourceNotFoundException("Staff user not found in active branch: " + staffUserId);
+        }
+        String normalizedEmail = normalizeEmail(newEmail);
+        requireEmailNotTaken(normalizedEmail, staffUserId);
+        staffUser.updateEmail(normalizedEmail);
+        saveWithDuplicateEmailHandling(staffUser);
+        staffSessionRepository.deleteAllByStaffUserId(staffUserId);
+        auditService.record(businessId, actorStaffUserId, "StaffUser", staffUserId, "EMAIL_CHANGED", Map.of());
     }
 
     /** Self-service: requires the caller's own current password, keeps their own session alive
@@ -371,6 +525,45 @@ public class StaffAuthService {
 
     private boolean hasEffectiveBranchAssignment(StaffUser staffUser, UUID branchId) {
         return getBranchIds(staffUser.getId()).contains(branchId);
+    }
+
+    private static String normalizeEmail(String email) {
+        return email.trim().toLowerCase();
+    }
+
+    /** App-layer fast-fail so a duplicate returns a clean 409 without ever reaching the DB write -
+     * not a substitute for the DB's uq_staff_user_email_lower index (saveWithDuplicateEmailHandling),
+     * which is what actually closes the race between two concurrent requests for the same email. */
+    private void requireEmailNotTaken(String normalizedEmail, UUID excludingStaffUserId) {
+        staffUserRepository.findByEmail(normalizedEmail)
+                .filter(existing -> !existing.getId().equals(excludingStaffUserId))
+                .ifPresent(existing -> {
+                    throw new DuplicateEmailException("Email already in use: " + normalizedEmail);
+                });
+    }
+
+    private StaffUser saveWithDuplicateEmailHandling(StaffUser staffUser) {
+        try {
+            return staffUserRepository.save(staffUser);
+        } catch (DataIntegrityViolationException ex) {
+            throw new DuplicateEmailException("Email already in use: " + staffUser.getEmail());
+        }
+    }
+
+    /** A business must always retain at least one active BUSINESS_ADMIN, or nobody would be
+     * left able to manage its staff, menu, or branches. No-op for any other role or an
+     * already-inactive target. */
+    private void requireNotLastActiveBusinessAdmin(UUID businessId, StaffUser staffUser) {
+        if (staffUser.getRole() != StaffRole.BUSINESS_ADMIN || !staffUser.isActive()) {
+            return;
+        }
+        boolean anotherActiveAdminRemains = listStaffUsers(businessId).stream()
+                .anyMatch(other -> other.getRole() == StaffRole.BUSINESS_ADMIN
+                        && other.isActive()
+                        && !other.getId().equals(staffUser.getId()));
+        if (!anotherActiveAdminRemains) {
+            throw new LastActiveBusinessAdminException("Cannot deactivate the last active BUSINESS_ADMIN of a business");
+        }
     }
 
     /** PLATFORM_ADMIN is exempt - it's the one cross-business role, and its own StaffUser.businessId

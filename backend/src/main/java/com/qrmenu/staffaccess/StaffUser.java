@@ -77,6 +77,11 @@ public class StaffUser {
         this.updatedAt = Instant.now();
     }
 
+    public void updateEmail(String newEmail) {
+        this.email = newEmail;
+        this.updatedAt = Instant.now();
+    }
+
     /** Never reactivates a disabled user - self-service change and admin reset both go through
      * this same setter, and neither is a login re-authorization mechanism. */
     public void updatePasswordHash(String newPasswordHash) {

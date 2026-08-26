@@ -1,5 +1,6 @@
 package com.qrmenu.tenant.web;
 
+import com.qrmenu.branchprovisioning.BranchProvisioningService;
 import com.qrmenu.tenant.Branch;
 import com.qrmenu.tenant.Business;
 import com.qrmenu.tenant.RestaurantTable;
@@ -33,9 +34,11 @@ import org.springframework.web.bind.annotation.RestController;
 class InternalTenantController {
 
     private final TenantService tenantService;
+    private final BranchProvisioningService branchProvisioningService;
 
-    InternalTenantController(TenantService tenantService) {
+    InternalTenantController(TenantService tenantService, BranchProvisioningService branchProvisioningService) {
         this.tenantService = tenantService;
+        this.branchProvisioningService = branchProvisioningService;
     }
 
     @PostMapping
@@ -47,7 +50,7 @@ class InternalTenantController {
     @PostMapping("/{businessId}/branches")
     ResponseEntity<BranchResponse> createBranch(
             @PathVariable UUID businessId, @Valid @RequestBody CreateBranchRequest request) {
-        Branch branch = tenantService.createBranch(
+        Branch branch = branchProvisioningService.createBranchWithDefaultCatalog(
                 businessId, request.name(), request.orderingEnabledOrDefault(), request.address(), request.deliveryModelOrDefault(),
                 null);
         return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(branch));
@@ -92,7 +95,7 @@ class InternalTenantController {
     }
 
     private TableResponse toResponse(RestaurantTable table) {
-        return new TableResponse(table.getId(), table.getBusinessId(), table.getBranchId(), table.getLabel());
+        return new TableResponse(table.getId(), table.getBusinessId(), table.getBranchId(), table.getLabel(), table.isActive());
     }
 
     private QrTokenResponse toResponse(TableQrToken token) {

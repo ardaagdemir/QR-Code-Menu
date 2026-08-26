@@ -45,7 +45,11 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   if (response.status === 204) {
     return undefined as T;
   }
-  return response.json();
+  const text = await response.text();
+  if (!text) {
+    return undefined as T;
+  }
+  return JSON.parse(text);
 }
 
 export type StaffBranchSummary = {
@@ -342,6 +346,7 @@ export type StaffTable = {
   businessId: string;
   branchId: string;
   label: string;
+  active: boolean;
 };
 
 export async function listTables(): Promise<StaffTable[]> {
@@ -360,6 +365,21 @@ export async function renameTable(tableId: string, label: string): Promise<Staff
     method: "PATCH",
     body: JSON.stringify({ label }),
   });
+}
+
+/** Hard-delete: backend rejects with 409 if the table has any TableVisit history - use archiveTable instead. */
+export async function deleteTable(tableId: string): Promise<void> {
+  await apiFetch(`/api/staff/tables/${encodeURIComponent(tableId)}`, { method: "DELETE" });
+}
+
+/** Archive: backend rejects with 409 if the table has an active visit or order in progress. */
+export async function archiveTable(tableId: string): Promise<StaffTable> {
+  return apiFetch(`/api/staff/tables/${encodeURIComponent(tableId)}/archive`, { method: "POST" });
+}
+
+/** Reactivate: never auto-generates a QR - call regenerateQrToken afterwards if a working QR is needed. */
+export async function reactivateTable(tableId: string): Promise<StaffTable> {
+  return apiFetch(`/api/staff/tables/${encodeURIComponent(tableId)}/reactivate`, { method: "POST" });
 }
 
 export type QrToken = {
@@ -408,6 +428,26 @@ export async function listMenuCategories(): Promise<MenuCategoryAdmin[]> {
 
 export async function createMenuCategory(name: string): Promise<MenuCategoryAdmin> {
   return apiFetch("/api/staff/menu-categories", { method: "POST", body: JSON.stringify({ name }) });
+}
+
+export async function renameMenuCategory(categoryId: string, name: string): Promise<MenuCategoryAdmin> {
+  return apiFetch(`/api/staff/menu-categories/${encodeURIComponent(categoryId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ name }),
+  });
+}
+
+/** orderedIds must be exactly the business's current category ids - the backend rejects duplicates/missing/foreign ids. */
+export async function reorderMenuCategories(orderedIds: string[]): Promise<MenuCategoryAdmin[]> {
+  return apiFetch("/api/staff/menu-categories/reorder", {
+    method: "PATCH",
+    body: JSON.stringify({ orderedIds }),
+  });
+}
+
+/** 409 (ApiError.status) if the category still has products - caller should show that as an inline conflict, not a generic failure. */
+export async function deleteMenuCategory(categoryId: string): Promise<void> {
+  await apiFetch(`/api/staff/menu-categories/${encodeURIComponent(categoryId)}`, { method: "DELETE" });
 }
 
 export const ALLERGENS = [
@@ -484,6 +524,108 @@ export async function updateProductDetails(productId: string, input: UpdateProdu
   });
 }
 
+/** orderedIds must be exactly the category's current product ids. */
+export async function reorderProducts(categoryId: string, orderedIds: string[]): Promise<ProductAdmin[]> {
+  return apiFetch(`/api/staff/menu-categories/${encodeURIComponent(categoryId)}/products/reorder`, {
+    method: "PATCH",
+    body: JSON.stringify({ orderedIds }),
+  });
+}
+
+/** Hard delete - cascades the product's own option groups/options and every branch's opt-in row (backend V36). */
+export async function deleteProduct(productId: string): Promise<void> {
+  await apiFetch(`/api/staff/products/${encodeURIComponent(productId)}`, { method: "DELETE" });
+}
+
+export type OptionGroupAdmin = {
+  id: string;
+  businessId: string;
+  productId: string;
+  name: string;
+  selectionType: "SINGLE" | "MULTIPLE";
+  displayOrder: number;
+};
+
+export async function listOptionGroups(productId: string): Promise<OptionGroupAdmin[]> {
+  return apiFetch(`/api/staff/products/${encodeURIComponent(productId)}/option-groups`);
+}
+
+export async function createOptionGroup(
+  productId: string,
+  input: { name: string; selectionType: "SINGLE" | "MULTIPLE" },
+): Promise<OptionGroupAdmin> {
+  return apiFetch(`/api/staff/products/${encodeURIComponent(productId)}/option-groups`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateOptionGroup(
+  optionGroupId: string,
+  input: { name: string; selectionType: "SINGLE" | "MULTIPLE" },
+): Promise<OptionGroupAdmin> {
+  return apiFetch(`/api/staff/option-groups/${encodeURIComponent(optionGroupId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+/** orderedIds must be exactly the product's current option-group ids. */
+export async function reorderOptionGroups(productId: string, orderedIds: string[]): Promise<OptionGroupAdmin[]> {
+  return apiFetch(`/api/staff/products/${encodeURIComponent(productId)}/option-groups/reorder`, {
+    method: "PATCH",
+    body: JSON.stringify({ orderedIds }),
+  });
+}
+
+/** Hard delete - cascades this group's own options (backend V36). */
+export async function deleteOptionGroup(optionGroupId: string): Promise<void> {
+  await apiFetch(`/api/staff/option-groups/${encodeURIComponent(optionGroupId)}`, { method: "DELETE" });
+}
+
+export type OptionAdmin = {
+  id: string;
+  businessId: string;
+  optionGroupId: string;
+  name: string;
+  priceDeltaMinorUnits: number;
+  displayOrder: number;
+};
+
+export async function listOptions(optionGroupId: string): Promise<OptionAdmin[]> {
+  return apiFetch(`/api/staff/option-groups/${encodeURIComponent(optionGroupId)}/options`);
+}
+
+export async function createOption(
+  productId: string,
+  optionGroupId: string,
+  input: { name: string; priceDeltaMinorUnits: number },
+): Promise<OptionAdmin> {
+  return apiFetch(
+    `/api/staff/products/${encodeURIComponent(productId)}/option-groups/${encodeURIComponent(optionGroupId)}/options`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+}
+
+export async function updateOption(optionId: string, input: { name: string; priceDeltaMinorUnits: number }): Promise<OptionAdmin> {
+  return apiFetch(`/api/staff/options/${encodeURIComponent(optionId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+/** orderedIds must be exactly the group's current option ids. */
+export async function reorderOptions(optionGroupId: string, orderedIds: string[]): Promise<OptionAdmin[]> {
+  return apiFetch(`/api/staff/option-groups/${encodeURIComponent(optionGroupId)}/options/reorder`, {
+    method: "PATCH",
+    body: JSON.stringify({ orderedIds }),
+  });
+}
+
+export async function deleteOption(optionId: string): Promise<void> {
+  await apiFetch(`/api/staff/options/${encodeURIComponent(optionId)}`, { method: "DELETE" });
+}
+
 /** Gap-analysis #15: upload-first, then attach the returned URL through create/update as before - no schema change. */
 async function uploadMedia(path: string, file: File): Promise<string> {
   const formData = new FormData();
@@ -550,6 +692,25 @@ export async function deactivateStaffUser(staffUserId: string): Promise<void> {
   await apiFetch(`/api/staff/staff-users/${encodeURIComponent(staffUserId)}/deactivate`, { method: "POST" });
 }
 
+export async function activateStaffUser(staffUserId: string): Promise<void> {
+  await apiFetch(`/api/staff/staff-users/${encodeURIComponent(staffUserId)}/activate`, { method: "POST" });
+}
+
+export async function changeStaffUserRole(staffUserId: string, role: StaffRole): Promise<void> {
+  await apiFetch(`/api/staff/staff-users/${encodeURIComponent(staffUserId)}/role`, {
+    method: "POST",
+    body: JSON.stringify({ role }),
+  });
+}
+
+/** Trimmed/lowercased and checked for uniqueness on the backend (ApiError.status 409 if taken). */
+export async function updateStaffUserEmail(staffUserId: string, email: string): Promise<void> {
+  await apiFetch(`/api/staff/staff-users/${encodeURIComponent(staffUserId)}/email`, {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
 /** Backend's PasswordPolicy.MIN_LENGTH - kept as one constant so create/change/reset forms never drift. */
 export const MIN_PASSWORD_LENGTH = 8;
 
@@ -581,6 +742,7 @@ export async function resetStaffUserPassword(
 export type AuditEntry = {
   id: string;
   actorStaffUserId: string | null;
+  actorAccountDeleted: boolean;
   entityType: string;
   entityId: string;
   action: string;
@@ -639,6 +801,13 @@ export async function updateBusinessSettings(defaultCurrency: string, defaultTim
   });
 }
 
+export async function updateBusinessName(name: string): Promise<Business> {
+  return apiFetch("/api/staff/business/name", {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+}
+
 export type BusinessContact = {
   id: string;
   name: string;
@@ -647,7 +816,6 @@ export type BusinessContact = {
   whatsappEnabled: boolean;
   dailyReportRecipient: boolean;
   monthlyReportRecipient: boolean;
-  active: boolean;
 };
 
 export async function listBusinessContacts(): Promise<BusinessContact[]> {
@@ -669,12 +837,16 @@ export async function createBusinessContact(input: BusinessContactInput): Promis
 
 export async function updateBusinessContact(
   contactId: string,
-  input: BusinessContactInput & { active: boolean },
+  input: BusinessContactInput,
 ): Promise<BusinessContact> {
   return apiFetch(`/api/staff/business/contacts/${encodeURIComponent(contactId)}`, {
     method: "PUT",
     body: JSON.stringify(input),
   });
+}
+
+export async function deleteBusinessContact(contactId: string): Promise<void> {
+  return apiFetch(`/api/staff/business/contacts/${encodeURIComponent(contactId)}`, { method: "DELETE" });
 }
 
 // ---------------------------------------------------------------------------
@@ -890,8 +1062,19 @@ export async function createExpenseCategory(name: string): Promise<ExpenseCatego
   return apiFetch("/api/staff/expense-categories", { method: "POST", body: JSON.stringify({ name }) });
 }
 
+export async function updateExpenseCategory(categoryId: string, name: string): Promise<ExpenseCategory> {
+  return apiFetch(`/api/staff/expense-categories/${encodeURIComponent(categoryId)}`, {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+}
+
 export async function deactivateExpenseCategory(categoryId: string): Promise<void> {
   await apiFetch(`/api/staff/expense-categories/${encodeURIComponent(categoryId)}/deactivate`, { method: "POST" });
+}
+
+export async function activateExpenseCategory(categoryId: string): Promise<void> {
+  await apiFetch(`/api/staff/expense-categories/${encodeURIComponent(categoryId)}/activate`, { method: "POST" });
 }
 
 export type Expense = {
@@ -1038,6 +1221,13 @@ export async function getPlatformBusiness(businessId: string): Promise<Business>
   return apiFetch(`/api/platform-admin/businesses/${encodeURIComponent(businessId)}`);
 }
 
+export async function updatePlatformBusinessName(businessId: string, name: string): Promise<Business> {
+  return apiFetch(`/api/platform-admin/businesses/${encodeURIComponent(businessId)}/name`, {
+    method: "PUT",
+    body: JSON.stringify({ name }),
+  });
+}
+
 export async function activatePlatformBusiness(businessId: string): Promise<Business> {
   return apiFetch(`/api/platform-admin/businesses/${encodeURIComponent(businessId)}/activate`, { method: "POST" });
 }
@@ -1126,5 +1316,13 @@ export async function resetPlatformStaffUserPassword(
   await apiFetch(
     `/api/platform-admin/businesses/${encodeURIComponent(businessId)}/staff-users/${encodeURIComponent(staffUserId)}/reset-password`,
     { method: "POST", body: JSON.stringify({ newPassword, confirmNewPassword }) },
+  );
+}
+
+/** Irreversible - removes the StaffUser row entirely, unlike deactivatePlatformStaffUser. */
+export async function hardDeletePlatformStaffUser(businessId: string, staffUserId: string): Promise<void> {
+  await apiFetch(
+    `/api/platform-admin/businesses/${encodeURIComponent(businessId)}/staff-users/${encodeURIComponent(staffUserId)}`,
+    { method: "DELETE" },
   );
 }

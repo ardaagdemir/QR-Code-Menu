@@ -7,6 +7,7 @@ import com.qrmenu.customersession.repository.TableVisitRepository;
 import com.qrmenu.tenant.TableReference;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -152,5 +153,29 @@ public class CustomerSessionService {
     @Transactional(readOnly = true)
     public long countVisitsWithGuestCountBetween(UUID branchId, Instant from, Instant to) {
         return tableVisitRepository.countByBranchIdAndStartedAtBetweenAndGuestCountIsNotNull(branchId, from, to);
+    }
+
+    /** Masa yaşam döngüsü: TenantService.deleteTable'ın hard-delete/archive kararı için - hiç geçmişi olmayan masa hard-delete edilebilir. */
+    @Transactional(readOnly = true)
+    public boolean hasVisitHistoryForTable(UUID tableId) {
+        return tableVisitRepository.existsByTableId(tableId);
+    }
+
+    /**
+     * Masa yaşam döngüsü: OrderingService.archiveTable'ın archive gate'i - hâlâ açık
+     * (closedAt IS NULL) ve iki expiry saatinden hiçbirini geçmemiş bir ziyaret varsa
+     * masa arşivlenemez (Servis sırasında masayı kapatıp müşteriyi yarım bırakmama).
+     */
+    @Transactional(readOnly = true)
+    public boolean hasActiveVisitForTable(UUID tableId) {
+        Instant now = Instant.now();
+        return tableVisitRepository.findAllByTableIdAndClosedAtIsNull(tableId).stream()
+                .anyMatch(visit -> !visit.isExpired(now, INACTIVITY_TIMEOUT, ABSOLUTE_LIFETIME));
+    }
+
+    /** Masa yaşam döngüsü: OrderingService.hasActiveOrderForTable'ın CustomerOrder.tableVisitId join'i için. */
+    @Transactional(readOnly = true)
+    public List<UUID> findTableVisitIdsForTable(UUID tableId) {
+        return tableVisitRepository.findIdsByTableId(tableId);
     }
 }

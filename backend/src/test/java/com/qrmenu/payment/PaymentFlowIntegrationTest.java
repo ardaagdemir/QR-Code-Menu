@@ -4,7 +4,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.qrmenu.payment.repository.PaymentRepository;
 import com.qrmenu.shared.outbox.OutboxEvent;
 import com.qrmenu.shared.outbox.OutboxEventRepository;
+import com.qrmenu.staffaccess.StaffCookieSupport;
 import com.qrmenu.support.AbstractIntegrationTest;
+import com.qrmenu.support.StaffFixtures;
 import com.qrmenu.support.TenantFixtures;
 import com.qrmenu.support.TenantFixtures.CheckedInVisit;
 import java.nio.charset.StandardCharsets;
@@ -25,6 +27,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 import static com.qrmenu.support.AbstractIntegrationTest.TEST_ADMIN_TOKEN;
 import static com.qrmenu.support.AbstractIntegrationTest.TEST_PAYMENT_WEBHOOK_SECRET;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -74,6 +77,75 @@ class PaymentFlowIntegrationTest extends AbstractIntegrationTest {
         assertThat(outboxEvents).hasSize(1);
         assertThat(outboxEvents.get(0).getEventType()).isEqualTo("OrderPaid");
         assertThat(outboxEvents.get(0).getPayload()).contains(orderId);
+    }
+
+    /**
+     * Menü yaşam döngüsü: a product hard-deleted by staff while it's already sitting in
+     * a customer's DRAFT cart must not be payable afterwards - beginPaymentForDraftOrder
+     * now re-checks every item (OrderingService.requireEveryItemStillOrderable) instead
+     * of trusting the add-to-cart-time snapshot all the way through to payment.
+     */
+    @Test
+    void startingPaymentForACartContainingAHardDeletedProductIsRejected() throws Exception {
+        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Deleted Product Business");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
+        String tableId = TenantFixtures.createTable(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, "Masa 1");
+        String qrToken = TenantFixtures.createQrToken(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, tableId);
+        String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Kategori");
+        String productId =
+                TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Ürün", 9000, 10);
+        TenantFixtures.upsertBranchProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, productId, "AVAILABLE", null);
+        CheckedInVisit visit = TenantFixtures.checkIn(mockMvc, objectMapper, qrToken);
+        mockMvc.perform(withCookie(post("/api/table-visits/{tableVisitId}/cart/items", visit.tableVisitId()), visit)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"productId\":\"" + productId + "\",\"quantity\":1}"))
+                .andExpect(status().isCreated());
+
+        String staffCookie = StaffFixtures.bootstrapBusinessAdminAndLogin(
+                mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "deleted-product-admin@example.com");
+        mockMvc.perform(delete("/api/staff/products/{productId}", productId)
+                        .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, staffCookie)))
+                .andExpect(status().isNoContent());
+
+        createPaymentIntent(visit).andExpect(status().isConflict());
+    }
+
+    /**
+     * Menü yaşam döngüsü: an option selected into the cart earlier (e.g. "Büyük boy") may
+     * since have been hard-deleted by staff (option itself, or its whole option group) -
+     * beginPaymentForDraftOrder must reject that too, the same way it already rejects a
+     * hard-deleted product, instead of only re-checking product existence/availability and
+     * letting the stale OrderItemOption snapshot pay for something no longer on the menu.
+     */
+    @Test
+    void startingPaymentForACartContainingAHardDeletedSelectedOptionIsRejected() throws Exception {
+        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Deleted Option Business");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
+        String tableId = TenantFixtures.createTable(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, "Masa 1");
+        String qrToken = TenantFixtures.createQrToken(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, tableId);
+        String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Kategori");
+        String productId =
+                TenantFixtures.createProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, "Kahve", 9000, 10);
+        TenantFixtures.upsertBranchProduct(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, productId, "AVAILABLE", null);
+        String groupId = TenantFixtures.createOptionGroup(
+                mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, productId, "Boyut", "SINGLE");
+        String optionId =
+                TenantFixtures.createOption(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, productId, groupId, "Büyük", 500);
+
+        CheckedInVisit visit = TenantFixtures.checkIn(mockMvc, objectMapper, qrToken);
+        mockMvc.perform(withCookie(post("/api/table-visits/{tableVisitId}/cart/items", visit.tableVisitId()), visit)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"productId\":\"" + productId + "\",\"quantity\":1,\"selectedOptionIds\":[\""
+                                + optionId + "\"]}"))
+                .andExpect(status().isCreated());
+
+        String staffCookie = StaffFixtures.bootstrapBusinessAdminAndLogin(
+                mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "deleted-option-admin@example.com");
+        mockMvc.perform(delete("/api/staff/options/{optionId}", optionId)
+                        .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, staffCookie)))
+                .andExpect(status().isNoContent());
+
+        createPaymentIntent(visit).andExpect(status().isConflict());
     }
 
     @Test

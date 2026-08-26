@@ -11,6 +11,7 @@ import org.springframework.mock.web.MockCookie;
 import static com.qrmenu.support.AbstractIntegrationTest.TEST_ADMIN_TOKEN;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -57,6 +58,40 @@ class PlatformAdminFlowIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void platformAdminCanRenameAnyBusinessIncludingOnesThatAreNotItsOwn() throws Exception {
+        String homeBusinessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "PA Rename Home");
+        String otherBusinessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Eski İsim");
+        MockCookie platformAdminCookie = new MockCookie(
+                StaffCookieSupport.COOKIE_NAME,
+                StaffFixtures.bootstrapPlatformAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, homeBusinessId, "pa-rename-other@example.com"));
+
+        mockMvc.perform(put("/api/platform-admin/businesses/{businessId}/name", otherBusinessId)
+                        .cookie(platformAdminCookie)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"  Yeni İsim  \"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("Yeni İsim"));
+
+        mockMvc.perform(get("/api/platform-admin/businesses/{businessId}", otherBusinessId).cookie(platformAdminCookie))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("Yeni İsim"));
+    }
+
+    @Test
+    void blankBusinessNameIsRejectedOnThePlatformAdminPanel() throws Exception {
+        String homeBusinessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "PA Blank Rename Home");
+        MockCookie platformAdminCookie = new MockCookie(
+                StaffCookieSupport.COOKIE_NAME,
+                StaffFixtures.bootstrapPlatformAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, homeBusinessId, "pa-blank-rename@example.com"));
+
+        mockMvc.perform(put("/api/platform-admin/businesses/{businessId}/name", homeBusinessId)
+                        .cookie(platformAdminCookie)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"   \"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void platformAdminIsNotScopedToItsOwnBusinessAndCanManageAnotherBusinessesBranchesAndStaff() throws Exception {
         String homeBusinessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Platform Admin Home");
         String otherBusinessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Some Other Business");
@@ -94,6 +129,16 @@ class PlatformAdminFlowIntegrationTest extends AbstractIntegrationTest {
                         .getContentAsString())
                 .get("id")
                 .asText();
+
+        // A second active BUSINESS_ADMIN so demoting staffUserId below doesn't trip the
+        // last-active-BUSINESS_ADMIN guard (changeStaffUserRole enforces it the same way
+        // deactivate does - a business may never end up with zero active BUSINESS_ADMINs).
+        mockMvc.perform(post("/api/platform-admin/businesses/{businessId}/staff-users", otherBusinessId)
+                        .cookie(platformAdminCookie)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"pa-created-admin-2@example.com\",\"password\":\"" + StaffFixtures.DEFAULT_PASSWORD
+                                + "\",\"role\":\"BUSINESS_ADMIN\",\"branchIds\":[\"" + branchId + "\"]}"))
+                .andExpect(status().isCreated());
 
         // Role change, deactivate/activate, password reset all round-trip against the real login endpoint.
         mockMvc.perform(post(
@@ -254,6 +299,11 @@ class PlatformAdminFlowIntegrationTest extends AbstractIntegrationTest {
                 StaffFixtures.bootstrapBusinessAdminAndLogin(mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "regular-admin@example.com"));
 
         mockMvc.perform(get("/api/platform-admin/businesses").cookie(businessAdminCookie)).andExpect(status().isForbidden());
+        mockMvc.perform(put("/api/platform-admin/businesses/{businessId}/name", businessId)
+                        .cookie(businessAdminCookie)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Sneaky Rename\"}"))
+                .andExpect(status().isForbidden());
     }
 
     @Test

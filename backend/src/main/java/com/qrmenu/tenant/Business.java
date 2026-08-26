@@ -74,6 +74,11 @@ public class Business {
         this.updatedAt = Instant.now();
     }
 
+    public void rename(String name) {
+        this.name = validateName(name);
+        this.updatedAt = Instant.now();
+    }
+
     public void activate() {
         this.active = true;
         this.updatedAt = Instant.now();
@@ -82,6 +87,14 @@ public class Business {
     public void deactivate() {
         this.active = false;
         this.updatedAt = Instant.now();
+    }
+
+    private static String validateName(String name) {
+        String trimmed = name == null ? null : name.trim();
+        if (trimmed == null || trimmed.isEmpty()) {
+            throw new IllegalArgumentException("Business name must not be blank");
+        }
+        return trimmed;
     }
 
     private static String validateCurrency(String currency) {

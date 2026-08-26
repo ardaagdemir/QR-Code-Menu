@@ -3,7 +3,7 @@
 import { useEffect, useId, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, Eye, EyeOff, KeyRound, Pencil, Plus, Store, UserPlus, Users } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, KeyRound, Pencil, Plus, Store, Trash2, UserPlus, Users } from "lucide-react";
 import {
   activatePlatformBranch,
   activatePlatformBusiness,
@@ -16,10 +16,13 @@ import {
   deactivatePlatformBusiness,
   deactivatePlatformStaffUser,
   getPlatformBusiness,
+  hardDeletePlatformStaffUser,
   listPlatformBranches,
   listPlatformStaffUsers,
+  me,
   resetPlatformStaffUserPassword,
   updatePlatformBranchInfo,
+  updatePlatformBusinessName,
   MIN_PASSWORD_LENGTH,
   type Branch,
   type Business,
@@ -58,16 +61,24 @@ export default function PlatformAdminBusinessDetailPage() {
   const { showToast } = useToast();
   const branchDialogTitleId = useId();
   const branchEditDialogTitleId = useId();
+  const businessNameDialogTitleId = useId();
   const staffDialogTitleId = useId();
   const roleDialogTitleId = useId();
   const resetDialogTitleId = useId();
+  const hardDeleteDialogTitleId = useId();
 
   const [business, setBusiness] = useState<Business | null>(null);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [staffUsers, setStaffUsers] = useState<StaffUser[]>([]);
+  const [currentStaffUserId, setCurrentStaffUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [togglingBusiness, setTogglingBusiness] = useState(false);
+
+  const [editingBusinessName, setEditingBusinessName] = useState(false);
+  const [businessNameInput, setBusinessNameInput] = useState("");
+  const [savingBusinessName, setSavingBusinessName] = useState(false);
+  const [businessNameFormError, setBusinessNameFormError] = useState<string | null>(null);
 
   const [branchDialogOpen, setBranchDialogOpen] = useState(false);
   const [branchName, setBranchName] = useState("");
@@ -104,12 +115,17 @@ export default function PlatformAdminBusinessDetailPage() {
   const [resetting, setResetting] = useState(false);
   const [resetFormError, setResetFormError] = useState<string | null>(null);
 
+  const [hardDeleteTarget, setHardDeleteTarget] = useState<StaffUser | null>(null);
+  const [hardDeleteAcknowledged, setHardDeleteAcknowledged] = useState(false);
+  const [hardDeleting, setHardDeleting] = useState(false);
+
   function load() {
-    Promise.all([getPlatformBusiness(businessId), listPlatformBranches(businessId), listPlatformStaffUsers(businessId)])
-      .then(([businessData, branchList, staffList]) => {
+    Promise.all([getPlatformBusiness(businessId), listPlatformBranches(businessId), listPlatformStaffUsers(businessId), me()])
+      .then(([businessData, branchList, staffList, currentContext]) => {
         setBusiness(businessData);
         setBranches(branchList);
         setStaffUsers(staffList);
+        setCurrentStaffUserId(currentContext.staffUserId);
         setError(null);
       })
       .catch(() => setError("İşletme detayı yüklenemedi."))
@@ -129,6 +145,34 @@ export default function PlatformAdminBusinessDetailPage() {
       showToast("İşletme durumu güncellenemedi.", "error");
     } finally {
       setTogglingBusiness(false);
+    }
+  }
+
+  function openEditBusinessNameDialog() {
+    if (!business) return;
+    setBusinessNameFormError(null);
+    setBusinessNameInput(business.name);
+    setEditingBusinessName(true);
+  }
+
+  async function handleSaveBusinessName(event: React.FormEvent) {
+    event.preventDefault();
+    const trimmed = businessNameInput.trim();
+    if (!trimmed) {
+      setBusinessNameFormError("İşletme adı girin.");
+      return;
+    }
+    setSavingBusinessName(true);
+    setBusinessNameFormError(null);
+    try {
+      const updated = await updatePlatformBusinessName(businessId, trimmed);
+      setBusiness(updated);
+      setEditingBusinessName(false);
+      showToast("İşletme adı güncellendi.", "success");
+    } catch {
+      setBusinessNameFormError("İşletme adı güncellenemedi.");
+    } finally {
+      setSavingBusinessName(false);
     }
   }
 
@@ -304,6 +348,26 @@ export default function PlatformAdminBusinessDetailPage() {
     }
   }
 
+  function openHardDeleteDialog(user: StaffUser) {
+    setHardDeleteAcknowledged(false);
+    setHardDeleteTarget(user);
+  }
+
+  async function handleConfirmHardDelete() {
+    if (!hardDeleteTarget || !hardDeleteAcknowledged) return;
+    setHardDeleting(true);
+    try {
+      await hardDeletePlatformStaffUser(businessId, hardDeleteTarget.id);
+      setHardDeleteTarget(null);
+      load();
+      showToast("Kullanıcı kalıcı olarak silindi.", "success");
+    } catch {
+      showToast("Kullanıcı silinemedi.", "error");
+    } finally {
+      setHardDeleting(false);
+    }
+  }
+
   if (loading) {
     return (
       <AppShell>
@@ -337,9 +401,14 @@ export default function PlatformAdminBusinessDetailPage() {
           title={business.name}
           description={`${business.defaultCurrency} · ${business.defaultTimeZone}`}
           actions={
-            <Button variant={business.active ? "secondary" : "primary"} disabled={togglingBusiness} onClick={handleToggleBusinessActive}>
-              {business.active ? "Pasifleştir" : "Aktifleştir"}
-            </Button>
+            <>
+              <Button variant="ghost" onClick={openEditBusinessNameDialog}>
+                <Pencil size={15} aria-hidden="true" /> Düzenle
+              </Button>
+              <Button variant={business.active ? "secondary" : "primary"} disabled={togglingBusiness} onClick={handleToggleBusinessActive}>
+                {business.active ? "Pasifleştir" : "Aktifleştir"}
+              </Button>
+            </>
           }
         />
 
@@ -487,6 +556,15 @@ export default function PlatformAdminBusinessDetailPage() {
                             >
                               {user.active ? "Devre Dışı Bırak" : "Aktifleştir"}
                             </Button>
+                            <Button
+                              className={pageStyles.dangerAction}
+                              size="md"
+                              variant="ghost"
+                              disabled={user.id === currentStaffUserId}
+                              onClick={() => openHardDeleteDialog(user)}
+                            >
+                              <Trash2 size={15} aria-hidden="true" /> Kalıcı Olarak Sil
+                            </Button>
                           </div>
                         )}
                       </td>
@@ -498,6 +576,27 @@ export default function PlatformAdminBusinessDetailPage() {
           </div>
         </section>
       </main>
+
+      {editingBusinessName ? (
+        <Dialog onClose={() => setEditingBusinessName(false)} labelledBy={businessNameDialogTitleId}>
+          <h2 id={businessNameDialogTitleId} className={styles.sectionTitle}>
+            İşletme Adını Düzenle
+          </h2>
+          <form className={styles.section} onSubmit={handleSaveBusinessName}>
+            <FormField label="İşletme Adı" required>
+              {(controlProps) => (
+                <Input {...controlProps} value={businessNameInput} onChange={(event) => setBusinessNameInput(event.target.value)} required />
+              )}
+            </FormField>
+
+            {businessNameFormError ? <ErrorState message={businessNameFormError} /> : null}
+
+            <Button type="submit" disabled={savingBusinessName}>
+              {savingBusinessName ? "Kaydediliyor…" : "Kaydet"}
+            </Button>
+          </form>
+        </Dialog>
+      ) : null}
 
       {branchDialogOpen ? (
         <Dialog onClose={() => setBranchDialogOpen(false)} labelledBy={branchDialogTitleId}>
@@ -684,6 +783,30 @@ export default function PlatformAdminBusinessDetailPage() {
               {resetting ? "Sıfırlanıyor…" : "Şifreyi Sıfırla"}
             </Button>
           </form>
+        </Dialog>
+      ) : null}
+
+      {hardDeleteTarget ? (
+        <Dialog onClose={() => setHardDeleteTarget(null)} labelledBy={hardDeleteDialogTitleId}>
+          <h2 id={hardDeleteDialogTitleId} className={styles.sectionTitle}>
+            Kullanıcıyı Kalıcı Olarak Sil
+          </h2>
+          <div className={styles.section}>
+            <p className={styles.rowMeta}>
+              {`"${hardDeleteTarget.email}" kullanıcısı kalıcı olarak silinecek, geri alınamaz. Geçmiş sipariş/gider/denetim kayıtları korunur ancak bu kullanıcıya olan referansları kaldırılır.`}
+            </p>
+            <label className={pageStyles.checkboxRow}>
+              <input
+                type="checkbox"
+                checked={hardDeleteAcknowledged}
+                onChange={(event) => setHardDeleteAcknowledged(event.target.checked)}
+              />
+              Bu işlemin geri alınamaz olduğunu anlıyorum
+            </label>
+            <Button variant="danger" disabled={!hardDeleteAcknowledged || hardDeleting} onClick={handleConfirmHardDelete}>
+              {hardDeleting ? "Siliniyor…" : "Kalıcı Olarak Sil"}
+            </Button>
+          </div>
         </Dialog>
       ) : null}
     </AppShell>

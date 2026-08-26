@@ -13,8 +13,12 @@ import java.util.UUID;
  * Section 3: "Kritik yönetimsel aksiyonların (menü/BranchProduct değişikliği, iade, QR
  * revoke, ordering-enabled toggle vb.) business_id ile birlikte audit log'a yazılması."
  * A plain, append-only record - no update/delete mutators, entries are immutable once
- * written. actorStaffUserId is nullable for the rare system-initiated entry with no
- * human actor.
+ * written, with one controlled exception: StaffAuthService.hardDeleteStaffUserAsPlatformAdmin
+ * bulk-updates actorStaffUserId to null (via AuditLogEntryRepository) for every entry the
+ * deleted account authored, setting actorAccountDeleted so that case stays distinguishable
+ * from the pre-existing "no human actor" one below. actorStaffUserId is nullable both for
+ * that hard-delete case and for the rare system-initiated entry with no human actor to begin
+ * with (e.g. /internal bootstrap) - actorAccountDeleted is what tells the two apart.
  */
 @Entity
 @Table(name = "audit_log_entry")
@@ -29,6 +33,9 @@ public class AuditLogEntry {
 
     @Column(name = "actor_staff_user_id")
     private UUID actorStaffUserId;
+
+    @Column(name = "actor_account_deleted", nullable = false)
+    private boolean actorAccountDeleted;
 
     @Column(name = "branch_id", insertable = false, updatable = false)
     private UUID branchId;
@@ -72,6 +79,10 @@ public class AuditLogEntry {
 
     public UUID getActorStaffUserId() {
         return actorStaffUserId;
+    }
+
+    public boolean isActorAccountDeleted() {
+        return actorAccountDeleted;
     }
 
     public UUID getBranchId() {

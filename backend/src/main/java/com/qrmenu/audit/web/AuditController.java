@@ -37,6 +37,13 @@ public class AuditController {
 
     private static AuditEntryResponse toResponse(AuditEntryView view) {
         return new AuditEntryResponse(
-                view.id(), view.actorStaffUserId(), view.entityType(), view.entityId(), view.action(), view.details(), view.createdAt());
+                view.id(),
+                view.actorStaffUserId(),
+                view.actorAccountDeleted(),
+                view.entityType(),
+                view.entityId(),
+                view.action(),
+                view.details(),
+                view.createdAt());
     }
 }

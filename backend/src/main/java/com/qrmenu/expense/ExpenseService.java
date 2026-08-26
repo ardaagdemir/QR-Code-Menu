@@ -1,6 +1,7 @@
 package com.qrmenu.expense;
 
 import com.qrmenu.audit.AuditService;
+import com.qrmenu.common.web.DuplicateExpenseCategoryNameException;
 import com.qrmenu.common.web.ResourceNotFoundException;
 import com.qrmenu.common.web.StaffPermissionDeniedException;
 import com.qrmenu.expense.repository.ExpenseCategoryRepository;
@@ -16,6 +17,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -49,14 +51,42 @@ public class ExpenseService {
 
     @Transactional
     public ExpenseCategory createCategory(StaffContext context, String name) {
-        ExpenseCategory category = categoryRepository.save(new ExpenseCategory(context.businessId(), name));
-        auditService.record(context.businessId(), context.staffUserId(), "ExpenseCategory", category.getId(), "CREATED", Map.of("name", name));
+        String normalizedName = normalizeCategoryName(name);
+        requireCategoryNameNotTaken(context.businessId(), normalizedName, null);
+        ExpenseCategory category =
+                saveCategoryWithDuplicateHandling(new ExpenseCategory(context.businessId(), normalizedName));
+        auditService.record(context.businessId(), context.staffUserId(), "ExpenseCategory", category.getId(), "CREATED", Map.of("name", normalizedName));
         return category;
     }
 
     @Transactional(readOnly = true)
     public List<ExpenseCategory> listCategories(UUID businessId) {
         return categoryRepository.findAllByBusinessIdOrderByNameAsc(businessId);
+    }
+
+    /**
+     * Renaming only ever changes the ExpenseCategory row's own name column; Expense and
+     * RecurringExpenseTemplate rows reference it by categoryId, so past records keep
+     * resolving to the (now-renamed) category rather than freezing an old label.
+     */
+    @Transactional
+    public ExpenseCategory renameCategory(StaffContext context, UUID categoryId, String name) {
+        ExpenseCategory category = categoryRepository
+                .findByIdAndBusinessId(categoryId, context.businessId())
+                .orElseThrow(() -> new ResourceNotFoundException("Expense category not found: " + categoryId));
+        String normalizedName = normalizeCategoryName(name);
+        requireCategoryNameNotTaken(context.businessId(), normalizedName, categoryId);
+        String previousName = category.getName();
+        category.rename(normalizedName);
+        ExpenseCategory saved = saveCategoryWithDuplicateHandling(category);
+        auditService.record(
+                context.businessId(),
+                context.staffUserId(),
+                "ExpenseCategory",
+                categoryId,
+                "RENAMED",
+                Map.of("previousName", previousName, "name", normalizedName));
+        return saved;
     }
 
     @Transactional
@@ -70,6 +100,16 @@ public class ExpenseService {
     }
 
     @Transactional
+    public void activateCategory(StaffContext context, UUID categoryId) {
+        ExpenseCategory category = categoryRepository
+                .findByIdAndBusinessId(categoryId, context.businessId())
+                .orElseThrow(() -> new ResourceNotFoundException("Expense category not found: " + categoryId));
+        category.activate();
+        categoryRepository.save(category);
+        auditService.record(context.businessId(), context.staffUserId(), "ExpenseCategory", categoryId, "ACTIVATED", Map.of());
+    }
+
+    @Transactional
     public Expense createExpense(
             StaffContext context,
             UUID branchId,
@@ -80,7 +120,7 @@ public class ExpenseService {
             String description,
             String receiptImageUrl) {
         requireCreateAccess(context, branchId);
-        requireCategory(context.businessId(), categoryId);
+        requireActiveCategory(context.businessId(), categoryId);
         Expense expense = expenseRepository.save(new Expense(
                 context.businessId(),
                 branchId,
@@ -111,7 +151,11 @@ public class ExpenseService {
         if (expense.isCancelled()) {
             throw new IllegalStateException("Cancelled expenses cannot be edited: " + expenseId);
         }
-        requireCategory(context.businessId(), categoryId);
+        if (categoryId.equals(expense.getCategoryId())) {
+            requireCategory(context.businessId(), categoryId);
+        } else {
+            requireActiveCategory(context.businessId(), categoryId);
+        }
         expense.applyManualEdit(categoryId, amountMinorUnits, incurredAt, vendor, description, receiptImageUrl);
         return expenseRepository.save(expense);
     }
@@ -207,7 +251,7 @@ public class ExpenseService {
             LocalDate startDate,
             LocalDate endDate) {
         requireCreateAccess(context, branchId);
-        requireCategory(context.businessId(), categoryId);
+        requireActiveCategory(context.businessId(), categoryId);
         RecurringExpenseTemplate template = templateRepository.save(new RecurringExpenseTemplate(
                 context.businessId(), branchId, categoryId, amountMinorUnits, vendor, description, dayOfMonth, startDate, endDate));
         LocalDate today = LocalDate.now(ZoneOffset.UTC);
@@ -236,7 +280,11 @@ public class ExpenseService {
             LocalDate startDate,
             LocalDate endDate) {
         RecurringExpenseTemplate template = requireTemplateForMutation(context, templateId);
-        requireCategory(context.businessId(), categoryId);
+        if (categoryId.equals(template.getCategoryId())) {
+            requireCategory(context.businessId(), categoryId);
+        } else {
+            requireActiveCategory(context.businessId(), categoryId);
+        }
         template.update(categoryId, amountMinorUnits, vendor, description, dayOfMonth, startDate, endDate);
         RecurringExpenseTemplate saved = templateRepository.save(template);
         auditService.record(
@@ -289,10 +337,50 @@ public class ExpenseService {
         }
     }
 
-    private void requireCategory(UUID businessId, UUID categoryId) {
-        categoryRepository
+    private ExpenseCategory requireCategory(UUID businessId, UUID categoryId) {
+        return categoryRepository
                 .findByIdAndBusinessId(categoryId, businessId)
                 .orElseThrow(() -> new ResourceNotFoundException("Expense category not found: " + categoryId));
+    }
+
+    /**
+     * Used wherever a categoryId is being newly assigned (create, or an edit that switches
+     * to a different category) - a deactivated category must not accept new records even
+     * though its past Expense/RecurringExpenseTemplate rows keep referencing it.
+     */
+    private void requireActiveCategory(UUID businessId, UUID categoryId) {
+        if (!requireCategory(businessId, categoryId).isActive()) {
+            throw new IllegalArgumentException("Expense category is inactive: " + categoryId);
+        }
+    }
+
+    private static String normalizeCategoryName(String name) {
+        String trimmed = name == null ? "" : name.trim();
+        if (trimmed.isEmpty()) {
+            throw new IllegalArgumentException("Expense category name must not be blank");
+        }
+        return trimmed;
+    }
+
+    /** App-layer fast-fail so a duplicate returns a clean 409 without ever reaching the DB write -
+     * not a substitute for the DB's uq_expense_category_business_name_lower index
+     * (saveCategoryWithDuplicateHandling), which is what actually closes the race between two
+     * concurrent requests for the same name. */
+    private void requireCategoryNameNotTaken(UUID businessId, String name, UUID excludingCategoryId) {
+        categoryRepository
+                .findByBusinessIdAndNameIgnoreCase(businessId, name)
+                .filter(existing -> excludingCategoryId == null || !existing.getId().equals(excludingCategoryId))
+                .ifPresent(existing -> {
+                    throw new DuplicateExpenseCategoryNameException("Expense category name already in use: " + name);
+                });
+    }
+
+    private ExpenseCategory saveCategoryWithDuplicateHandling(ExpenseCategory category) {
+        try {
+            return categoryRepository.save(category);
+        } catch (DataIntegrityViolationException ex) {
+            throw new DuplicateExpenseCategoryNameException("Expense category name already in use: " + category.getName());
+        }
     }
 
     private Expense requireManualExpense(StaffContext context, UUID expenseId) {

@@ -23,16 +23,17 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * Gap-analysis #11 (product-requirements.md Section 15): auto-dispatch idempotency per
- * (report, contact), manual resend bypassing that guard, ineligible contacts (inactive /
- * opted-out / no email) being skipped, and the REPORT_VIEW permission gate. Uses an
- * in-memory GreenMail SMTP server (registered over spring.mail.host/port) instead of the
- * dev "mailhog" service - no real network call.
+ * (report, contact), manual resend bypassing that guard, ineligible contacts (opted-out /
+ * no email) being skipped, and the REPORT_VIEW permission gate. Uses an in-memory GreenMail
+ * SMTP server (registered over spring.mail.host/port) instead of the dev "mailhog" service -
+ * no real network call.
  */
 class OwnerNotificationFlowIntegrationTest extends AbstractIntegrationTest {
 
@@ -66,7 +67,7 @@ class OwnerNotificationFlowIntegrationTest extends AbstractIntegrationTest {
         String adminCookie =
                 StaffFixtures.bootstrapBusinessAdminAndLogin(
                         mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "notify-admin-1@example.com");
-        createContact(businessId, adminCookie, "owner1@example.com", true, true);
+        createContact(businessId, adminCookie, "owner1@example.com", true);
 
         DailyBranchCloseReport report = dailyCloseService.generateFinal(
                 UUID.fromString(businessId), UUID.fromString(branchId), LocalDate.now(ZoneOffset.UTC));
@@ -93,9 +94,9 @@ class OwnerNotificationFlowIntegrationTest extends AbstractIntegrationTest {
         String adminCookie =
                 StaffFixtures.bootstrapBusinessAdminAndLogin(
                         mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "notify-admin-2@example.com");
-        createContact(businessId, adminCookie, "eligible@example.com", true, true);
-        createContact(businessId, adminCookie, "not-opted-in@example.com", false, true);
-        createContact(businessId, adminCookie, "inactive@example.com", true, false);
+        createContact(businessId, adminCookie, "eligible@example.com", true);
+        createContact(businessId, adminCookie, "not-opted-in@example.com", false);
+        createContact(businessId, adminCookie, "", true);
 
         DailyBranchCloseReport report = dailyCloseService.generateFinal(
                 UUID.fromString(businessId), UUID.fromString(branchId), LocalDate.now(ZoneOffset.UTC));
@@ -112,7 +113,7 @@ class OwnerNotificationFlowIntegrationTest extends AbstractIntegrationTest {
         String adminCookie =
                 StaffFixtures.bootstrapBusinessAdminAndLogin(
                         mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "notify-admin-3@example.com");
-        createContact(businessId, adminCookie, "owner3@example.com", true, true);
+        createContact(businessId, adminCookie, "owner3@example.com", true);
 
         DailyBranchCloseReport report = dailyCloseService.generateFinal(
                 UUID.fromString(businessId), UUID.fromString(branchId), LocalDate.now(ZoneOffset.UTC));
@@ -143,12 +144,66 @@ class OwnerNotificationFlowIntegrationTest extends AbstractIntegrationTest {
         assertThat(listResult.get(1).get("triggeredBy").asText()).isEqualTo("MANUAL");
     }
 
-    private void createContact(
-            String businessId, String staffCookie, String email, boolean dailyReportRecipient, boolean active)
+    /**
+     * Stops the in-memory SMTP server before dispatch so the real JavaMailSender.send() call
+     * throws (connection refused) - verifies attemptDelivery's catch branch actually records
+     * FAILED + a real error message instead of ever writing a false-positive SENT row.
+     */
+    @Test
+    void failedSmtpDeliveryIsRecordedAsFailedWithErrorMessage() throws Exception {
+        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Notify Business 5");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
+        String adminCookie =
+                StaffFixtures.bootstrapBusinessAdminAndLogin(
+                        mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "notify-admin-5@example.com");
+        createContact(businessId, adminCookie, "owner5@example.com", true);
+
+        DailyBranchCloseReport report = dailyCloseService.generateFinal(
+                UUID.fromString(businessId), UUID.fromString(branchId), LocalDate.now(ZoneOffset.UTC));
+
+        GREEN_MAIL.stop();
+        try {
+            ownerNotificationService.dispatchAutoForDailyClose(report).get(5, TimeUnit.SECONDS);
+        } finally {
+            GREEN_MAIL.start();
+        }
+
+        var logs = ownerNotificationService.listForReport(report.getId());
+        assertThat(logs).hasSize(1);
+        assertThat(logs.get(0).getStatus()).isEqualTo(OwnerNotificationStatus.FAILED);
+        assertThat(logs.get(0).getErrorMessage()).isNotBlank();
+        assertThat(logs.get(0).getRecipientEmail()).isEqualTo("owner5@example.com");
+    }
+
+    @Test
+    void deletingBusinessContactPreservesNotificationLogHistory() throws Exception {
+        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Notify Business 4");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
+        String adminCookie =
+                StaffFixtures.bootstrapBusinessAdminAndLogin(
+                        mockMvc, TEST_ADMIN_TOKEN, businessId, branchId, "notify-admin-4@example.com");
+        String contactId = createContact(businessId, adminCookie, "owner4@example.com", true);
+
+        DailyBranchCloseReport report = dailyCloseService.generateFinal(
+                UUID.fromString(businessId), UUID.fromString(branchId), LocalDate.now(ZoneOffset.UTC));
+        ownerNotificationService.dispatchAutoForDailyClose(report).get(5, TimeUnit.SECONDS);
+        assertThat(ownerNotificationService.listForReport(report.getId())).hasSize(1);
+
+        mockMvc.perform(delete("/api/staff/business/contacts/{contactId}", contactId)
+                        .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, adminCookie)))
+                .andExpect(status().isNoContent());
+
+        var logs = ownerNotificationService.listForReport(report.getId());
+        assertThat(logs).hasSize(1);
+        assertThat(logs.get(0).getBusinessContactId()).isNull();
+        assertThat(logs.get(0).getRecipientEmail()).isEqualTo("owner4@example.com");
+    }
+
+    private String createContact(String businessId, String staffCookie, String email, boolean dailyReportRecipient)
             throws Exception {
         String body = "{\"name\":\"Sahip\",\"phone\":null,\"email\":\"" + email + "\",\"whatsappEnabled\":false,"
                 + "\"dailyReportRecipient\":" + dailyReportRecipient + ",\"monthlyReportRecipient\":false}";
-        String contactId = objectMapper
+        return objectMapper
                 .readTree(mockMvc.perform(post("/api/staff/business/contacts")
                                 .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, staffCookie))
                                 .contentType(MediaType.APPLICATION_JSON)
@@ -159,15 +214,5 @@ class OwnerNotificationFlowIntegrationTest extends AbstractIntegrationTest {
                         .getContentAsString())
                 .get("id")
                 .asText();
-        if (!active) {
-            String updateBody = "{\"name\":\"Sahip\",\"phone\":null,\"email\":\"" + email + "\",\"whatsappEnabled\":false,"
-                    + "\"dailyReportRecipient\":" + dailyReportRecipient + ",\"monthlyReportRecipient\":false,\"active\":false}";
-            mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put(
-                            "/api/staff/business/contacts/{contactId}", contactId)
-                            .cookie(new MockCookie(StaffCookieSupport.COOKIE_NAME, staffCookie))
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(updateBody))
-                    .andExpect(status().isOk());
-        }
     }
 }

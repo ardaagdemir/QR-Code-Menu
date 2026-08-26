@@ -397,12 +397,37 @@
   flex-wrap: wrap;
 }
 
-.dailyCloseActions,
-.notificationCell {
+.dailyCloseActions {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   flex-wrap: wrap;
+}
+
+.notificationCell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: nowrap;
+  width: 100%;
+}
+
+.notificationResendButton {
+  min-height: 0 !important;
+  padding: var(--space-1) var(--space-3) !important;
+  font-size: var(--font-size-xs) !important;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.notificationSpinner {
+  animation: notificationSpin 0.8s linear infinite;
+}
+
+@keyframes notificationSpin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .inlineNote {
@@ -419,10 +444,6 @@
 .dailyCloseTable td {
   padding: var(--space-2) var(--space-3);
   font-size: var(--font-size-sm);
-}
-
-.dailyCloseTable .notificationCell {
-  flex-wrap: nowrap;
 }
 
 @media (max-width: 900px) {

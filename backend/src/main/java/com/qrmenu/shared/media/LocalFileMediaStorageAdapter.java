@@ -85,6 +85,19 @@ public class LocalFileMediaStorageAdapter implements MediaStoragePort {
     }
 
     @Override
+    public void delete(String key) {
+        Path resolved = baseDir.resolve(key).normalize();
+        if (!resolved.startsWith(baseDir)) {
+            return;
+        }
+        try {
+            Files.deleteIfExists(resolved);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Could not delete stored file: " + key, e);
+        }
+    }
+
+    @Override
     public Optional<String> resolveKeyFromUrl(String url) {
         if (url == null) {
             return Optional.empty();

@@ -37,6 +37,31 @@
   color: var(--color-danger);
 }
 
+.categoryAction {
+  width: 26px;
+  height: 26px;
+  margin-left: var(--space-2);
+  border: 1px solid transparent;
+}
+
+.categoryAction:hover,
+.categoryAction:focus-visible {
+  border-color: color-mix(in srgb, var(--color-primary) 25%, transparent);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+
+.categoryReactivate:hover,
+.categoryReactivate:focus-visible {
+  border-color: color-mix(in srgb, var(--color-success) 25%, transparent);
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.categoryInactive {
+  opacity: 0.6;
+}
+
 .filterToolbar {
   display: flex;
   align-items: flex-end;

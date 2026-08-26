@@ -50,8 +50,8 @@
 }
 
 .actionsCell {
-  width: 420px;
-  min-width: 420px;
+  width: 560px;
+  min-width: 560px;
   white-space: nowrap;
 }
 
@@ -59,6 +59,13 @@
   min-height: var(--tap-target-min);
   justify-content: flex-end;
   flex-wrap: nowrap;
+}
+
+.checkboxRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: var(--font-size-sm);
 }
 
 .passwordField {
