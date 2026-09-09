@@ -82,12 +82,20 @@ public class StaffAuthController {
      * (BUSINESS_SETTINGS_MANAGE / BRANCH_MANAGE) and out of reach for CASHIER,
      * so this reuses the already-unauthenticated-permission /me endpoint instead
      * of opening a new permission surface.
+     *
+     * PLATFORM_ADMIN is the one cross-business role and is not scoped to any single
+     * business (see PlatformAdminBusinessController's class javadoc) - its
+     * StaffContext.businessId() is null, so businessName/branches stay empty rather
+     * than looking up a business that doesn't apply to it.
      */
     private StaffContextResponse toResponse(StaffContext context) {
-        String businessName = tenantService.getBusiness(context.businessId()).getName();
-        List<Branch> accessibleBranches = tenantService.listBranches(context.businessId()).stream()
-                .filter(branch -> context.canAccessBranch(branch.getId()))
-                .toList();
+        String businessName =
+                context.businessId() == null ? null : tenantService.getBusiness(context.businessId()).getName();
+        List<Branch> accessibleBranches = context.businessId() == null
+                ? List.of()
+                : tenantService.listBranches(context.businessId()).stream()
+                        .filter(branch -> context.canAccessBranch(branch.getId()))
+                        .toList();
         List<BranchSummary> branches = accessibleBranches.stream()
                 .map(branch -> new BranchSummary(branch.getId(), branch.getName()))
                 .toList();
