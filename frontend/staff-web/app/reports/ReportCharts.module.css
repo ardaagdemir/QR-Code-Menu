@@ -24,30 +24,6 @@
   font-size: var(--font-size-xs);
 }
 
-.areaFill {
-  fill: url(#reportsRevenueArea);
-}
-
-.line {
-  fill: none;
-  stroke: var(--color-primary);
-  stroke-width: 3;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.pointHalo {
-  fill: var(--color-surface-raised);
-  stroke: var(--color-primary-soft-strong);
-  stroke-width: 5;
-}
-
-.point {
-  fill: var(--color-primary);
-  stroke: var(--color-surface-raised);
-  stroke-width: 2;
-}
-
 .donutLayout {
   display: grid;
   grid-template-columns: minmax(150px, 0.75fr) minmax(220px, 1.25fr);
@@ -100,6 +76,26 @@
   font-size: var(--font-size-xs);
 }
 
+.hourBar {
+  fill: var(--color-primary);
+}
+
+.chartLegend {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  color: var(--color-fg-muted);
+  font-size: var(--font-size-xs);
+}
+
+.legendDot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--color-primary);
+}
+
 .categoryList {
   display: flex;
   flex-direction: column;
@@ -108,7 +104,7 @@
 
 .categoryRow {
   display: grid;
-  grid-template-columns: 10px minmax(0, 1fr) auto;
+  grid-template-columns: 10px minmax(0, 1fr) auto auto;
   align-items: center;
   gap: var(--space-2);
   min-height: 34px;
@@ -139,6 +135,13 @@
   color: var(--color-fg);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.categoryPercent {
+  color: var(--color-fg-muted);
+  font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }

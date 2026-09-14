@@ -1,23 +1,42 @@
+/* Sadece Raporlar sayfası için admin.module.css .page genişlik sınırını genişletir;
+ * element+class (main.reportsPageWide) seçici tek class'lı .page'den daha yüksek
+ * özgüllüğe sahip olduğu için, iki modül arasındaki CSS sıralamasına bağlı kalmadan
+ * her zaman kazanır (bkz. AppShell.module.css'teki benzer not). Diğer sayfalar
+ * admin.module.css .page'i doğrudan kullanmaya devam eder, etkilenmez. */
+main.reportsPageWide {
+  max-width: 1600px;
+}
+
+@media (min-width: 1440px) {
+  main.reportsPageWide {
+    max-width: 1840px;
+  }
+}
+
+@media (min-width: 1800px) {
+  main.reportsPageWide {
+    max-width: 2100px;
+  }
+}
+
 .kpiGrid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(205px, 1fr));
   gap: var(--space-4);
 }
 
 .heroKpi {
   position: relative;
   min-width: 0;
-  min-height: 156px;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   grid-template-areas:
-    "icon label"
-    "value value"
-    "description description";
-  align-content: center;
+    "icon toprow"
+    "icon value";
+  align-items: center;
   column-gap: var(--space-3);
   row-gap: var(--space-2);
-  padding: var(--space-5);
+  padding: var(--space-4) var(--space-5);
   overflow: hidden;
   border: 1px solid var(--color-panel-border);
   border-radius: var(--radius-lg);
@@ -49,12 +68,20 @@
   color: var(--color-primary);
 }
 
+.heroTopRow {
+  grid-area: toprow;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
 .heroLabel {
-  grid-area: label;
-  align-self: center;
+  min-width: 0;
   color: var(--color-fg-muted);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-tight);
 }
 
 .heroValue {
@@ -69,23 +96,29 @@
   white-space: nowrap;
 }
 
-.heroDescription {
-  grid-area: description;
-  color: var(--color-fg-muted);
-  font-size: var(--font-size-xs);
-}
-
-.summarySection {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  min-width: 0;
-}
-
 .sectionIntro {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.sectionIntroMain {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.sectionIntro > .periodToggle,
+.sectionIntro > span:has(.periodBadgeText) {
+  flex-shrink: 0;
+}
+
+.periodBadgeText {
+  white-space: nowrap;
 }
 
 .sectionIcon {
@@ -105,105 +138,18 @@
   font-size: var(--font-size-sm);
 }
 
-.operationGrid {
+.chartTrio {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  border: 1px solid var(--color-panel-border);
-  border-radius: var(--radius-md);
-  overflow: hidden;
-}
-
-.detailMetric {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: 30px minmax(0, 1fr);
-  grid-template-areas:
-    "icon label"
-    "icon value"
-    "icon hint";
-  column-gap: var(--space-2);
-  row-gap: var(--space-1);
-  align-content: center;
-  padding: var(--space-3) var(--space-4);
-  border-right: 1px solid var(--color-panel-border);
-  background: var(--color-surface-soft);
-}
-
-.detailIcon {
-  grid-area: icon;
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  align-self: start;
-  border-radius: var(--radius-md);
-  background: var(--color-surface-raised);
-  color: var(--color-primary);
-  box-shadow: var(--shadow-sm);
-}
-
-.detailMetric:last-child {
-  border-right: none;
-}
-
-.detailMetricAlert {
-  background: color-mix(in srgb, var(--color-danger) 5%, var(--color-surface-raised));
-}
-
-.detailMetricAlert .detailValue {
-  color: var(--color-danger);
-}
-
-.detailLabel,
-.detailHint {
-  color: var(--color-fg-muted);
-  font-size: var(--font-size-xs);
-}
-
-.detailLabel {
-  grid-area: label;
-}
-
-.detailHint {
-  grid-area: hint;
-}
-
-.detailValue {
-  grid-area: value;
-  overflow: hidden;
-  color: var(--color-fg);
-  font-size: var(--font-size-lg);
-  font-variant-numeric: tabular-nums;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.acceptanceTrack {
-  grid-column: 1 / -1;
-  height: 4px;
-  margin-top: var(--space-1);
-  overflow: hidden;
-  border-radius: var(--radius-full);
-  background: var(--color-panel-border);
-}
-
-.acceptanceTrack > span {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--color-primary);
-}
-
-.acceptanceMetric {
-  background: color-mix(in srgb, var(--color-primary) 4%, var(--color-surface-soft));
-}
-
-.chartGrid,
-.breakdownGrid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: var(--space-5);
   align-items: stretch;
+}
+
+.pairGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: var(--space-5);
+  align-items: start;
 }
 
 .chartPanel,
@@ -214,7 +160,6 @@
   overflow: hidden;
 }
 
-.operationPanel,
 .chartPanel,
 .breakdownPanel,
 .dailyClosePanel,
@@ -239,6 +184,33 @@
   height: 10px;
 }
 
+.rankingPanel ul {
+  counter-reset: rank;
+}
+
+.rankingPanel li {
+  position: relative;
+  counter-increment: rank;
+  padding-left: 26px;
+}
+
+.rankingPanel li::before {
+  content: counter(rank);
+  position: absolute;
+  top: 50%;
+  left: 0;
+  display: grid;
+  width: 18px;
+  height: 18px;
+  transform: translateY(-50%);
+  place-items: center;
+  border-radius: var(--radius-full);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  font-size: 10px;
+  font-weight: var(--font-weight-semibold);
+}
+
 .chartBody {
   max-height: 260px;
   padding-right: var(--space-1);
@@ -248,6 +220,61 @@
 .compactEmpty > div {
   min-height: 0;
   padding: var(--space-5);
+}
+
+.periodToggle {
+  display: inline-flex;
+  flex-shrink: 0;
+  padding: 2px;
+  gap: 2px;
+  border-radius: var(--radius-full);
+  background: var(--color-badge-bg);
+}
+
+.periodToggleButton {
+  border: none;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-fg-muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.periodToggleButton:hover:not(:disabled):not(.periodToggleButtonActive) {
+  color: var(--color-fg);
+}
+
+.periodToggleButton:disabled {
+  cursor: default;
+}
+
+.periodToggleButtonActive {
+  background: var(--color-primary);
+  color: var(--color-primary-fg);
+}
+
+.panelLoading {
+  opacity: 0.55;
+  pointer-events: none;
+  transition: opacity var(--transition-fast);
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.pagerLabel {
+  color: var(--color-fg-muted);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
 }
 
 .dailyClosePanel {
@@ -278,22 +305,23 @@
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: 1fr 56px 1fr 56px 1fr;
+  grid-template-columns: 1fr 32px 1fr 32px 1fr;
+  gap: var(--space-2);
   align-items: stretch;
 }
 
 .equationMetric {
   min-width: 0;
   display: grid;
-  grid-template-columns: 38px minmax(0, 1fr);
+  grid-template-columns: 32px minmax(0, 1fr);
   grid-template-areas:
     "icon label"
     "icon value";
   align-items: center;
   align-content: center;
-  gap: var(--space-1) var(--space-3);
+  gap: var(--space-1) var(--space-2);
   min-height: 104px;
-  padding: var(--space-4);
+  padding: var(--space-3);
   border: 1px solid var(--color-panel-border);
   border-radius: var(--radius-lg);
   background: var(--color-surface-raised);
@@ -353,10 +381,11 @@
 
 .equationIcon {
   grid-area: icon;
+  align-self: start;
   display: grid;
   place-items: center;
-  width: 38px;
-  height: 38px;
+  width: 32px;
+  height: 32px;
   border-radius: var(--radius-md);
   background: var(--color-primary-soft);
   color: var(--color-primary);
@@ -365,18 +394,18 @@
 .equationLabel {
   grid-area: label;
   color: var(--color-fg-muted);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-tight);
 }
 
 .equationValue {
   grid-area: value;
-  overflow: hidden;
+  overflow-wrap: normal;
+  white-space: nowrap;
   font-family: var(--font-family-display);
-  font-size: var(--font-size-xl);
+  font-size: var(--font-size-lg);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .equationOperator {
@@ -385,7 +414,7 @@
   justify-content: center;
   color: var(--color-primary);
   font-family: var(--font-family-display);
-  font-size: var(--font-size-2xl);
+  font-size: var(--font-size-xl);
   font-weight: var(--font-weight-bold);
 }
 
@@ -412,6 +441,11 @@
   width: 100%;
 }
 
+.notificationCell > * {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 .notificationResendButton {
   min-height: 0 !important;
   padding: var(--space-1) var(--space-3) !important;
@@ -430,8 +464,11 @@
   }
 }
 
-.inlineNote {
-  padding: 0;
+.sectionNote {
+  margin-top: 2px;
+  color: var(--color-fg-muted);
+  font-size: var(--font-size-xs);
+  opacity: 0.8;
 }
 
 .dailyCloseTable th {
@@ -446,30 +483,104 @@
   font-size: var(--font-size-sm);
 }
 
-@media (max-width: 900px) {
-  .kpiGrid,
-  .operationGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+.contactsPanel {
+  overflow: hidden;
+}
 
-  .detailMetric {
-    border-right: 1px solid var(--color-panel-border);
-    border-bottom: 1px solid var(--color-panel-border);
-  }
+/* Table.module.css .actions ortak sınıfı flex-wrap:wrap taşıyor (diğer tüm tablolarda
+ * kullanılıyor); burada sadece Raporlar sayfasındaki Düzenle+Sil çifti tek satırda
+ * kalsın diye !important ile eziyoruz (bkz. AppShell.module.css'teki aynı gerekçe -
+ * modüller arası CSS sıralaması güvenilir değil). Diğer sayfalardaki .actions kullanımı
+ * bu kuraldan etkilenmiyor çünkü .contactActions class'ı sadece burada ekleniyor. */
+.contactActions {
+  flex-wrap: nowrap !important;
+}
 
-  .detailMetric:nth-child(2n) {
-    border-right: none;
-  }
+.contactActions > * {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
 
-  .detailMetric:nth-child(n + 3) {
-    border-bottom: none;
-  }
+.contactsPanel > div:last-child {
+  margin-top: 0;
+}
 
-  .chartGrid,
-  .breakdownGrid {
-    grid-template-columns: 1fr;
-  }
+.reportPreferences {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
 
+.noPreference {
+  color: var(--color-fg-muted);
+  font-size: var(--font-size-sm);
+}
+
+.actionsHeader {
+  text-align: right !important;
+}
+
+.notificationsPanel {
+  overflow: hidden;
+}
+
+.notificationsTable table {
+  table-layout: fixed;
+}
+
+.notificationsTable th {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-xs);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.notificationsTable td {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-sm);
+}
+
+.notificationsTable th:nth-child(1),
+.notificationsTable td:nth-child(1) {
+  width: 14%;
+}
+
+.notificationsTable th:nth-child(2),
+.notificationsTable td:nth-child(2) {
+  width: 12%;
+}
+
+.notificationsTable th:nth-child(3),
+.notificationsTable td:nth-child(3) {
+  width: 21%;
+}
+
+.notificationsTable th:nth-child(4),
+.notificationsTable td:nth-child(4) {
+  width: 16%;
+}
+
+.notificationsTable th:nth-child(5),
+.notificationsTable td:nth-child(5) {
+  width: 12%;
+}
+
+.notificationsTable th:nth-child(6),
+.notificationsTable td:nth-child(6) {
+  width: 25%;
+}
+
+.notificationEmailCell {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.notificationsTableAction {
+  min-height: 28px !important;
+  padding: 0 var(--space-2) !important;
+  font-size: 0.72rem !important;
 }
 
 @media (max-width: 640px) {
@@ -480,22 +591,6 @@
   .equationOperator {
     width: 100%;
     height: 40px;
-  }
-
-  .kpiGrid,
-  .operationGrid {
-    grid-template-columns: 1fr;
-  }
-
-  .detailMetric,
-  .detailMetric:nth-child(2n),
-  .detailMetric:nth-child(n + 3) {
-    border-right: none;
-    border-bottom: 1px solid var(--color-panel-border);
-  }
-
-  .detailMetric:last-child {
-    border-bottom: none;
   }
 
   .dailyCloseActions,
