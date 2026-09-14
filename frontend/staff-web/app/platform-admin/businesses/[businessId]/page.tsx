@@ -368,6 +368,8 @@ export default function PlatformAdminBusinessDetailPage() {
     }
   }
 
+  const branchById = new Map(branches.map((branch) => [branch.id, branch]));
+
   if (loading) {
     return (
       <AppShell>
@@ -519,12 +521,15 @@ export default function PlatformAdminBusinessDetailPage() {
                   <tr>
                     <th>E-posta</th>
                     <th>Rol</th>
+                    <th>Şube</th>
                     <th>Durum</th>
                     <th className={pageStyles.actionsHeader}>İşlemler</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {staffUsers.map((user) => (
+                  {staffUsers.map((user) => {
+                    const userBranch = user.role === "PLATFORM_ADMIN" ? null : branchById.get(user.branchIds[0] ?? "");
+                    return (
                     <tr key={user.id}>
                       <td>
                         <div className={pageStyles.identity}>
@@ -533,6 +538,16 @@ export default function PlatformAdminBusinessDetailPage() {
                         </div>
                       </td>
                       <td>{ROLE_LABELS[user.role] ?? user.role}</td>
+                      <td>
+                        {userBranch ? (
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem" }}>
+                            {userBranch.name}
+                            {!userBranch.active ? <Badge tone="neutral">Pasif</Badge> : null}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
                       <td>
                         <Badge tone={user.active ? "success" : "danger"}>{user.active ? "Aktif" : "Devre dışı"}</Badge>
                       </td>
@@ -569,7 +584,8 @@ export default function PlatformAdminBusinessDetailPage() {
                         )}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </Table>
             )}

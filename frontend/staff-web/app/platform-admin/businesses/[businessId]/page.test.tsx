@@ -119,3 +119,82 @@ describe("PlatformAdminBusinessDetailPage - İşletme adını düzenleme", () =>
     expect(updatePlatformBusinessName).not.toHaveBeenCalled();
   });
 });
+
+function branch(overrides: Partial<Branch> = {}): Branch {
+  return {
+    id: "branch-1",
+    businessId: "business-1",
+    name: "Merkez Şube",
+    active: true,
+    orderingEnabled: true,
+    openNow: true,
+    address: null,
+    timezone: null,
+    deliveryModel: "WAITER_DELIVERY",
+    storeAcceptanceTimeoutSeconds: 120,
+    ...overrides,
+  };
+}
+
+function staffUser(overrides: Partial<StaffUser> = {}): StaffUser {
+  return {
+    id: "staff-2",
+    email: "kasiyer@qrmenu.local",
+    role: "CASHIER",
+    active: true,
+    branchIds: ["branch-1"],
+    createdAt: "2026-01-01T00:00:00Z",
+    ...overrides,
+  };
+}
+
+/**
+ * Regression for the reported gap: the Kullanıcılar table gave no indication of which
+ * branch a staff member belonged to (only a raw branchId, never shown). The table now
+ * resolves branchIds[0] against the branches already loaded for this business detail
+ * page - no separate branch-name lookup endpoint needed.
+ */
+describe("PlatformAdminBusinessDetailPage - Kullanıcılar şube kolonu", () => {
+  it("shows the branch name for a staff user and a Pasif badge when the branch is inactive", async () => {
+    listPlatformBranches.mockResolvedValue([
+      branch({ id: "branch-1", name: "Merkez Şube", active: true }),
+      branch({ id: "branch-2", name: "Kadıköy Şube", active: false }),
+    ]);
+    listPlatformStaffUsers.mockResolvedValue([
+      staffUser({ id: "staff-2", email: "kasiyer@qrmenu.local", branchIds: ["branch-1"] }),
+      staffUser({ id: "staff-3", email: "sorumlu@qrmenu.local", role: "BRANCH_MANAGER", branchIds: ["branch-2"] }),
+    ]);
+
+    render(
+      <ToastProvider>
+        <PlatformAdminBusinessDetailPage />
+      </ToastProvider>,
+    );
+
+    const activeRow = (await screen.findByText("kasiyer@qrmenu.local")).closest("tr");
+    expect(activeRow).not.toBeNull();
+    expect(activeRow!.textContent).toContain("Merkez Şube");
+
+    const inactiveRow = screen.getByText("sorumlu@qrmenu.local").closest("tr");
+    expect(inactiveRow).not.toBeNull();
+    expect(inactiveRow!.textContent).toContain("Kadıköy Şube");
+    expect(inactiveRow!.textContent).toContain("Pasif");
+  });
+
+  it("shows a dash for PLATFORM_ADMIN rows since they have no branch", async () => {
+    listPlatformBranches.mockResolvedValue([branch({ id: "branch-1", name: "Merkez Şube" })]);
+    listPlatformStaffUsers.mockResolvedValue([
+      staffUser({ id: "staff-4", email: "admin@qrmenu.local", role: "PLATFORM_ADMIN", branchIds: [] }),
+    ]);
+
+    render(
+      <ToastProvider>
+        <PlatformAdminBusinessDetailPage />
+      </ToastProvider>,
+    );
+
+    const row = (await screen.findByText("admin@qrmenu.local")).closest("tr");
+    expect(row).not.toBeNull();
+    expect(row!.textContent).toContain("—");
+  });
+});
