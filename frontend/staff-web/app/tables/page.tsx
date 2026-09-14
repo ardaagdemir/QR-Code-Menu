@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import QRCode from "qrcode";
-import { Download, Home, Pencil, Plus, QrCode, RefreshCw, RotateCcw, Table2, Trash2, Trees } from "lucide-react";
+import JSZip from "jszip";
+import { Download, Home, Pencil, Plus, QrCode, RefreshCw, RotateCcw, Table2, Trash2, Trees, X } from "lucide-react";
 import {
   ApiError,
   bulkCreateTables,
@@ -89,6 +90,14 @@ export default function TablesPage() {
   const [editLocation, setEditLocation] = useState<TableLocation>("INDOOR");
   const [editCapacity, setEditCapacity] = useState("");
   const [editing, setEditing] = useState(false);
+
+  const [selectedTableIds, setSelectedTableIds] = useState<Set<string>>(new Set());
+  const [bulkDownloading, setBulkDownloading] = useState(false);
+
+  const selectedCount = useMemo(
+    () => tables.filter((table) => selectedTableIds.has(table.id) && qrTokens[table.id]).length,
+    [tables, selectedTableIds, qrTokens],
+  );
 
   const loadTables = useCallback(() => {
     return listTables()
@@ -217,6 +226,14 @@ export default function TablesPage() {
         delete next[deleteTarget.tableId];
         return next;
       });
+      setSelectedTableIds((current) => {
+        if (!current.has(deleteTarget.tableId)) {
+          return current;
+        }
+        const next = new Set(current);
+        next.delete(deleteTarget.tableId);
+        return next;
+      });
       showToast("Masa silindi.", "success");
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
@@ -255,11 +272,80 @@ export default function TablesPage() {
     }
   }
 
+  function toggleTableSelection(tableId: string) {
+    setSelectedTableIds((current) => {
+      const next = new Set(current);
+      if (next.has(tableId)) {
+        next.delete(tableId);
+      } else {
+        next.add(tableId);
+      }
+      return next;
+    });
+  }
+
+  function toggleLocationSelection(location: TableLocation, tableIds: string[]) {
+    setSelectedTableIds((current) => {
+      const next = new Set(current);
+      const allSelected = tableIds.every((id) => next.has(id));
+      tableIds.forEach((id) => (allSelected ? next.delete(id) : next.add(id)));
+      return next;
+    });
+  }
+
+  function clearSelection() {
+    setSelectedTableIds(new Set());
+  }
+
+  async function handleBulkDownload() {
+    const selected = tables.filter((table) => selectedTableIds.has(table.id) && qrTokens[table.id]);
+    if (selected.length === 0) {
+      return;
+    }
+    setBulkDownloading(true);
+    try {
+      const zip = new JSZip();
+      const usedNames = new Set<string>();
+      for (const table of selected) {
+        const token = qrTokens[table.id];
+        if (!token) {
+          continue;
+        }
+        const dataUrl = await QRCode.toDataURL(customerMenuUrl(token.token), { width: 1024, margin: 3 });
+        const base64 = dataUrl.slice(dataUrl.indexOf(",") + 1);
+        let name = `${safeFilename(table.label)}-qr.png`;
+        let suffix = 2;
+        while (usedNames.has(name)) {
+          name = `${safeFilename(table.label)}-qr-${suffix}.png`;
+          suffix += 1;
+        }
+        usedNames.add(name);
+        zip.file(name, base64, { base64: true });
+      }
+      const blob = await zip.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `masa-qr-kodlari-${new Date().toISOString().slice(0, 10)}.zip`;
+      link.click();
+      URL.revokeObjectURL(url);
+      showToast(`${selected.length} QR kod indirildi.`, "success");
+      clearSelection();
+    } catch {
+      showToast("QR kodları indirilemedi.", "error");
+    } finally {
+      setBulkDownloading(false);
+    }
+  }
+
   function renderLocationPanel(location: TableLocation) {
     const locationTables = tables.filter((table) => table.location === location);
     if (locationTables.length === 0) {
       return null;
     }
+    const downloadableIds = locationTables.filter((table) => table.active && qrTokens[table.id]).map((table) => table.id);
+    const allDownloadableSelected =
+      downloadableIds.length > 0 && downloadableIds.every((id) => selectedTableIds.has(id));
     const Icon = location === "INDOOR" ? Home : Trees;
     return (
       <section key={location} className={pageStyles.tablePanel}>
@@ -278,6 +364,15 @@ export default function TablesPage() {
           <Table>
             <thead>
               <tr>
+                <th className={pageStyles.checkboxCell}>
+                  <input
+                    type="checkbox"
+                    aria-label={`${LOCATION_LABELS[location]} bölümündeki tüm QR'lı masaları seç`}
+                    checked={allDownloadableSelected}
+                    disabled={downloadableIds.length === 0}
+                    onChange={() => toggleLocationSelection(location, downloadableIds)}
+                  />
+                </th>
                 <th>Masa</th>
                 <th>Kapasite</th>
                 <th>QR Durumu</th>
@@ -289,6 +384,15 @@ export default function TablesPage() {
                 const token = qrTokens[table.id];
                 return (
                   <tr key={table.id}>
+                    <td className={pageStyles.checkboxCell}>
+                      <input
+                        type="checkbox"
+                        aria-label={`"${table.label}" masasını seç`}
+                        checked={selectedTableIds.has(table.id)}
+                        disabled={!table.active || !token}
+                        onChange={() => toggleTableSelection(table.id)}
+                      />
+                    </td>
                     <td>
                       <div className={pageStyles.tableIdentity}>
                         <span className={pageStyles.tableIcon} aria-hidden="true">
@@ -412,6 +516,26 @@ export default function TablesPage() {
           </div>
         ) : (
           <div className={pageStyles.panelStack}>
+            {selectedCount > 0 ? (
+              <div className={pageStyles.bulkBar}>
+                <span className={pageStyles.bulkBarText}>{selectedCount} masa seçildi</span>
+                <div className={pageStyles.bulkBarActions}>
+                  <Button size="sm" variant="ghost" onClick={clearSelection} disabled={bulkDownloading}>
+                    <X size={13} aria-hidden="true" />
+                    Seçimi Temizle
+                  </Button>
+                  <Button
+                    className={pageStyles.primaryButton}
+                    size="sm"
+                    onClick={() => void handleBulkDownload()}
+                    disabled={bulkDownloading}
+                  >
+                    <Download size={13} aria-hidden="true" />
+                    {bulkDownloading ? "İndiriliyor…" : `Seçilenleri İndir (${selectedCount})`}
+                  </Button>
+                </div>
+              </div>
+            ) : null}
             {renderLocationPanel("INDOOR")}
             {renderLocationPanel("OUTDOOR")}
           </div>
