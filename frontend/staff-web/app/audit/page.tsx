@@ -219,18 +219,14 @@ export default function AuditPage() {
         ) : (
           <div className={pageStyles.auditTable}>
             <Table>
-              <thead><tr><th>Tarih</th><th>Kullanıcı</th><th>İşlem</th><th>Açıklama</th></tr></thead>
+              <thead><tr><th>Tarih</th><th>Kullanıcı</th><th>İşlem</th><th>Durum</th><th>Açıklama</th></tr></thead>
               <tbody>
                 {entries.map((entry) => (
                   <tr key={entry.id}>
                     <td className={`${tableStyles.muted} ${pageStyles.dateCell}`}>{formatAuditDate(entry.createdAt)}</td>
                     <td className={tableStyles.primary}>{actorLabel(entry.actorStaffUserId, entry.actorAccountDeleted)}</td>
-                    <td>
-                      <div className={pageStyles.operationCell}>
-                        <span className={pageStyles.entityLabel}>{entityLabel(entry.entityType)}</span>
-                        <Badge tone={actionTone(entry.action)}>{actionLabel(entry.action)}</Badge>
-                      </div>
-                    </td>
+                    <td className={pageStyles.entityCell}>{entityLabel(entry.entityType)}</td>
+                    <td><Badge tone={actionTone(entry.action)}>{actionLabel(entry.action)}</Badge></td>
                     <td className={`${tableStyles.muted} ${pageStyles.descriptionCell}`}>{auditDescription(entry)}</td>
                   </tr>
                 ))}
