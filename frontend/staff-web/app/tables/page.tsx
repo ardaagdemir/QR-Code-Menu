@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useId, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import QRCode from "qrcode";
 import JSZip from "jszip";
 import jsPDF from "jspdf";
 import {
+  ChevronDown,
   Download,
   FileText,
   Home,
@@ -59,6 +60,15 @@ function customerMenuUrl(token: string): string {
 
 function safeFilename(value: string): string {
   return value.toLocaleLowerCase("tr-TR").replace(/[^a-z0-9çğıöşü]+/gi, "-").replace(/^-|-$/g, "") || "masa";
+}
+
+/** "Masa 2" < "Masa 10" - masa etiketlerindeki sayıları metin olarak değil sayı olarak karşılaştırır. */
+function compareTableLabels(a: string, b: string): number {
+  return a.localeCompare(b, "tr-TR", { numeric: true, sensitivity: "base" });
+}
+
+function sortTablesByLabel(list: StaffTable[]): StaffTable[] {
+  return [...list].sort((a, b) => compareTableLabels(a.label, b.label));
 }
 
 /** "" -> null, aksi halde parseInt - kapasite/sayı alanları boş bırakılabilir. */
@@ -158,6 +168,22 @@ export default function TablesPage() {
   const [selectedTableIds, setSelectedTableIds] = useState<Set<string>>(new Set());
   const [bulkDownloading, setBulkDownloading] = useState(false);
 
+  const [openDownloadMenuId, setOpenDownloadMenuId] = useState<string | null>(null);
+  const downloadMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!openDownloadMenuId) {
+      return;
+    }
+    function onPointerDown(event: MouseEvent) {
+      if (downloadMenuRef.current && !downloadMenuRef.current.contains(event.target as Node)) {
+        setOpenDownloadMenuId(null);
+      }
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, [openDownloadMenuId]);
+
   const selectedCount = useMemo(
     () => tables.filter((table) => selectedTableIds.has(table.id) && qrTokens[table.id]).length,
     [tables, selectedTableIds, qrTokens],
@@ -170,7 +196,7 @@ export default function TablesPage() {
         return { tableList, tokens };
       })
       .then(({ tableList, tokens }) => {
-        setTables(tableList);
+        setTables(sortTablesByLabel(tableList));
         setQrTokens(Object.fromEntries(tableList.map((table, index) => [table.id, tokens[index]])));
         setError(null);
       })
@@ -246,7 +272,7 @@ export default function TablesPage() {
     setEditing(true);
     try {
       const updated = await updateTable(editTarget.tableId, editLabel.trim(), editLocation, parseOptionalInt(editCapacity));
-      setTables((current) => current.map((table) => (table.id === updated.id ? updated : table)));
+      setTables((current) => sortTablesByLabel(current.map((table) => (table.id === updated.id ? updated : table))));
       setEditTarget(null);
       showToast("Masa güncellendi.", "success");
     } catch {
@@ -325,6 +351,7 @@ export default function TablesPage() {
   }
 
   async function handleDownloadQr(table: StaffTable, token: QrToken) {
+    setOpenDownloadMenuId(null);
     try {
       const { dataUrl } = await composeLabeledQr(table.label, customerMenuUrl(token.token), 1024);
       const link = document.createElement("a");
@@ -336,7 +363,31 @@ export default function TablesPage() {
     }
   }
 
+  async function handleDownloadQrPdf(table: StaffTable, token: QrToken) {
+    setOpenDownloadMenuId(null);
+    try {
+      const { dataUrl, width, height } = await composeLabeledQr(table.label, customerMenuUrl(token.token), 900, "jpeg");
+      const pageWidth = 210;
+      const pageHeight = 297;
+      const maxWidth = 120;
+      const maxHeight = 120;
+      const aspectRatio = width / height;
+      let drawWidth = maxWidth;
+      let drawHeight = drawWidth / aspectRatio;
+      if (drawHeight > maxHeight) {
+        drawHeight = maxHeight;
+        drawWidth = drawHeight * aspectRatio;
+      }
+      const doc = new jsPDF({ unit: "mm", format: "a4" });
+      doc.addImage(dataUrl, "JPEG", (pageWidth - drawWidth) / 2, (pageHeight - drawHeight) / 2, drawWidth, drawHeight);
+      doc.save(`${safeFilename(table.label)}-qr.pdf`);
+    } catch {
+      showToast("PDF oluşturulamadı.", "error");
+    }
+  }
+
   function toggleTableSelection(tableId: string) {
+    setOpenDownloadMenuId(null);
     setSelectedTableIds((current) => {
       const next = new Set(current);
       if (next.has(tableId)) {
@@ -349,6 +400,7 @@ export default function TablesPage() {
   }
 
   function toggleLocationSelection(location: TableLocation, tableIds: string[]) {
+    setOpenDownloadMenuId(null);
     setSelectedTableIds((current) => {
       const next = new Set(current);
       const allSelected = tableIds.every((id) => next.has(id));
@@ -570,11 +622,45 @@ export default function TablesPage() {
                               {token ? <RefreshCw size={13} aria-hidden="true" /> : <QrCode size={13} aria-hidden="true" />}
                               {token ? "QR’ı Yenile" : "QR Oluştur"}
                             </Button>
-                            {token ? (
-                              <Button size="sm" variant="secondary" onClick={() => handleDownloadQr(table, token)}>
-                                <Download size={13} aria-hidden="true" />
-                                PNG İndir
-                              </Button>
+                            {token && selectedTableIds.size === 0 ? (
+                              <div
+                                className={pageStyles.downloadMenuWrapper}
+                                ref={openDownloadMenuId === table.id ? downloadMenuRef : undefined}
+                              >
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  aria-haspopup="menu"
+                                  aria-expanded={openDownloadMenuId === table.id}
+                                  onClick={() =>
+                                    setOpenDownloadMenuId((current) => (current === table.id ? null : table.id))
+                                  }
+                                >
+                                  <Download size={13} aria-hidden="true" />
+                                  İndir
+                                  <ChevronDown size={13} aria-hidden="true" />
+                                </Button>
+                                {openDownloadMenuId === table.id ? (
+                                  <div className={pageStyles.downloadMenu} role="menu">
+                                    <button
+                                      type="button"
+                                      role="menuitem"
+                                      className={pageStyles.downloadMenuItem}
+                                      onClick={() => void handleDownloadQr(table, token)}
+                                    >
+                                      PNG indir
+                                    </button>
+                                    <button
+                                      type="button"
+                                      role="menuitem"
+                                      className={pageStyles.downloadMenuItem}
+                                      onClick={() => void handleDownloadQrPdf(table, token)}
+                                    >
+                                      PDF indir
+                                    </button>
+                                  </div>
+                                ) : null}
+                              </div>
                             ) : null}
                             <Button
                               size="sm"
@@ -648,10 +734,6 @@ export default function TablesPage() {
               <div className={pageStyles.bulkBar}>
                 <span className={pageStyles.bulkBarText}>{selectedCount} masa seçildi</span>
                 <div className={pageStyles.bulkBarActions}>
-                  <Button size="sm" variant="ghost" onClick={clearSelection} disabled={bulkDownloading}>
-                    <X size={13} aria-hidden="true" />
-                    Seçimi Temizle
-                  </Button>
                   <Button size="sm" variant="secondary" onClick={() => void handleBulkDownloadZip()} disabled={bulkDownloading}>
                     <Download size={13} aria-hidden="true" />
                     {bulkDownloading ? "İndiriliyor…" : `PNG İndir (${selectedCount})`}
@@ -664,6 +746,10 @@ export default function TablesPage() {
                   >
                     <FileText size={13} aria-hidden="true" />
                     {bulkDownloading ? "İndiriliyor…" : `PDF İndir (${selectedCount})`}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={clearSelection} disabled={bulkDownloading}>
+                    <X size={13} aria-hidden="true" />
+                    Seçimi Temizle
                   </Button>
                 </div>
               </div>
