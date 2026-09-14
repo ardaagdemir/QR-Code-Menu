@@ -3,7 +3,21 @@
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import QRCode from "qrcode";
 import JSZip from "jszip";
-import { Download, Home, Pencil, Plus, QrCode, RefreshCw, RotateCcw, Table2, Trash2, Trees, X } from "lucide-react";
+import jsPDF from "jspdf";
+import {
+  Download,
+  FileText,
+  Home,
+  Pencil,
+  Plus,
+  QrCode,
+  RefreshCw,
+  RotateCcw,
+  Table2,
+  Trash2,
+  Trees,
+  X,
+} from "lucide-react";
 import {
   ApiError,
   bulkCreateTables,
@@ -55,6 +69,56 @@ function parseOptionalInt(value: string): number | null {
   }
   const parsed = Number.parseInt(trimmed, 10);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("QR görseli yüklenemedi."));
+    image.src = src;
+  });
+}
+
+/** QR kodunun altına masa adını basar; hem tekli hem toplu indirmelerde baskıya hazır tek görsel elde etmek için kullanılır. */
+async function composeLabeledQr(
+  label: string,
+  qrTargetUrl: string,
+  qrSize: number,
+  format: "png" | "jpeg" = "png",
+): Promise<{ dataUrl: string; width: number; height: number }> {
+  const qrDataUrl = await QRCode.toDataURL(qrTargetUrl, { width: qrSize, margin: 2 });
+  const qrImage = await loadImage(qrDataUrl);
+  const padding = Math.round(qrSize * 0.06);
+  const labelHeight = Math.round(qrSize * 0.15);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = qrImage.width + padding * 2;
+  canvas.height = qrImage.height + padding * 2 + labelHeight;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    throw new Error("Canvas desteklenmiyor.");
+  }
+
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(qrImage, padding, padding);
+
+  ctx.fillStyle = "#1c1c1c";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const maxTextWidth = canvas.width - padding * 1.5;
+  let fontSize = Math.round(labelHeight * 0.55);
+  ctx.font = `600 ${fontSize}px Arial, sans-serif`;
+  while (fontSize > 14 && ctx.measureText(label).width > maxTextWidth) {
+    fontSize -= 2;
+    ctx.font = `600 ${fontSize}px Arial, sans-serif`;
+  }
+  ctx.fillText(label, canvas.width / 2, padding + qrImage.height + labelHeight / 2, maxTextWidth);
+
+  const dataUrl =
+    format === "jpeg" ? canvas.toDataURL("image/jpeg", 0.92) : canvas.toDataURL("image/png");
+  return { dataUrl, width: canvas.width, height: canvas.height };
 }
 
 type EditTarget = { tableId: string; label: string; location: TableLocation; capacity: number | null };
@@ -262,7 +326,7 @@ export default function TablesPage() {
 
   async function handleDownloadQr(table: StaffTable, token: QrToken) {
     try {
-      const dataUrl = await QRCode.toDataURL(customerMenuUrl(token.token), { width: 1024, margin: 3 });
+      const { dataUrl } = await composeLabeledQr(table.label, customerMenuUrl(token.token), 1024);
       const link = document.createElement("a");
       link.href = dataUrl;
       link.download = `${safeFilename(table.label)}-qr.png`;
@@ -297,8 +361,14 @@ export default function TablesPage() {
     setSelectedTableIds(new Set());
   }
 
-  async function handleBulkDownload() {
-    const selected = tables.filter((table) => selectedTableIds.has(table.id) && qrTokens[table.id]);
+  function getSelectedTablesWithTokens(): Array<{ table: StaffTable; token: QrToken }> {
+    return tables
+      .filter((table) => selectedTableIds.has(table.id) && qrTokens[table.id])
+      .map((table) => ({ table, token: qrTokens[table.id] as QrToken }));
+  }
+
+  async function handleBulkDownloadZip() {
+    const selected = getSelectedTablesWithTokens();
     if (selected.length === 0) {
       return;
     }
@@ -306,12 +376,8 @@ export default function TablesPage() {
     try {
       const zip = new JSZip();
       const usedNames = new Set<string>();
-      for (const table of selected) {
-        const token = qrTokens[table.id];
-        if (!token) {
-          continue;
-        }
-        const dataUrl = await QRCode.toDataURL(customerMenuUrl(token.token), { width: 1024, margin: 3 });
+      for (const { table, token } of selected) {
+        const { dataUrl } = await composeLabeledQr(table.label, customerMenuUrl(token.token), 900);
         const base64 = dataUrl.slice(dataUrl.indexOf(",") + 1);
         let name = `${safeFilename(table.label)}-qr.png`;
         let suffix = 2;
@@ -333,6 +399,68 @@ export default function TablesPage() {
       clearSelection();
     } catch {
       showToast("QR kodları indirilemedi.", "error");
+    } finally {
+      setBulkDownloading(false);
+    }
+  }
+
+  async function handleBulkDownloadPdf() {
+    const selected = getSelectedTablesWithTokens();
+    if (selected.length === 0) {
+      return;
+    }
+    setBulkDownloading(true);
+    try {
+      const margin = 12;
+      const cols = 2;
+      const rows = 3;
+      const pageWidth = 210;
+      const pageHeight = 297;
+      const cellWidth = (pageWidth - margin * 2) / cols;
+      const cellHeight = (pageHeight - margin * 2) / rows;
+      const cellPadding = 8;
+      const perPage = cols * rows;
+
+      const doc = new jsPDF({ unit: "mm", format: "a4" });
+      for (let index = 0; index < selected.length; index += 1) {
+        const { table, token } = selected[index];
+        if (index > 0 && index % perPage === 0) {
+          doc.addPage();
+        }
+        const { dataUrl, width, height } = await composeLabeledQr(
+          table.label,
+          customerMenuUrl(token.token),
+          640,
+          "jpeg",
+        );
+
+        const positionInPage = index % perPage;
+        const col = positionInPage % cols;
+        const row = Math.floor(positionInPage / cols);
+        const x0 = margin + col * cellWidth;
+        const y0 = margin + row * cellHeight;
+
+        doc.setDrawColor(210);
+        doc.rect(x0 + 2, y0 + 2, cellWidth - 4, cellHeight - 4);
+
+        const boxWidth = cellWidth - cellPadding * 2;
+        const boxHeight = cellHeight - cellPadding * 2;
+        const aspectRatio = width / height;
+        let drawWidth = boxWidth;
+        let drawHeight = drawWidth / aspectRatio;
+        if (drawHeight > boxHeight) {
+          drawHeight = boxHeight;
+          drawWidth = drawHeight * aspectRatio;
+        }
+        const dx = x0 + (cellWidth - drawWidth) / 2;
+        const dy = y0 + (cellHeight - drawHeight) / 2;
+        doc.addImage(dataUrl, "JPEG", dx, dy, drawWidth, drawHeight);
+      }
+      doc.save(`masa-qr-kodlari-${new Date().toISOString().slice(0, 10)}.pdf`);
+      showToast(`${selected.length} QR kod PDF olarak indirildi.`, "success");
+      clearSelection();
+    } catch {
+      showToast("PDF oluşturulamadı.", "error");
     } finally {
       setBulkDownloading(false);
     }
@@ -524,14 +652,18 @@ export default function TablesPage() {
                     <X size={13} aria-hidden="true" />
                     Seçimi Temizle
                   </Button>
+                  <Button size="sm" variant="secondary" onClick={() => void handleBulkDownloadZip()} disabled={bulkDownloading}>
+                    <Download size={13} aria-hidden="true" />
+                    {bulkDownloading ? "İndiriliyor…" : `PNG İndir (${selectedCount})`}
+                  </Button>
                   <Button
                     className={pageStyles.primaryButton}
                     size="sm"
-                    onClick={() => void handleBulkDownload()}
+                    onClick={() => void handleBulkDownloadPdf()}
                     disabled={bulkDownloading}
                   >
-                    <Download size={13} aria-hidden="true" />
-                    {bulkDownloading ? "İndiriliyor…" : `Seçilenleri İndir (${selectedCount})`}
+                    <FileText size={13} aria-hidden="true" />
+                    {bulkDownloading ? "İndiriliyor…" : `PDF İndir (${selectedCount})`}
                   </Button>
                 </div>
               </div>
