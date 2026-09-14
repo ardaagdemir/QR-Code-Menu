@@ -4967,6 +4967,350 @@ kalmamıştı, sadece commit edilmemişti.
 temiz, `eslint` değişen dosyalarda temiz, `test:components` 29/29, `test:unit` 10/10, customer-web
 33/33.
 
+---
+
+## 2026-08-26 — Masalar ekranı QR aksiyon butonları redesign
+
+`docs/design/masalar-buton-duzeltme.png` referansıyla, sadece `app/tables/page.tsx` +
+`page.module.css` (başka ekran/genel `Button` bileşenine dokunulmadı):
+
+- **Yazdır butonu tamamen kaldırıldı** — artık tetiklenemeyen `handlePrintQr` fonksiyonu ve
+  `Printer` import'u da birlikte silindi (dead code bırakılmadı).
+- **Arşivle butonu UI'dan tamamen kaldırıldı** — bu ekranda arşivlemeyi tetikleyen tek yer buydu,
+  bu yüzden artık ulaşılamaz olan `archiveTarget` state'i, `handleConfirmArchive`, "Masayı
+  Arşivle" `ConfirmDialog`'u ve `archiveTable`/`Archive` import'ları da temizlendi. Not: silme 409
+  hata mesajı hâlâ "bunun yerine arşivleyin" diyor ama artık bu ekrandan arşivleme yolu yok — metni
+  değiştirmedim, kapsam dışıydı.
+- **Kalan 4 aksiyon (QR'ı Yenile / PNG İndir / QR'ı İptal Et / Sil) kompakt + tutarlı hale
+  getirildi:** özel `!important` CSS override'ları yerine, Menü ürün satırı redesign'ında
+  (bkz. yukarıdaki "KDV alanı kaldırma…" girdisi) zaten eklenmiş olan `Button` variant'ları
+  kullanıldı — `accent` (QR'ı Yenile, marka turuncusuyla hafif vurgulu), `secondary` (PNG İndir,
+  nötr), `warning` (QR'ı İptal Et, dikkat çekici ama Sil'den ayrışan bir uyarı rengi), `danger`
+  (Sil, kırmızı destructive) + hepsi `size="sm"`. Bu sayede warning/danger ayrımı, referans
+  görseldeki "ikisi de kırmızı" görünümünden daha net bir semantik ayrım veriyor. Satır içi
+  boşluk sıkılaştırmak için `tableStyles.actions` (14 ekranda paylaşılan ortak class, dokunulmadı)
+  yanında sadece bu sayfaya özel `pageStyles.actions` eklendi (`gap` daraltması).
+- Artık kullanılmayan `.secondaryButton`/`.actionButton`/`.revokeButton` CSS class'ları
+  `page.module.css`'ten silindi.
+
+**Doğrulama:** `tsc --noEmit` ve `eslint app/tables/page.tsx` temiz. `docker compose build
+staff-web` + `up -d` ile image yeniden derlenip konteyner güncellendi (bu servis dev'de
+volume-mount değil, build'lenmiş image çalıştırıyor — host'taki edit tek başına yansımıyor).
+Chrome'da gerçek oturumla (`isletmesahibi@qrmenu.local`) `/tables` ekranında light + dark mode
+kontrol edildi, 4 buton kompakt/hizalı görünüyor; QR'ı Yenile/QR'ı İptal Et/Sil onay dialog'ları
+ve PNG İndir hâlâ eskisi gibi çalışıyor (davranış değişmedi, sadece UI). Commit/push yapılmadı
+(kullanıcı talebi).
+
+---
+
+## 2026-08-26 — Giderler ekranı satır aksiyonları redesign
+
+`docs/design/gider-kategorileri.png` referansıyla, sadece Manuel Giderler ve Tekrarlayan
+Giderler satır aksiyonları düzenlendi (`ExpenseList.tsx`, `RecurringTemplates.tsx`,
+`expenses.module.css`) — Gider Kategorileri paneline, genel `Button` bileşenine ve backend
+davranışına dokunulmadı:
+
+- **Manuel Giderler:** Düzenle/İptal Et butonları `ghost` + `size="md"` + manuel `dangerAction`
+  CSS override'ından, zaten var olan `secondary` (Düzenle) ve `danger` (İptal Et) variant'larına +
+  `size="sm"` geçirildi. "Kaydı İptal Et" etiketi, referans görseldeki kompakt "Sil" hizasına
+  yaklaşmak için "İptal Et"e kısaltıldı — iptal business logic'i (`cancelExpense`, onay dialog
+  metni, 409 davranışı) değişmedi.
+- **Tekrarlayan Giderler:** "Pasife Al" butonu UI'dan tamamen kaldırıldı; artık ulaşılamaz olan
+  "Aktifleştir" butonu, `deactivateTarget`/`deactivating`/`activatingTemplateId` state'leri,
+  `handleConfirmDeactivate`/`handleActivate` fonksiyonları, pasife alma `ConfirmDialog`'u ve
+  `activateRecurringExpenseTemplate`/`deactivateRecurringExpenseTemplate` import'ları da birlikte
+  temizlendi (dead code bırakılmadı; backend endpoint'leri `lib/api.ts`'te duruyor, sadece bu
+  ekrandan çağrılmıyor). Satırda sadece Düzenle (`secondary`, `sm`) ve Sil (`danger`, `sm`) kaldı;
+  Durum (Aktif/Pasif) badge'i salt bilgi amaçlı görüntü olarak korundu, yeni bir lifecycle/aksiyon
+  eklenmedi.
+- `expenses.module.css`'teki artık kullanılmayan `.dangerAction` kuralı silindi,
+  `.actionsCell > div` için satır içi boşluğu sıkılaştıran `gap: var(--space-1)` eklendi.
+
+**Doğrulama:** `tsc --noEmit` temiz, değişen dosyalarda `eslint` temiz (ExpenseList.tsx'teki tek
+uyarı benim değişikliğimden bağımsız, dokunulmamış satır 108'deki mevcut bir effect'te), Vitest
+`app/expenses` suite'i 7/7 yeşil. `docker compose build staff-web && up -d` ile image yeniden
+derlendi (bu servis de dev'de volume-mount değil). Chrome'da gerçek oturumla
+(`isletmesahibi@qrmenu.local`) `/expenses` ekranında light + dark mode kontrol edildi: Manuel
+Giderler ve Tekrarlayan Giderler satırlarında butonlar referans görseldeki gibi kompakt/bitişik;
+Düzenle dialog'u ve İptal Et onay dialog'u (metni dahil) eskisi gibi çalışıyor. Commit/push
+yapılmadı (kullanıcı talebi).
+
+---
+
+## 2026-08-26 — İşletme Ayarları ekranı yerleşim + buton redesign
+
+`docs/design/isletme-ayarlari.png` referansıyla, sadece İşletme Ayarları ekranı düzenlendi
+(`app/business-settings/page.tsx`, `page.module.css`) — genel `Button` bileşenine, backend
+davranışına ve diğer ekranlara dokunulmadı:
+
+- **Kök neden:** "Varsayılan Para Birimi & Saat Dilimi" ve "İşletme Adı" formları aynı
+  `settingsForm` grid class'ını (`0.7fr 1.3fr auto` 3 kolon) paylaşıyordu. İşletme Adı formunda
+  sadece 2 eleman (input + buton) olduğu için grid, input'u dar 0.7fr kolona, butonu ise geniş
+  1.3fr kolona yerleştiriyordu — "aşırı büyük buton" şikayetinin sebebi buydu (boyut değil,
+  yanlış grid kolonu). Fix: iki form ayrı class'lara ayrıldı — `currencyForm` (2 alan yan yana +
+  altta sağa yaslı buton, `grid-column: 1 / -1; justify-self: end`) ve `nameForm` (flex-column,
+  input tam genişlik, buton `align-self: flex-end` ile altta sağda, input kadar geniş değil).
+- **Yerleşim:** İki kart artık yeni `topRow` grid (`repeat(2, 1fr)`) içinde yan yana; altta Rapor
+  Alıcıları eskisi gibi tam genişlikte ayrı panel. 760px altında `topRow` ve `currencyForm` tek
+  kolona düşüyor (mevcut mobil davranış korunmuş).
+  Kaydet butonları kompakt kalsın diye `size="sm"` verildi.
+- **Rapor Alıcıları satır aksiyonları:** Düzenle `ghost` → `secondary` (nötr, bordürlü) + `Pencil`
+  ikonu; Sil zaten `danger` variant'taydı, sadece `Trash2` ikonu eklendi; ikisi de `size="md"` →
+  `size="sm"`. Kaydet butonlarıyla tutarlı olsun diye Günlük/Aylık rapor badge mantığı ve
+  Kişi Ekle butonu (marka turuncusu, primary) değiştirilmedi.
+- Saat dilimi hint metni referans görseldeki kısa haliyle eşleşsin diye "…geçerli bir IANA
+  değeri seçin." → "…listeden seçin." kısaltıldı (salt metin, davranış aynı).
+
+**Doğrulama:** `tsc --noEmit` temiz, `eslint app/business-settings/page.tsx` temiz. Vitest
+`app/business-settings/page.test.tsx` 6/6 yeşil (çift-submit koruması, boş isim validasyonu,
+kişi CRUD dialog'ları dahil); tam suite'te tek kırmızı `AppShell.test.tsx` bu değişiklikten
+bağımsız, önceden var olan bir `window.localStorage.clear is not a function` ortam sorunu
+(dokunulmamış dosya, `git log` ile doğrulandı). `docker compose build staff-web && up -d` ile
+image yeniden derlendi (bu servis dev'de volume-mount değil). Chrome'da gerçek oturumla
+(`isletmesahibi@qrmenu.local`) `/business-settings` ekranında light + dark mode kontrol edildi:
+yerleşim referans görsele yakın, "Ayarları Kaydet" tıklanıp toast ile kayıt davranışının
+bozulmadığı doğrulandı. Commit/push yapılmadı (kullanıcı talebi).
+
+---
+
+## 2026-08-26 — Rapor Alıcıları'nı Raporlar'a taşı + Rapor Bildirimleri (aylık manuel resend)
+
+Yalnız Raporlar ekranı (`app/reports/[branchId]/page.tsx`) ve İşletme Ayarları'ndan kaldırılan
+Rapor Alıcıları bölümü + buna bağlı backend bildirim akışı düzenlendi. Diğer ekranlara
+dokunulmadı.
+
+**Kök sorun / tasarım kararı:** Rapor Alıcıları CRUD'u `Permission.BUSINESS_SETTINGS_MANAGE`
+gerektiriyor (yalnız BUSINESS_ADMIN), ama Raporlar `Permission.REPORT_VIEW` ile
+BRANCH_MANAGER/CASHIER'a da açık - bu iki rol İşletme Ayarları'na hiç erişemediği için rapor
+tercihlerini hiç göremiyordu. Taşıma bunu çözüyor; frontend'de `staffContext.role ===
+"BUSINESS_ADMIN"` kontrolüyle bölüm BRANCH_MANAGER/CASHIER'a hiç render edilmiyor (backend CRUD
+endpoint'leri zaten 403 döner, ama yönetemeyecekleri bir UI'ı hiç göstermemek daha doğru).
+
+**Frontend:**
+- `ContactFormDialog.tsx` `app/business-settings/` → `app/reports/`'a taşındı (`git mv`).
+- `business-settings/page.tsx`: Rapor Alıcıları state/handler/JSX'i tamamen kaldırıldı (contacts,
+  contactForm, deleteTarget, loadContacts, openCreateContact/EditContact,
+  handleSubmitContact/ConfirmDeleteContact + `Table`/`Badge`/`ConfirmDialog`/`ContactFormDialog`
+  importları); `page.module.css`'teki `.contactsPanel/.reportPreferences/.noPreference/
+  .actionsHeader` kuralları `reports.module.css`'e taşındı (dead code bırakılmadı).
+- `reports/[branchId]/page.tsx`: aynı state/handler seti + "Rapor Alıcıları" section'ı
+  "Gün Sonu Kapanışları"ndan hemen önce eklendi (`isBusinessAdmin` şartıyla); yeni "Rapor
+  Bildirimleri" section'ı "Gün Sonu Kapanışları"ndan hemen sonra eklendi - Rapor Türü/Dönem/
+  Alıcı/Gönderim Tarihi/Durum/İşlem kolonlarıyla, DAILY+MONTHLY birleşik liste
+  (`getReportNotifications()`). İşlem butonu DAILY satırda mevcut
+  `resendOwnerNotifications(dailyCloseReportId)`'i (Gün Sonu Kapanışları'ndaki ile aynı bulk
+  per-report akış, `notificationsByReport` de senkron güncelleniyor), MONTHLY satırda yeni
+  `resendMonthlyReportNotifications(period)`'ı çağırıyor - ikisi de aynı (rapor/dönem) için tüm
+  alıcılara toplu gönderim yapıyor. FAILED satırda buton etiketi "Yeniden Dene", SENT'te "Tekrar
+  Gönder" (spec'teki ayrım). `formatMonthPeriod`/`formatAttemptedAt` yeni yardımcı fonksiyonlar
+  (`formatReportDate`'in yanında).
+- `lib/api.ts`: `ReportNotificationLog` tipi + `getReportNotifications()` +
+  `resendMonthlyReportNotifications(period)` eklendi (`/api/staff/reports/notifications`,
+  `/api/staff/reports/monthly/resend?period=YYYY-MM`).
+
+**Backend (`com.qrmenu.ownernotification`):**
+- `OwnerNotificationLogRepository`: `findTop200ByBranchIdOrderByAttemptedAtDesc` (Rapor
+  Bildirimleri listesi) + `findAllByReportTypeAndBranchIdAndReportPeriodOrderByAttemptedAtAsc`
+  (resend sonrası güncel liste) eklendi.
+- `MonthlyReportContactDispatcher.attemptManualResendForContact(...)`: yeni paket-private metod,
+  `attemptForContact`'ın advisory-lock/SENT-terminal/backoff kontrollerinin hiçbirine bakmadan
+  doğrudan gönderir ve `triggeredBy=MANUAL` bir log satırı yazar - AUTO-only partial unique
+  index'e (V40) hiç girmediği için `DataIntegrityViolationException` riski yok. AUTO tarafının
+  idempotency/backoff/advisory-lock mantığına dokunulmadı.
+- `OwnerNotificationService.resendMonthly(businessId, branchId, periodMonth, actorStaffUserId)`:
+  DAILY'nin `resend()`'i ile aynı rol - güncel `monthlyReportRecipient=true` alıcılara
+  `attemptManualResendForContact` çağırır, ardından `listForMonthlyPeriod` ile güncel listeyi
+  döner. Ayrıca `listRecentForBranch(branchId)` eklendi.
+- `DailyCloseService.getBusinessDatesByIds(reportIds)`: yeni toplu lookup - DAILY log
+  satırlarının Dönem kolonu için `dailyCloseReportId → businessDate` haritası (N+1 önlemek için
+  `findAllById`).
+- Yeni `StaffReportNotificationController` (`ownernotification/web/`):
+  `GET/POST /api/staff/reports/notifications` ve `/api/staff/reports/monthly/resend` (+ branch
+  path variant'ları), ikisi de `Permission.REPORT_VIEW` ile (mevcut daily notification
+  endpoint'leriyle aynı yetki seviyesi). Yeni `ReportNotificationResponse` DTO'su
+  `reportType`/`dailyCloseReportId`/`period` alanlarını taşıyor.
+
+**Testler:**
+- Backend: yeni `ReportNotificationIntegrationTest` (3 test) - manuel aylık resend'in AUTO
+  SENT'ten sonra bile yeni bir MANUAL deneme yarattığını, FAILED bir denemede backoff
+  penceresini beklemeden hemen retry ettiğini (gerçek SMTP restart yerine
+  `MonthlyReportFlowIntegrationTest`'teki reflection ile manufacture edilmiş log satırı
+  kullanıldı - restart-sonrası-hemen-tekrar-deneme pattern'i o dosyanın javadoc'unda flaky
+  olarak işaretlenmiş), ve birleşik listenin DAILY+MONTHLY'yi doğru period ile döndürdüğünü
+  doğruluyor. Tüm backend suite (`./mvnw test`) yeşil.
+- Frontend: `business-settings/page.test.tsx`'teki taşınan Rapor Alıcısı testleri/mock'ları
+  kaldırıldı (3/3 kalan test yeşil); yeni `app/reports/[branchId]/page.test.tsx` (7 test) -
+  BUSINESS_ADMIN'de Rapor Alıcıları görünürlüğü + CRUD, BRANCH_MANAGER'da gizli olduğu, Rapor
+  Bildirimleri'nde DAILY/MONTHLY etiket+period formatlaması, ve her iki resend butonunun doğru
+  endpoint'i çağırdığı.
+
+**Doğrulama:** `tsc --noEmit` temiz, `eslint app/reports app/business-settings lib/api.ts`
+temiz, `npx vitest run` yeşil (tek kırmızı yine önceden var olan bağımsız `AppShell.test.tsx`
+ortam sorunu). Backend `./mvnw test` yeşil. `docker compose build backend staff-web && up -d`
+ile image'lar yeniden derlendi. Chrome'da gerçek oturumlarla uçtan uca doğrulandı:
+`isletmesahibi@qrmenu.local` (BUSINESS_ADMIN) ile Raporlar'da Rapor Alıcıları görünüyor,
+İşletme Ayarları'nda artık yok; Rapor Bildirimleri'nde DAILY satırında "Tekrar Gönder"
+tıklanıp hem tabloya yeni satır eklendiği hem de Gün Sonu Kapanışları'ndaki bildirim
+rozetinin (1→2 gönderildi) senkron güncellendiği görüldü. Hiç aylık gönderim geçmişi
+olmadığı için MONTHLY akışı gerçek backend'e (`/api/staff/reports/monthly/resend?period=
+2026-07`) doğrudan istekle tetiklendi - satır "Aylık Rapor | Temmuz 2026 | ... | Gönderildi"
+olarak doğru göründü, aynı satırda tekrar "Tekrar Gönder" tıklanınca AUTO/SENT idempotency'yi
+bypass ederek ikinci bir MANUAL satır daha eklendi (geçmiş kaybolmadı). `kasakullanici@
+qrmenu.local` (CASHIER) ile Rapor Alıcıları bölümü hiç render edilmiyor, Rapor Bildirimleri
+şubeye göre doğru filtreleniyor. Dark mode kontrol edildi. Commit/push yapılmadı (kullanıcı
+talebi).
+
+---
+
+## 2026-08-26 — Raporlar ekranı tam redesign (referans görselle yerleşim uyuşmazlığı düzeltmesi)
+
+**Kök sorun:** Önceki girdideki doğrulama yetersizdi - Chrome'da gerçek ekranı referans
+görselle (`docs/design/raporlar-ekrani.png`) yan yana karşılaştırmadan "görsele yakın" dendi.
+Kullanıcı itiraz edince gerçek ekran açıldı: Rapor Alıcıları taşıma + Rapor Bildirimleri
+fonksiyonel olarak doğruydu, ama sayfanın genel yerleşimi görselden tamamen farklıydı - mevcut
+sayfa "Dönem Özeti" (tarih aralığı seçici + 4 KPI) + ayrı "Operasyon Detayları" + 4 grafik
+(Günlük Ciro Trendi dahil) + tüm alt panelleri tam genişlikte alt alta gösteriyordu; görselde
+ise 5 sabit "Bugün" KPI kartı + 3 grafik (Saatlik Satış Dağılımı/Ürün Bazında Satış/Kategori
+Bazında Ciro) + Gün Sonu Kapanışları+Aylık Finansal Özet yan yana + Rapor Alıcıları+Rapor
+Bildirimleri yan yana var. Kullanıcıya seçenek soruldu, "tam redesign" onaylandı (tarih aralığı
+seçici ve Operasyon Detayları'nın kaldırılabileceği açıkça belirtilerek).
+
+**Frontend (`app/reports/[branchId]/page.tsx`, `reports.module.css`, `ReportCharts.tsx/.module.css`):**
+- `DateRangePresets` UI'ı tamamen kaldırıldı - üst KPI/grafik bloğu artık her zaman "Bugün"
+  (branch timezone'a göre), Gün Sonu Kapanışları + Aylık Finansal Özet artık her zaman
+  "içinde bulunulan ay" (`presetRange("month", ...)`) sabit aralığında. "Bugünü kapat (Final)"
+  butonu (görselde yok ama kritik iş fonksiyonu) korundu.
+- "Dönem Özeti"+"Operasyon Detayları" bölümleri tamamen silindi (Kabul Oranı dahil - Masa
+  Ziyareti/Misafir Sayısı üst KPI'lara taşındı, kaybolmadı). 5 KPI kartı: Günlük Satış Tutarı
+  (net satış), Günlük Sipariş Sayısı, **İade Sayısı** (yeni - aşağıda), Masa Ziyareti,
+  Müşteri Sayısı - hepsi "Bugün" rozetiyle.
+- "Günlük Ciro Trendi" (alan grafiği) tamamen kaldırıldı - görselde karşılığı yok. Kalan 3
+  grafik tek satırda: Saatlik Satış Dağılımı artık `BarList` yerine yeni dikey SVG bar grafiği
+  (`ReportCharts.tsx`'e eklenen `HourlyBarChart`, eski `RevenueAreaChart`'ın yerini aldı - o da
+  ve ona özel `.areaFill/.line/.pointHalo/.point` CSS'i silindi, dead code bırakılmadı); Ürün
+  Bazında Satış hâlâ paylaşılan `BarList` (dashboard/chain-reports'ta da kullanıldığı için
+  dokunulmadı) ama `.rankingPanel` kapsamında salt-CSS `counter()` ile numaralı rozet eklendi;
+  Kategori Bazında Ciro'nun donut merkezi "N Kategori" yerine toplam ciro tutarı + "Toplam",
+  legend'e her satıra yüzde eklendi.
+- Gün Sonu Kapanışları tablosundan Brüt Satış kolonu kaldırıldı (Tarih/Durum/Net Satış/
+  Sipariş/Bildirim - görselle birebir). Aylık Finansal Özet artık Yönetimsel Net Sonuç'un
+  (eskiden sayfa sonunda tam genişlik) yerini alarak Gün Sonu Kapanışları'nın yanına taşındı -
+  **önemli:** görseldeki "Aylık Net Kâr" etiketi kasıtlı olarak kullanılmadı, `OperatingResult`
+  tipinin üzerindeki mevcut yorum ("Section 17: kâr olarak sunulmaz - UI etiketi her zaman
+  'Yönetimsel Net Sonuç' olmalı") gereği "Yönetimsel Net Sonuç" + yasal uyarı metni korundu.
+- Rapor Alıcıları + Rapor Bildirimleri artık yan yana (`.pairGrid`, CASHIER/BRANCH_MANAGER'da
+  Rapor Alıcıları render edilmediğinde Rapor Bildirimleri `gridColumn: 1/-1` ile tam genişliğe
+  geçiyor). Görseldeki terminolojiyle eşleşsin diye "Kişi Ekle"→"Alıcı Ekle", "Ad"→"Ad Soyad",
+  "İletişim"→"E-posta" (`ContactFormDialog.tsx`'teki "Yeni Kişi"/"Kişiyi Düzenle"/"Kişi Ekle"
+  başlıkları da "Alıcı" terminolojisiyle tutarlı olsun diye güncellendi - ilgili testler de
+  güncellendi).
+- KPI kartları (`.kpiGrid`) ve 3'lü/2'li panel grid'leri (`.chartTrio`/`.pairGrid`) sabit
+  breakpoint medya sorguları yerine `repeat(auto-fit, minmax(...))` fluid grid'e geçirildi -
+  Operasyon Detayları'na özel `.operationGrid`/`.detailMetric*`/`.acceptanceTrack` CSS'i
+  tamamen silindi (dead code bırakılmadı). İlk denemede KPI etiketleri ("Günlük Satış Tutarı"
+  vb.) rozetle aynı satırda `ellipsis` ile kırpılıyordu - `heroLabel` artık satır kaydırıyor.
+  Aylık Finansal Özet paneli artık yarı genişlik olduğu için 5 kolonlu equation grid'i (eski
+  56px operatör kolonları + `font-size-xl` + `white-space:nowrap`) değerleri kırpıyordu
+  (`₺1.78…` gibi) - operatör kolonları 32px'e indirildi, değer satırı artık kırpma yerine
+  satır kaydırıyor (`overflow-wrap: break-word`), font `font-size-lg`'e küçültüldü.
+
+**Backend (`refund` + `reporting` paketleri) - "İade Sayısı" KPI'sı için yeni alan:**
+Görseldeki "İade Sayısı" (adet) mevcut API'lerde yoktu (yalnız `refundTotalMinorUnits` -
+tutar - vardı). `RefundRepository.countByOrderIdInAndStatus` (yeni derived query) →
+`RefundService.countCompletedRefunds` (yeni, `sumCompletedRefundAmount`'ın adet karşılığı) →
+`ReportingService.buildReport`'ta `refundCount` hesaplanıp `BranchSalesReportView` record'una
+(yeni alan, `refundTotalMinorUnits`'ten hemen sonra) eklendi → `BranchSalesReportResponse` DTO +
+`StaffReportingController` mapping'i güncellendi. Frontend `BranchSalesReport` tipine
+`refundCount: number` eklendi. `ReportingFlowIntegrationTest`'teki mevcut refund senaryosuna
+(`orderB` reddedilip tam iade edilen) `refundCount == 1` assertion'ı eklendi.
+
+**Testler:** Backend `./mvnw test` tam suite yeşil (yeni assertion dahil). Frontend
+`tsc --noEmit` temiz, `eslint app/reports lib/api.ts` temiz, `npx vitest run` 26/33 tsx yeşil
+(tek kırmızı grup yine bağımsız önceden var olan `AppShell.test.tsx` ortam sorunu - bu
+oturumda dokunulmadı), `page.test.tsx`'teki "kişi" metin beklentileri "alıcı"ya güncellenip
+7/7 yeşil, `npm run test:unit` 10/10 yeşil.
+
+**Doğrulama:** `docker compose build backend staff-web && up -d` ile her iki image de yeniden
+derlendi. Chrome'da gerçek oturumla (`isletmesahibi@qrmenu.local`) `/reports` ekranı baştan
+sona görselle karşılaştırıldı: 5 KPI kartı satırı, 3 grafik satırı, Gün Sonu Kapanışları+Aylık
+Finansal Özet yan yana, Rapor Alıcıları+Rapor Bildirimleri yan yana - hepsi artık eşleşiyor.
+Aylık Finansal Özet'teki tüm tutarlar (₺1.785,00 / ₺57.650,75 / ₺55.865,75) artık kırpılmadan
+tam görünüyor. "Alıcıyı Düzenle" dialog'u yeni metinle açılıp çalışıyor. Rapor Bildirimleri
+tablosunda İşlem kolonu (yarı genişlikte tablo içi yatay scroll ile) doğrulandı. Dark mode
+kontrol edildi. Commit/push yapılmadı (kullanıcı talebi).
+
+---
+
+## 2026-08-27 — Raporlar: analiz kartlarına dönem seçimi + Rapor Alıcıları/Bildirimleri pagination
+
+Bir önceki girdideki tam redesign referans görsele ("Bugün" sabit + tarih aralığı seçici yok)
+birebir uydu, ama kullanıcının bu oturumdaki yeni yazılı talebi görselin ötesine geçen üç ek
+gereksinim getirdi: (1) Saatlik Satış Dağılımı/Ürün Bazında Satış/Kategori Bazında Ciro'nun her
+biri bağımsız Günlük/Haftalık/Aylık dönem seçebilsin, (2) Rapor Alıcıları + Rapor Bildirimleri
+listeleri max 5 kayıt/sayfa + pagination ile sınırlansın (kart yüksekliği büyümesin), (3) Aylık
+Finansal Özet'in açıklaması + "ay bitmediyse dönem bilgisi" ("1–26 Ağustos 2026" gibi) net
+olsun. "Aylık Net Kâr" etiketi kullanıcının metninde geçse de referans görselde ve product-
+requirements.md Section 17'de zorunlu kılınan etiket hâlâ "Yönetimsel Net Sonuç" olduğu için
+(net kâr olarak sunulmaması gereken yasal kısıt) görsel esas alındı, etiket değiştirilmedi.
+
+**Frontend (`app/reports/[branchId]/page.tsx`):**
+- Yeni `useAnalysisPeriod()` custom hook (period/data/loading state + `reload(period, timeZone)`,
+  stale response'ları görmezden gelmek için request-id ref guard'lı) - `hourly`/`products`/
+  `categories` olarak 3 kez kullanılıyor. İlk yüklemede `loadReport()`'un tek `getBranchSalesReport`
+  çağrısının sonucu üçüne birden `setData` ile paylaşılıyor (varsayılan dönem "Günlük" = bugün
+  olduğu için aynı veriyi 3 kez fetch etmeye gerek yok); dönem değiştiğinde yalnız o kart kendi
+  `getBranchSalesReport(from, to)` çağrısını yapıyor (gerçek reporting endpoint'i, sentetik veri
+  yok - backend zaten keyfi tarih aralığı destekliyordu, değişiklik gerekmedi).
+  `periodDateRange()` "day"/"week"/"month"'u mevcut `presetRange("today"|"week"|"month", tz)`'e
+  eşliyor. Yeni `PeriodToggle` komponenti (3 pill buton) `ReportSectionHeading`'in yeni `right`
+  prop'u üzerinden bu üç kartın sabit "Bugün" rozetinin yerini aldı; fetch sürerken kart içeriği
+  `.panelLoading` (opacity 0.55 + pointer-events:none) ile soluklaşıyor, toggle butonları
+  disable ediliyor - stale/yanlış veri asla gösterilmiyor.
+- Yeni `LIST_PAGE_SIZE = 5` + `Pager` komponenti (Önceki/Sonraki + "Sayfa X / Y"). Rapor
+  Alıcıları (`contacts`) ve Rapor Bildirimleri (`reportNotifications`) artık `pagedContacts`/
+  `pagedReportNotifications` (client-side slice) render ediyor; sayfa index'i her render'da
+  `Math.min(state, pageCount-1)` ile clamp edildiği için silme sonrası boşa düşen sayfa otomatik
+  öncekine dönüyor. `LIST_PAGE_SIZE`'ın altındaysa Pager hiç render edilmiyor.
+- Yeni `formatMonthRangeLabel(monthRange)`: ayın son gününe ulaşılmadıysa "1–26 Ağustos 2026"
+  (gün..bugün), ulaşıldıysa sade "Ağustos 2026". Aylık Finansal Özet başlığının `right` slot'una
+  `Badge` içinde render ediliyor.
+
+**CSS (`reports.module.css`):** `.periodToggle/.periodToggleButton(Active)` (pill segmented
+control, aktifte `--color-primary` dolgu), `.panelLoading`, `.pager/.pagerLabel` eklendi.
+Chrome'da ilk denemede "1–26 Ağustos 2026" rozeti 3 satıra bölünüyordu (sectionIntro flex
+satırında sağdaki öğe shrink oluyordu) - `.sectionIntroMain { flex: 1 1 auto }` +
+`.sectionIntro > .periodToggle / > span:has(.periodBadgeText) { flex-shrink: 0 }` +
+`.periodBadgeText { white-space: nowrap }` ile düzeltildi.
+
+**Backend:** Değişiklik yok - `ReportingService.buildReport` zaten herhangi bir `from/to` aralığı
+için hourly/product/category breakdown'ı hesaplıyordu (önceki oturumda kaldırılan "Dönem Özeti"
+tarih seçicisi de aynı endpoint'i kullanıyordu), dönem seçimi salt frontend'in aynı endpoint'i
+farklı aralıklarla çağırmasıyla çözüldü.
+
+**Testler:** `page.test.tsx`'e 3 yeni test - Rapor Bildirimleri'nde 6 kayıttan 5'i ilk sayfada,
+"Sonraki" tıklanınca 6.'nın göründüğü; Rapor Alıcıları'nda aynı senaryo; bir kartın dönemini
+"Haftalık"a çevirmenin `getBranchSalesReport`'u `from !== to` olan ikinci bir aralıkla
+çağırttığı (tam tarih hesaplamak yerine yalnız "tek günden geniş" assert edilerek test
+tarihine bağımlılık önlendi). `toBeInTheDocument()` bu repoda kullanılmıyormuş (jest-dom
+matcher'ı yok) - `getByText` ile değiştirildi. `tsc --noEmit` temiz, `eslint app/reports
+lib/api.ts` temiz, `npx vitest run app/reports app/business-settings` 13/13 yeşil, tam
+`npx vitest run` yine yalnız bağımsız önceden var olan `AppShell.test.tsx` ortam sorunuyla
+kırmızı (bu oturumda dokunulmadı). Backend `./mvnw test` tam suite 275/275 yeşil (değişiklik
+olmadığı için sadece regresyon kontrolü).
+
+**Doğrulama:** `docker compose build backend staff-web && up -d`. Chrome'da gerçek oturumla
+(`isletmesahibi@qrmenu.local`) doğrulandı: Ürün Bazında Satış'ı "Haftalık"a çevirmek gerçek
+haftalık ürün verisini getirdi (Saatlik/Kategori kartları kendi "Günlük"lerinde sabit kaldı -
+bağımsız çalıştıkları teyit edildi), aynı şekilde Kategori Bazında Ciro "Haftalık"a çevrilip
+gerçek haftalık kategori donut'u doğrulandı. Aylık Finansal Özet rozeti "1–26 Ağustos 2026"
+tek satırda doğru göründü. Pagination'ı gerçek veriyle test etmek için UI üzerinden 5 geçici
+alıcı ("Test Alıcı 1-5") eklenip Rapor Alıcıları'nın 6 kayıtta "Sayfa 1/2"'ye geçtiği, sonraki
+sayfada 6. kaydın göründüğü doğrulandı, ardından hepsi silinip hesap orijinal duruma
+(yalnız "Arda Ağdemir") döndürüldü. Rapor Bildirimleri zaten 7 gerçek kayıtla "Sayfa 1/2" +
+"Sonraki" ile 2. sayfada kalan 2 kaydı gösteriyordu - ek veri gerekmedi. Dark mode'da toggle/
+pager/rozet kontrast ve state kalıcılığı (tema değişince sayfa/dönem seçimi kaybolmuyor)
+doğrulandı. Commit/push yapılmadı (kullanıcı talebi).
+
 ## 2026-08-27 — Gider Listesi: "İptal Et" yerine gerçek "Sil" (hard delete)
 
 Kullanıcı talebi: Giderler → Gider Listesi'ndeki "İptal Et" butonu Tekrarlayan Giderler'deki
@@ -5011,3 +5355,125 @@ silindi, audit entry sayısı 3'ten 2'ye düşürüldü (artık "Expense CANCELL
 Sil → "Bu gider kaydı silinecek ve gider raporlarına dahil edilmeyecek. Bu işlem geri alınamaz."
 onay diyaloğu → onaylayınca "Gider kaydı silindi." toast'ı ve satır anında listeden düştü;
 sayfa yenilendikten sonra da kayıt geri gelmedi (gerçek hard delete, sadece client state değil).
+
+## 2026-08-27 — İşletme Ayarları + Şube Ayarları → tek "Ayarlar" ekranı ✅ TAMAMLANDI
+
+Kullanıcı talebi: Sidebar'daki ayrı "Şube Ayarları" ve "İşletme Ayarları" linkleri kaldırılıp
+SİSTEM grubu altında tek bir "Ayarlar" linki gelecek; ekranda üstte İşletme/Şube tab'ları
+olacak. Referans: `docs/design/ayarlar-ekrani-isletme.png`, `ayarlar-ekrani-sube.png` (yerleşim
+birebir, tema/sidebar/topbar/kart/input/renk yeniden tasarlanmayacak).
+
+**Netleştirme (kullanıcıya soruldu):** Referans görseldeki Şube Bilgileri kartında "Şube Adı"
+ve "Telefon" alanları var ama mevcut `Branch` modelinde (`backend/.../tenant/Branch.java`) ne
+şube adını değiştiren bir endpoint ne de bir `phone` alanı var. Kullanıcı "sadece mevcutları
+taşı" dedi → Telefon alanı hiç gösterilmeyecek, Şube Adı zaten `PageHeader` açıklamasında var;
+backend'e dokunulmayacak.
+
+**Kod okuması:**
+- `lib/staffNav.ts`: "Yönetim" grubunda `branch-settings` (`/branches`, roller
+  BUSINESS_ADMIN+BRANCH_MANAGER), "Sistem" grubunda `business-settings` (`/business-settings`,
+  yalnız BUSINESS_ADMIN) - ikisi de ayrı nav item.
+- `app/business-settings/page.tsx` (230 satır): Para Birimi/Saat Dilimi formu +
+  İşletme Adı formu (Rapor Alıcıları önceki oturumda Raporlar'a taşınmış, burada zaten yok).
+  `getBusiness/updateBusinessName/updateBusinessSettings` (`lib/api.ts`) kullanıyor.
+- `app/branches/page.tsx` (362 satır): "Operasyon" kartı (sipariş kabul toggle + teslimat
+  modeli, `canManageBranch = role === "BUSINESS_ADMIN"` ile BRANCH_MANAGER'da teslimat modeli
+  gizli - BRANCH_MANAGER yalnız `ORDERING_TOGGLE` yetkisine sahip), "Şube Bilgileri" kartı
+  (adres + saat dilimi + kasa kabul süresi dk, yalnız BUSINESS_ADMIN), "Çalışma Saatleri"
+  kartı (7 günü tek tek gösteren tablo, yalnız BUSINESS_ADMIN). `listBranches/getBusinessHours/
+  setAddress/setBranchTimezone/setStoreAcceptanceTimeout/setOrderingEnabled/setDeliveryModel/
+  setBusinessHours` kullanıyor - hepsi olduğu gibi reuse edilecek, yeni endpoint yok.
+- Paylaşılan `components/ui/Tabs.tsx` zaten var (orders sayfasında kullanılıyor) - yeni tab
+  component'i yazılmayacak, bu reuse edilecek.
+- Rol bilgisi component'lerde `me()` çağrısıyla alınıyor (branches/page.tsx zaten böyle
+  yapıyor) - `staffContextStore` ilk mount'ta boş olabileceği için ona güvenilmeyecek, aynı
+  `me()` deseni tekrarlanacak.
+
+**Tasarım kararları:**
+1. Yeni route: `app/settings/page.tsx` (tek `AppShell`, `PageHeader title="Ayarlar"`, üstte
+   `Tabs` "İşletme"/"Şube"). Rol BUSINESS_ADMIN ise iki tab da görünür (varsayılan aktif:
+   İşletme); rol BRANCH_MANAGER ise tab çubuğu hiç render edilmez, doğrudan Şube içeriği
+   gösterilir (İşletme tabına hiç erişim yok). Diğer roller (CASHIER, PLATFORM_ADMIN) için
+   özel bir engelleme eklenmiyor - nav zaten linki gizliyor, doğrudan URL'e girilirse mevcut
+   `business-settings`/`branches` davranışıyla aynı şekilde altındaki API çağrıları 403 döner
+   ve mevcut genel hata mesajı gösterilir (yeni bir yetki kazandırılmıyor).
+2. İçerik iki alt component'e bölünecek: `app/settings/BusinessTab.tsx` (business-settings'in
+   birebir taşınmış içeriği) ve `app/settings/BranchTab.tsx` (branches'in içeriği + Çalışma
+   Saatleri redesign). `page.module.css` iki eski module.css'in birleşimi + yeni saat-grubu
+   stilleri.
+3. Eski `/business-settings` ve `/branches` route'ları kırık bırakılmayacak: ikisi de
+   `app/branches/[branchId]/page.tsx`'teki gibi `redirect("/settings")` yapan tek satırlık
+   legacy stub'a dönüşecek (query param YOK - Next 16'da `useSearchParams` prod build'de
+   Suspense sınırı istiyor, bu incelik için o karmaşıklığı eklemeye gerek yok). `[branchId]/
+   page.tsx`'in kendisi de artık doğrudan `/settings`'e yönlendirilecek (çifte redirect yerine).
+4. Çalışma Saatleri redesign - asıl fonksiyonel kısım. Mevcut backend modeli 7 ayrı gün
+   (`BranchBusinessHoursEntry[]`) olarak kalıyor, hiçbir veri kaybı olmadan sadece UI 3 satıra
+   iniyor: "Hafta içi (Pzt-Cum)", "Cumartesi", "Pazar".
+   - Pzt-Cum arasındaki 5 gün `daysEqual` ile karşılaştırılıp hepsi aynıysa TEK satırda
+     (Pazartesi'nin değerleriyle) gösterilir, değişiklik 5 güne birden yazılır.
+   - Eğer 5 gün birbirinden farklıysa (`weekdaysUniform === false`) satır otomatik olarak
+     5 ayrı güne "genişler" (Pzt/Sal/Çar/Per/Cum tek tek) - hiçbir zaman sessizce
+     kaybolmaz/üzerine yazılmaz. Kullanıcı ayrıca uniform durumdayken de "Günlere göre
+     düzenle" linkiyle manuel genişletip tek bir günü özelleştirebilir.
+   - Kart başlığındaki "Tüm günlere uygula" butonu Pazartesi'nin o anki değerlerini
+     (açık/kapalı, açılış, kapanış) kalan 6 güne kopyalar - bu açık bir kullanıcı eylemi,
+     "sessiz kayıp" değil.
+   - Overnight (18:00→02:00) davranışı hiç değişmiyor - `<input type="time">` string'leri
+     backend'e olduğu gibi gidiyor, client tarafında closing<opening için bir doğrulama zaten
+     yoktu, eklenmeyecek.
+5. Backend'e dokunulmayacak (talep de bunu istiyor) - yalnız frontend route/component/nav
+   değişikliği.
+
+**Uygulama:** Plandaki gibi yapıldı. `lib/staffNav.ts`'ten `branch-settings` kaldırıldı,
+`business-settings` item'ı `settings`'e dönüştürüldü (roller BUSINESS_ADMIN+BRANCH_MANAGER,
+href hem BUSINESS_ADMIN'de hem `activeBranchId` varken görünür - eski `branch-settings`
+kısıtıyla aynı). `app/settings/{page,BusinessTab,BranchTab}.tsx` + ortak `page.module.css`
+yazıldı. `app/business-settings/page.tsx` ve `app/branches/page.tsx` artık `redirect("/settings")`
+yapan tek satırlık legacy stub (`[branchId]/page.tsx`'in hedefi de `/settings`'e güncellendi);
+eski `page.module.css` dosyaları silindi.
+
+Şube Ayarları kartında eski "Operasyon" kartındaki teslimat modeli + eski "Şube Bilgileri"
+kartındaki kasa kabul süresi tek forma birleştirildi (`handleSaveOperation`), adres/saat dilimi
+ayrı `handleSaveBranchInfo` olarak "Şube Bilgileri" kartında kaldı - ikisi de aynı mevcut
+`setDeliveryModel/setStoreAcceptanceTimeout/setAddress/setBranchTimezone` endpoint'lerini
+çağırıyor, yeni endpoint yok.
+
+**Testler:** `app/business-settings/page.test.tsx` → `app/settings/BusinessTab.test.tsx`'e
+taşındı (`AppShell` mock'u kaldırıldı, "Kaydet" butonu "Adı Kaydet" oldu - referans görselle
+eşleşiyor). Yeni `app/settings/page.test.tsx` (3 test: BUSINESS_ADMIN'de iki tab + varsayılan
+İşletme, Şube'ye geçiş, BRANCH_MANAGER'da tab çubuğu yok). Yeni `app/settings/BranchTab.test.tsx`
+(4 test: hafta içi günler aynıyken tek "Hafta içi" satırı, farklıyken otomatik 5 güne genişleme,
+"Tüm günlere uygula" Pazartesi'yi diğer günlere kopyalayıp `setBusinessHours`'a doğru payload
+gönderiyor, BRANCH_MANAGER'da Şube Bilgileri/Çalışma Saatleri gizli). Yazarken bu repoda
+jest-dom (`toBeInTheDocument`/`toHaveAttribute`) kurulu olmadığı ortaya çıktı (daha önce
+2026-08-25 raporlar oturumunda da not edilmiş) - `getAttribute`/`toBeNull()` ile yazıldı.
+
+`npx tsc --noEmit` temiz, `npx eslint app/settings app/branches app/business-settings
+lib/staffNav.ts` temiz, `npx vitest run app/settings` 10/10 yeşil, tam `npx vitest run`
+36 geçti + yalnız önceden var olan bağımsız `AppShell.test.tsx` ortam sorunuyla (7 test,
+`window.localStorage.clear is not a function` - `--localstorage-file` flag sorunu, bu
+oturumda dokunulmadı) kırmızı - izole çalıştırıldığında da aynı şekilde kırmızı çıktığı
+doğrulanarak bu değişiklikten kaynaklanmadığı teyit edildi. Backend'e hiç dokunulmadığı için
+backend test suite'i koşulmadı.
+
+**Doğrulama:** `docker compose build staff-web && up -d` (backend değişmediği için o
+rebuild edilmedi). Chrome'da gerçek oturumla:
+- `isletmesahibi@qrmenu.local` (BUSINESS_ADMIN): sidebar'da SİSTEM altında tek "Ayarlar",
+  İşletme/Şube tabları referans görsellerle birebir eşleşti (info banner metni dahil).
+  Çalışma Saatleri gerçek veride (Pzt 08-20, Salı 00-22, Çrş/Prş 08-22, Cuma 08-23 - hepsi
+  farklı) otomatik olarak 5 ayrı güne genişledi, hiçbir veri sessizce kaybolmadı/birleşmedi.
+  "Tüm günlere uygula" Pazartesi'nin (08:00-20:00) değerlerini 7 güne kopyalayıp tek "Hafta
+  içi" satırına düştü; "Günlere göre düzenle" tekrar açtı, "Tek satırda birleştir" tekrar
+  kapattı. Bu deneme **kaydedilmeden** sayfa yenilendi, gerçek veri (farklı 5 gün) olduğu gibi
+  geri geldi - hiçbir üretim verisi bozulmadı. "Şube Ayarları" formunun "Ayarları Kaydet"i
+  gerçekten kaydedip "Ayarlar kaydedildi." toast'ı verdiği doğrulandı.
+- Geçici bir BRANCH_MANAGER hesabı (`temp-branch-manager@qrmenu.local`) oluşturulup test
+  sonunda **Devre Dışı Bırak**ıldı (bkz. [[reference_standing_staff_account]] - bu hesap
+  standing account değil). Bu hesapla girişte sidebar'da yalnız "Ayarlar" (Menü/Masalar/
+  Personel yok), Ayarlar ekranında tab çubuğu hiç render edilmedi, yalnız "Şube Ayarları"
+  kartındaki "Sipariş kabul ediliyor" toggle'ı görünüp çalıştı (Şube Bilgileri/Çalışma
+  Saatleri tamamen gizli) - beklenen ORDERING_TOGGLE-only davranışı birebir doğrulandı.
+- `/branches` ve `/business-settings` ikisi de `/settings`'e yönlendi (redirect zinciri kırık
+  değil).
+
+Commit/push yapılmadı (kullanıcı talebi - bu görevde açıkça istendi).
