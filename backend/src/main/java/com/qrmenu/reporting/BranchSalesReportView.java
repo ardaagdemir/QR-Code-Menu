@@ -22,6 +22,7 @@ public record BranchSalesReportView(
         long grossSalesMinorUnits,
         long netSalesMinorUnits,
         long refundTotalMinorUnits,
+        long refundCount,
         int orderCount,
         int acceptedOrderCount,
         int rejectedOrderCount,

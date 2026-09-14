@@ -17,4 +17,11 @@ public interface OwnerNotificationLogRepository extends JpaRepository<OwnerNotif
     /** Backoff kontrolü için: bu (branch, ay, kişi) için en son denemenin SENT mi yoksa ne zamanki bir FAILED mi olduğunu bulur. */
     Optional<OwnerNotificationLog> findTopByReportTypeAndBranchIdAndReportPeriodAndBusinessContactIdOrderByAttemptedAtDesc(
             OwnerNotificationReportType reportType, UUID branchId, LocalDate reportPeriod, UUID businessContactId);
+
+    /** "Rapor Bildirimleri" ekranı: bir şube için DAILY+MONTHLY tüm gönderim geçmişi, en yeniden eskiye. */
+    List<OwnerNotificationLog> findTop200ByBranchIdOrderByAttemptedAtDesc(UUID branchId);
+
+    /** Manuel aylık resend sonrası güncel listeyi döndürmek için - {@code listForReport}'un aylık karşılığı. */
+    List<OwnerNotificationLog> findAllByReportTypeAndBranchIdAndReportPeriodOrderByAttemptedAtAsc(
+            OwnerNotificationReportType reportType, UUID branchId, LocalDate reportPeriod);
 }

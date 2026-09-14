@@ -170,6 +170,15 @@ public class RefundService {
         return refundRepository.sumTotalAmountMinorUnitsByOrderIdInAndStatus(orderIds, RefundStatus.COMPLETED);
     }
 
+    /** Raporlar ekranı "İade Sayısı" KPI'sı: tamamlanmış iade sayısı (tutar değil, adet). */
+    @Transactional(readOnly = true)
+    public long countCompletedRefunds(List<UUID> orderIds) {
+        if (orderIds.isEmpty()) {
+            return 0L;
+        }
+        return refundRepository.countByOrderIdInAndStatus(orderIds, RefundStatus.COMPLETED);
+    }
+
     @Transactional(readOnly = true)
     public List<RefundView> getRefundsForOrder(UUID orderId) {
         List<Refund> refunds = refundRepository.findAllByOrderIdOrderByCreatedAtAsc(orderId);

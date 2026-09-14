@@ -96,6 +96,7 @@ class ReportingFlowIntegrationTest extends AbstractIntegrationTest {
         // gross = 2*3000 (order A) + 1*3000 (order B, later refunded) = 9000; refund = 3000; net = 6000.
         assertThat(report.get("grossSalesMinorUnits").asLong()).isEqualTo(9000);
         assertThat(report.get("refundTotalMinorUnits").asLong()).isEqualTo(3000);
+        assertThat(report.get("refundCount").asLong()).isEqualTo(1);
         assertThat(report.get("netSalesMinorUnits").asLong()).isEqualTo(6000);
         assertThat(report.get("orderCount").asInt()).isEqualTo(2);
         assertThat(report.get("acceptedOrderCount").asInt()).isEqualTo(1);

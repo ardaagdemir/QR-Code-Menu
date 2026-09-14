@@ -94,6 +94,7 @@ public class ReportingService {
 
         List<UUID> orderIds = orders.stream().map(o -> o.order().getId()).toList();
         long refundTotal = refundService.sumCompletedRefundAmount(orderIds);
+        long refundCount = refundService.countCompletedRefunds(orderIds);
         long netSales = grossSales - refundTotal;
 
         long tableVisitCount = customerSessionService.countTableVisitsBetween(branch.getId(), fromInstant, toInstant);
@@ -116,6 +117,7 @@ public class ReportingService {
                 grossSales,
                 netSales,
                 refundTotal,
+                refundCount,
                 orderCount,
                 acceptedOrderCount,
                 rejectedOrderCount,

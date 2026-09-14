@@ -117,6 +117,55 @@ class MonthlyReportContactDispatcher {
         }
     }
 
+    /**
+     * Manuel "Tekrar Gönder"/"Yeniden Dene" karşılığı: {@link #attemptForContact}'ın advisory-lock,
+     * SENT-is-terminal ve backoff kontrollerinin hiçbirine bakmaz - kullanıcı bilinçli olarak
+     * tekrar göndermeyi istediğinde her zaman yeni bir deneme yapar ve yeni bir log satırı
+     * yazar (geçmiş kayıp olmaz). {@code triggeredBy=MANUAL} olduğu için V40'ın AUTO-only partial
+     * unique index'ine hiç girmez, dolayısıyla {@link DataIntegrityViolationException} riski yok.
+     */
+    @Transactional
+    void attemptManualResendForContact(
+            UUID businessId,
+            UUID branchId,
+            YearMonth periodMonth,
+            BusinessContact contact,
+            String subject,
+            String body,
+            UUID actorStaffUserId) {
+        LocalDate period = periodMonth.atDay(1);
+        OwnerNotificationStatus status;
+        String errorMessage = null;
+        try {
+            emailPort.send(new OwnerNotificationMessage(contact.getEmail(), subject, body));
+            status = OwnerNotificationStatus.SENT;
+        } catch (OwnerNotificationDeliveryException e) {
+            log.warn(
+                    "Aylık rapor manuel yeniden gönderimi başarısız (branchId={}, period={}, contactId={}): {}",
+                    branchId,
+                    period,
+                    contact.getId(),
+                    e.getMessage());
+            status = OwnerNotificationStatus.FAILED;
+            errorMessage = e.getMessage();
+        }
+
+        repository.save(new OwnerNotificationLog(
+                null,
+                businessId,
+                branchId,
+                contact.getId(),
+                contact.getEmail(),
+                OwnerNotificationChannel.EMAIL,
+                status,
+                errorMessage,
+                OwnerNotificationTrigger.MANUAL,
+                actorStaffUserId,
+                Instant.now(),
+                OwnerNotificationReportType.MONTHLY,
+                period));
+    }
+
     private boolean tryAdvisoryLock(UUID branchId, LocalDate period, UUID contactId) {
         String key = "monthly-report:" + branchId + ":" + period + ":" + contactId;
         Object result = entityManager

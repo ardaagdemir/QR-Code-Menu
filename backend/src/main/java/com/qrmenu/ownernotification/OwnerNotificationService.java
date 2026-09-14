@@ -108,6 +108,43 @@ public class OwnerNotificationService {
         return CompletableFuture.completedFuture(null);
     }
 
+    /**
+     * Manuel aylık resend - {@link #resend} (DAILY) ile aynı rol: mevcut aylık-opt-in alıcılara,
+     * {@link MonthlyReportContactDispatcher}'ın AUTO-only advisory-lock/SENT-terminal/backoff
+     * kurallarını hiç görmeden, her zaman taze bir deneme gönderir. Hem daha önce SENT olmuş bir
+     * ay için "Tekrar Gönder" hem de FAILED bir ay için "Yeniden Dene" bunu çağırır.
+     */
+    public List<OwnerNotificationLog> resendMonthly(
+            UUID businessId, UUID branchId, YearMonth periodMonth, UUID actorStaffUserId) {
+        List<BusinessContact> recipients = tenantService.listBusinessContacts(businessId).stream()
+                .filter(BusinessContact::isMonthlyReportRecipient)
+                .filter(contact -> contact.getEmail() != null && !contact.getEmail().isBlank())
+                .toList();
+        if (!recipients.isEmpty()) {
+            Branch branch = tenantService.getBranch(businessId, branchId);
+            Business business = tenantService.getBusiness(businessId);
+            String body = buildMonthlyBody(businessId, branchId, periodMonth, branch, business);
+            String subject = "Aylık Rapor - " + branch.getName() + " - " + formatPeriod(periodMonth);
+            for (BusinessContact contact : recipients) {
+                monthlyReportContactDispatcher.attemptManualResendForContact(
+                        businessId, branchId, periodMonth, contact, subject, body, actorStaffUserId);
+            }
+        }
+        return listForMonthlyPeriod(branchId, periodMonth);
+    }
+
+    @Transactional(readOnly = true)
+    public List<OwnerNotificationLog> listForMonthlyPeriod(UUID branchId, YearMonth periodMonth) {
+        return repository.findAllByReportTypeAndBranchIdAndReportPeriodOrderByAttemptedAtAsc(
+                OwnerNotificationReportType.MONTHLY, branchId, periodMonth.atDay(1));
+    }
+
+    /** "Rapor Bildirimleri" ekranı: bir şube için DAILY+MONTHLY tüm gönderim geçmişi. */
+    @Transactional(readOnly = true)
+    public List<OwnerNotificationLog> listRecentForBranch(UUID branchId) {
+        return repository.findTop200ByBranchIdOrderByAttemptedAtDesc(branchId);
+    }
+
     private String buildMonthlyBody(UUID businessId, UUID branchId, YearMonth periodMonth, Branch branch, Business business) {
         BranchSalesReportView salesView = reportingService.getBranchReport(
                 businessId, branchId, periodMonth.atDay(1), periodMonth.atEndOfMonth());

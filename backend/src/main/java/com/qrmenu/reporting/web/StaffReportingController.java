@@ -128,6 +128,7 @@ public class StaffReportingController {
                 view.grossSalesMinorUnits(),
                 view.netSalesMinorUnits(),
                 view.refundTotalMinorUnits(),
+                view.refundCount(),
                 view.orderCount(),
                 view.acceptedOrderCount(),
                 view.rejectedOrderCount(),

@@ -9,9 +9,12 @@ import com.qrmenu.tenant.TenantService;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -119,6 +122,18 @@ public class DailyCloseService {
     @Transactional(readOnly = true)
     public List<DailyBranchCloseReport> listForBusiness(UUID businessId, LocalDate from, LocalDate to) {
         return repository.findAllByBusinessIdAndBusinessDateBetweenOrderByBranchIdAscBusinessDateAsc(businessId, from, to);
+    }
+
+    /** Gap-analysis #11 (Section 15): "Rapor Bildirimleri" ekranı DAILY log satırlarının Dönem
+     * kolonunu bu şekilde toplu çözer - OwnerNotificationLog kendi başına businessDate tutmaz,
+     * sadece dailyCloseReportId'ye referans verir. */
+    @Transactional(readOnly = true)
+    public Map<UUID, LocalDate> getBusinessDatesByIds(Collection<UUID> reportIds) {
+        if (reportIds.isEmpty()) {
+            return Map.of();
+        }
+        return repository.findAllById(reportIds).stream()
+                .collect(Collectors.toMap(DailyBranchCloseReport::getId, DailyBranchCloseReport::getBusinessDate));
     }
 
     private ZoneId resolveZone(Branch branch) {
