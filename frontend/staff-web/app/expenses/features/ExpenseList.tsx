@@ -99,18 +99,16 @@ export default function ExpenseList({ categories, refreshToken, branchTimeZone }
   // Placeholder filters above render with the device's own date (see lib/time.ts) for an
   // instant first paint; once `me()` resolves the active branch's real timezone, re-anchor
   // the default range to it exactly once - matching Özet/Kasa/Raporlar - so an expense dated
-  // "today" here means the same calendar day the report screen uses.
-  useEffect(() => {
-    if (filtersAnchoredToBranch || branchTimeZone === null) {
-      return;
-    }
+  // "today" here means the same calendar day the report screen uses. Adjusted during render
+  // (not in an effect) per https://react.dev/learn/you-might-not-need-an-effect.
+  if (!filtersAnchoredToBranch && branchTimeZone !== null) {
     setFiltersAnchoredToBranch(true);
     const branchFrom = firstDayOfMonthIsoDate(branchTimeZone);
     const branchTo = todayIsoDate(branchTimeZone);
     setFrom(branchFrom);
     setTo(branchTo);
     setAppliedFilters({ from: branchFrom, to: branchTo });
-  }, [branchTimeZone, filtersAnchoredToBranch]);
+  }
 
   function handleFilterSubmit(event: React.FormEvent) {
     event.preventDefault();

@@ -3,9 +3,7 @@
 import { useEffect, useId, useState } from "react";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import {
-  activateRecurringExpenseTemplate,
   createRecurringExpenseTemplate,
-  deactivateRecurringExpenseTemplate,
   deleteRecurringExpenseTemplate,
   formatPriceMinorUnits,
   listRecurringExpenseTemplates,
@@ -111,9 +109,6 @@ export default function RecurringTemplates({ categories, branchTimeZone }: Props
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  const [deactivateTarget, setDeactivateTarget] = useState<RecurringExpenseTemplate | null>(null);
-  const [deactivating, setDeactivating] = useState(false);
-  const [activatingTemplateId, setActivatingTemplateId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<RecurringExpenseTemplate | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -213,36 +208,6 @@ export default function RecurringTemplates({ categories, branchTimeZone }: Props
     }
   }
 
-  async function handleConfirmDeactivate() {
-    if (!deactivateTarget) {
-      return;
-    }
-    setDeactivating(true);
-    try {
-      await deactivateRecurringExpenseTemplate(deactivateTarget.id);
-      load();
-      showToast("Şablon pasife alındı.", "success");
-    } catch {
-      showToast("Şablon pasife alınamadı.", "error");
-    } finally {
-      setDeactivating(false);
-      setDeactivateTarget(null);
-    }
-  }
-
-  async function handleActivate(template: RecurringExpenseTemplate) {
-    setActivatingTemplateId(template.id);
-    try {
-      await activateRecurringExpenseTemplate(template.id);
-      setTemplates((current) => current.map((item) => (item.id === template.id ? { ...item, active: true } : item)));
-      showToast("Şablon aktifleştirildi.", "success");
-    } catch {
-      showToast("Şablon aktifleştirilemedi.", "error");
-    } finally {
-      setActivatingTemplateId(null);
-    }
-  }
-
   async function handleConfirmDelete() {
     if (!deleteTarget) {
       return;
@@ -311,30 +276,11 @@ export default function RecurringTemplates({ categories, branchTimeZone }: Props
                     </td>
                     <td className={expenseStyles.actionsCell}>
                       <div className={tableStyles.actions}>
-                        <Button size="md" variant="ghost" onClick={() => openEditDialog(template)}>
-                          <Pencil size={15} aria-hidden="true" /> Düzenle
+                        <Button size="sm" variant="secondary" onClick={() => openEditDialog(template)}>
+                          <Pencil size={13} aria-hidden="true" /> Düzenle
                         </Button>
-                        {template.active ? (
-                          <Button size="md" variant="ghost" onClick={() => setDeactivateTarget(template)}>
-                            Pasife Al
-                          </Button>
-                        ) : (
-                          <Button
-                            size="md"
-                            variant="secondary"
-                            disabled={activatingTemplateId === template.id}
-                            onClick={() => void handleActivate(template)}
-                          >
-                            {activatingTemplateId === template.id ? "Aktifleştiriliyor…" : "Aktifleştir"}
-                          </Button>
-                        )}
-                        <Button
-                          className={expenseStyles.dangerAction}
-                          size="md"
-                          variant="ghost"
-                          onClick={() => setDeleteTarget(template)}
-                        >
-                          <Trash2 size={15} aria-hidden="true" /> Sil
+                        <Button size="sm" variant="danger" onClick={() => setDeleteTarget(template)}>
+                          <Trash2 size={13} aria-hidden="true" /> Sil
                         </Button>
                       </div>
                     </td>
@@ -434,17 +380,6 @@ export default function RecurringTemplates({ categories, branchTimeZone }: Props
             </div>
           </form>
         </Dialog>
-      ) : null}
-
-      {deactivateTarget ? (
-        <ConfirmDialog
-          title="Şablonu Pasife Al"
-          message="Şablon artık yeni gider üretmeyecek. Daha önce oluşmuş gider kayıtları değişmeden korunacak."
-          confirmLabel="Pasife Al"
-          confirmLoading={deactivating}
-          onConfirm={handleConfirmDeactivate}
-          onCancel={() => setDeactivateTarget(null)}
-        />
       ) : null}
 
       {deleteTarget ? (

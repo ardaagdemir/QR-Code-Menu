@@ -87,14 +87,7 @@
 
 .actionsCell > div {
   flex-wrap: nowrap;
-}
-
-.dangerAction {
-  color: var(--color-danger) !important;
-}
-
-.dangerAction:hover {
-  background: var(--color-danger-bg) !important;
+  gap: var(--space-1);
 }
 
 .recurringTable > div > table {
