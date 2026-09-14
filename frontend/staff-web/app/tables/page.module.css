@@ -21,6 +21,12 @@
   background: var(--tables-accent-strong) !important;
 }
 
+.panelStack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
 .tablePanel {
   overflow: hidden;
   border: 1px solid var(--tables-border);
@@ -39,9 +45,16 @@
 }
 
 .panelTitle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
   font-size: var(--font-size-lg);
   font-weight: var(--font-weight-bold);
   color: var(--color-fg);
+}
+
+.panelTitleIcon {
+  color: var(--tables-accent);
 }
 
 .panelDescription {
@@ -136,34 +149,8 @@
   background: currentColor;
 }
 
-.secondaryButton,
-.actionButton,
-.revokeButton {
-  min-height: 38px !important;
-  padding: 0 12px !important;
-  border-radius: 8px !important;
-}
-
-.secondaryButton {
-  background: var(--color-primary-soft) !important;
-  border-color: color-mix(in srgb, var(--tables-accent) 30%, transparent) !important;
-  color: var(--tables-accent-strong) !important;
-}
-
-.actionButton {
-  color: var(--color-fg-muted) !important;
-}
-
-.actionButton:hover {
-  background: var(--color-surface) !important;
-}
-
-.revokeButton {
-  color: var(--color-danger) !important;
-}
-
-.revokeButton:hover {
-  background: var(--color-danger-bg) !important;
+.actions {
+  gap: var(--space-1) !important;
 }
 
 .renameButton {
@@ -181,6 +168,10 @@
 
 .createSubmit {
   width: 100%;
+}
+
+.createModeTabs {
+  margin: 14px 0 4px;
 }
 
 @media (max-width: 760px) {

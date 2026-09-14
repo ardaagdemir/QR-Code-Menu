@@ -341,29 +341,50 @@ export async function setBusinessHours(days: BranchBusinessHoursEntry[]): Promis
   });
 }
 
+export type TableLocation = "INDOOR" | "OUTDOOR";
+
 export type StaffTable = {
   id: string;
   businessId: string;
   branchId: string;
   label: string;
   active: boolean;
+  location: TableLocation;
+  capacity: number | null;
 };
 
 export async function listTables(): Promise<StaffTable[]> {
   return apiFetch("/api/staff/tables");
 }
 
-export async function createTable(label: string): Promise<StaffTable> {
+export async function createTable(label: string, location: TableLocation, capacity: number | null): Promise<StaffTable> {
   return apiFetch("/api/staff/tables", {
     method: "POST",
-    body: JSON.stringify({ label }),
+    body: JSON.stringify({ label, location, capacity }),
   });
 }
 
-export async function renameTable(tableId: string, label: string): Promise<StaffTable> {
+export async function bulkCreateTables(
+  location: TableLocation,
+  count: number,
+  namePrefix: string,
+  capacity: number | null,
+): Promise<StaffTable[]> {
+  return apiFetch("/api/staff/tables/bulk", {
+    method: "POST",
+    body: JSON.stringify({ location, count, namePrefix, capacity }),
+  });
+}
+
+export async function updateTable(
+  tableId: string,
+  label: string,
+  location: TableLocation,
+  capacity: number | null,
+): Promise<StaffTable> {
   return apiFetch(`/api/staff/tables/${encodeURIComponent(tableId)}`, {
     method: "PATCH",
-    body: JSON.stringify({ label }),
+    body: JSON.stringify({ label, location, capacity }),
   });
 }
 
@@ -405,10 +426,6 @@ export async function regenerateQrToken(tableId: string): Promise<QrToken> {
   return apiFetch(`/api/staff/tables/${encodeURIComponent(tableId)}/qr-tokens`, {
     method: "POST",
   });
-}
-
-export async function revokeQrToken(qrTokenId: string): Promise<void> {
-  await apiFetch(`/api/staff/qr-tokens/${encodeURIComponent(qrTokenId)}/revoke`, { method: "POST" });
 }
 
 // ---------------------------------------------------------------------------
@@ -905,6 +922,7 @@ export type BranchSalesReport = {
   grossSalesMinorUnits: number;
   netSalesMinorUnits: number;
   refundTotalMinorUnits: number;
+  refundCount: number;
   orderCount: number;
   acceptedOrderCount: number;
   rejectedOrderCount: number;
@@ -1037,6 +1055,31 @@ export async function getOwnerNotifications(reportId: string): Promise<OwnerNoti
 export async function resendOwnerNotifications(reportId: string): Promise<OwnerNotificationLog[]> {
   return apiFetch(
     `/api/staff/daily-close/${encodeURIComponent(reportId)}/notifications/resend`,
+    { method: "POST" },
+  );
+}
+
+/** Raporlar sayfası "Rapor Bildirimleri": DAILY+MONTHLY birleşik gönderim geçmişi. */
+export type ReportNotificationLog = {
+  id: string;
+  reportType: "DAILY" | "MONTHLY";
+  dailyCloseReportId: string | null;
+  period: string | null;
+  recipientEmail: string;
+  status: "SENT" | "FAILED";
+  errorMessage: string | null;
+  triggeredBy: "AUTO" | "MANUAL";
+  attemptedAt: string;
+};
+
+export async function getReportNotifications(): Promise<ReportNotificationLog[]> {
+  return apiFetch("/api/staff/reports/notifications");
+}
+
+/** Aylık raporun manuel yeniden gönderimi - AUTO idempotency'yi bypass eder, geçmişi korur. */
+export async function resendMonthlyReportNotifications(period: string): Promise<ReportNotificationLog[]> {
+  return apiFetch(
+    `/api/staff/reports/monthly/resend?period=${encodeURIComponent(period)}`,
     { method: "POST" },
   );
 }
