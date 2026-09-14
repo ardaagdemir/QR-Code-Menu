@@ -2,6 +2,62 @@
   gap: var(--space-5);
 }
 
+.tabPanel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.tabHint {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: 10px;
+  border: 1px solid var(--color-panel-border);
+  background: var(--color-surface-soft);
+  color: var(--color-fg-muted);
+  font-size: var(--font-size-sm);
+}
+
+/* --- İşletme sekmesi --- */
+
+.topRow {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.settingsPanel {
+  background:
+    linear-gradient(135deg, var(--color-primary-soft), transparent 52%),
+    var(--color-surface-raised);
+}
+
+.currencyForm {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.currencyForm > button {
+  grid-column: 1 / -1;
+  justify-self: end;
+}
+
+.nameForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.nameForm > button {
+  align-self: flex-end;
+}
+
+/* --- Şube sekmesi --- */
+
 .card {
   gap: var(--space-5);
 }
@@ -10,6 +66,14 @@
   display: flex;
   align-items: flex-start;
   gap: var(--space-3);
+}
+
+.cardHeaderAction {
+  margin-left: auto;
+}
+
+.cardHeaderAction :global(svg) {
+  margin-right: var(--space-2);
 }
 
 .cardIcon {
@@ -37,7 +101,7 @@
 
 .operationGrid {
   display: grid;
-  grid-template-columns: minmax(260px, 0.9fr) minmax(260px, 1.1fr);
+  grid-template-columns: minmax(220px, 0.8fr) minmax(220px, 1fr) minmax(160px, 0.7fr);
   gap: var(--space-4);
   align-items: end;
 }
@@ -124,7 +188,7 @@
 
 .infoGrid {
   display: grid;
-  grid-template-columns: minmax(260px, 2fr) minmax(210px, 1fr) minmax(180px, 0.8fr);
+  grid-template-columns: minmax(260px, 1.4fr) minmax(210px, 1fr);
   gap: var(--space-4);
   align-items: start;
 }
@@ -195,6 +259,36 @@
   text-align: center;
 }
 
+.dayLabel {
+  display: block;
+}
+
+.dayHint {
+  display: block;
+  margin-top: 2px;
+  color: var(--color-fg-muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-regular);
+}
+
+.dayTrailing {
+  margin-top: 4px;
+}
+
+.hoursGroupToggle {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-primary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+}
+
+.hoursGroupToggle:hover {
+  text-decoration: underline;
+}
+
 .hoursStatusControl {
   display: flex;
   align-items: center;
@@ -235,6 +329,18 @@
 }
 
 @media (max-width: 900px) {
+  .topRow {
+    grid-template-columns: 1fr;
+  }
+
+  .currencyForm {
+    grid-template-columns: 1fr;
+  }
+
+  .currencyForm > button {
+    justify-self: stretch;
+  }
+
   .operationGrid,
   .infoGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -246,6 +352,20 @@
 }
 
 @media (max-width: 640px) {
+  .cardHeader {
+    flex-wrap: wrap;
+  }
+
+  .cardHeaderAction {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .cardHeaderAction :global(button) {
+    width: 100%;
+    justify-content: center;
+  }
+
   .operationGrid,
   .infoGrid {
     grid-template-columns: 1fr;
