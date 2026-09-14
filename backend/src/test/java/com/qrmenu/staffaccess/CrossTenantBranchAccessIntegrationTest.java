@@ -57,7 +57,7 @@ class CrossTenantBranchAccessIntegrationTest extends AbstractIntegrationTest {
                         .patch("/api/staff/tables/{tableId}", tableB)
                         .cookie(cookie)
                         .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
-                        .content("{\"label\":\"Ele Geçirilmiş Masa\"}"))
+                        .content("{\"label\":\"Ele Geçirilmiş Masa\",\"location\":\"INDOOR\"}"))
                 .andExpect(status().isNotFound());
     }
 
@@ -88,7 +88,7 @@ class CrossTenantBranchAccessIntegrationTest extends AbstractIntegrationTest {
                         .patch("/api/staff/tables/{tableId}", tableB)
                         .cookie(cookie)
                         .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
-                        .content("{\"label\":\"Ele Geçirilmiş Masa\"}"))
+                        .content("{\"label\":\"Ele Geçirilmiş Masa\",\"location\":\"INDOOR\"}"))
                 .andExpect(status().isNotFound());
     }
 
@@ -105,7 +105,7 @@ class CrossTenantBranchAccessIntegrationTest extends AbstractIntegrationTest {
                         .patch("/api/staff/tables/{tableId}", tableId)
                         .cookie(cookie)
                         .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
-                        .content("{\"label\":\"Yeni Ad\"}"))
+                        .content("{\"label\":\"Yeni Ad\",\"location\":\"OUTDOOR\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.label").value("Yeni Ad"));
 

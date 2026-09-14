@@ -2,6 +2,8 @@ package com.qrmenu.tenant;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -31,6 +33,13 @@ public class RestaurantTable {
     @Column(nullable = false)
     private String label;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private TableLocation location;
+
+    @Column
+    private Integer capacity;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -50,18 +59,28 @@ public class RestaurantTable {
         // JPA
     }
 
+    /** Defaults to INDOOR/no capacity - kept for the internal API and existing tests that never set location. */
     public RestaurantTable(UUID businessId, UUID branchId, String label) {
+        this(businessId, branchId, label, TableLocation.INDOOR, null);
+    }
+
+    public RestaurantTable(UUID businessId, UUID branchId, String label, TableLocation location, Integer capacity) {
         this.businessId = businessId;
         this.branchId = branchId;
         this.label = label;
+        this.location = location;
+        this.capacity = capacity;
         this.active = true;
         Instant now = Instant.now();
         this.createdAt = now;
         this.updatedAt = now;
     }
 
-    public void rename(String label) {
+    /** Masa Düzenle: isim, konum ve kapasite bir arada güncellenir - "yanlış girilirse düzeltilebilsin" akışı. */
+    public void update(String label, TableLocation location, Integer capacity) {
         this.label = label;
+        this.location = location;
+        this.capacity = capacity;
         this.updatedAt = Instant.now();
     }
 
@@ -89,6 +108,14 @@ public class RestaurantTable {
 
     public String getLabel() {
         return label;
+    }
+
+    public TableLocation getLocation() {
+        return location;
+    }
+
+    public Integer getCapacity() {
+        return capacity;
     }
 
     public boolean isActive() {

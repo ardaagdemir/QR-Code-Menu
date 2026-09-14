@@ -2,6 +2,7 @@ package com.qrmenu.tenant;
 
 import com.qrmenu.audit.AuditService;
 import com.qrmenu.common.web.BusinessUnavailableException;
+import com.qrmenu.common.web.DuplicateTableLabelException;
 import com.qrmenu.common.web.OrderingNotAllowedException;
 import com.qrmenu.common.web.ResourceNotFoundException;
 import com.qrmenu.common.web.TableHasVisitHistoryException;
@@ -17,10 +18,14 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -193,12 +198,77 @@ public class TenantService {
         return branch;
     }
 
+    /** Defaults to INDOOR/no capacity - kept for the internal API, which never sets location. */
     @Transactional
     public RestaurantTable createTable(UUID businessId, UUID branchId, String label) {
+        return createTable(businessId, branchId, label, TableLocation.INDOOR, null);
+    }
+
+    @Transactional
+    public RestaurantTable createTable(UUID businessId, UUID branchId, String label, TableLocation location, Integer capacity) {
         Branch branch = branchRepository
                 .findByIdAndBusinessId(branchId, businessId)
                 .orElseThrow(() -> new ResourceNotFoundException("Branch not found for business: " + branchId));
-        return tableRepository.save(new RestaurantTable(branch.getBusinessId(), branch.getId(), label));
+        try {
+            return tableRepository.saveAndFlush(new RestaurantTable(branch.getBusinessId(), branch.getId(), label, location, capacity));
+        } catch (DataIntegrityViolationException ex) {
+            throw new DuplicateTableLabelException("A table named \"" + label + "\" already exists in branch: " + branchId);
+        }
+    }
+
+    private static final int MAX_BULK_CREATE_COUNT = 100;
+    private static final String DEFAULT_BULK_PREFIX = "Masa";
+
+    /**
+     * Otomatik masa oluşturma: "<prefix> <n>" deseniyle count kadar masa, tek transaction
+     * içinde ekler (yarım oluşturma olmaz - bir insert DB seviyesinde başarısız olursa tüm
+     * batch rollback olur, bkz. flush() aşağıda). Branch satırı PESSIMISTIC_WRITE ile
+     * kilitlenir (BranchRepository.findByIdAndBusinessIdForUpdate - aynı desen
+     * getBranchForUpdate/assertOrderingCurrentlyAllowed'da kullanılıyor) böylece aynı branch
+     * için eşzamanlı iki bulk-create isteği asla aynı numaradan başlamaz: ikincisi
+     * birincisinin commit'ini bekler, sonra numaralandırmayı güncel etiket listesinden
+     * yeniden hesaplar. Tek masa oluşturma (createTable) bu kilidi almaz - onunla yarışan
+     * nadir bir çakışma hâlâ mümkündür, o da uq_restaurant_table_branch_label'dan
+     * DataIntegrityViolationException olarak yükselir ve DuplicateTableLabelException'a
+     * çevrilip tüm batch'i rollback ettirir.
+     */
+    @Transactional
+    public List<RestaurantTable> bulkCreateTables(
+            UUID businessId, UUID branchId, TableLocation location, int count, String namePrefix, Integer capacity) {
+        if (count < 1 || count > MAX_BULK_CREATE_COUNT) {
+            throw new IllegalArgumentException("count must be between 1 and " + MAX_BULK_CREATE_COUNT);
+        }
+        String prefix = namePrefix == null || namePrefix.isBlank() ? DEFAULT_BULK_PREFIX : namePrefix.trim();
+
+        Branch branch = branchRepository
+                .findByIdAndBusinessIdForUpdate(branchId, businessId)
+                .orElseThrow(() -> new ResourceNotFoundException("Branch not found for business: " + branchId));
+
+        int nextNumber = nextAvailableNumber(branch.getId(), prefix);
+        List<RestaurantTable> created = new ArrayList<>();
+        try {
+            for (int i = 0; i < count; i++) {
+                String label = prefix + " " + (nextNumber + i);
+                created.add(tableRepository.save(new RestaurantTable(branch.getBusinessId(), branch.getId(), label, location, capacity)));
+            }
+            tableRepository.flush();
+        } catch (DataIntegrityViolationException ex) {
+            throw new DuplicateTableLabelException(
+                    "One or more generated table labels already exist in branch: " + branchId);
+        }
+        return created;
+    }
+
+    private int nextAvailableNumber(UUID branchId, String prefix) {
+        Pattern pattern = Pattern.compile("^" + Pattern.quote(prefix) + " (\\d+)$");
+        int max = 0;
+        for (RestaurantTable table : tableRepository.findAllByBranchIdOrderByLabelAsc(branchId)) {
+            Matcher matcher = pattern.matcher(table.getLabel());
+            if (matcher.matches()) {
+                max = Math.max(max, Integer.parseInt(matcher.group(1)));
+            }
+        }
+        return max + 1;
     }
 
     /**
@@ -227,13 +297,22 @@ public class TenantService {
         return regenerateQrToken(businessId, tableId);
     }
 
-    /** Masa etiketini değiştirir - QR token'ı etkilemez, aynı masaya bağlı kalır. */
+    /** Masa Düzenle: isim/konum/kapasite - QR token'ı etkilemez, aynı masaya bağlı kalır. */
     @Transactional
-    public RestaurantTable renameTable(UUID businessId, UUID branchId, UUID tableId, String label, UUID actorStaffUserId) {
+    public RestaurantTable updateTable(
+            UUID businessId, UUID branchId, UUID tableId, String label, TableLocation location, Integer capacity,
+            UUID actorStaffUserId) {
         RestaurantTable table = requireTableInBranch(businessId, branchId, tableId);
-        table.rename(label);
-        RestaurantTable saved = tableRepository.save(table);
-        auditService.record(businessId, actorStaffUserId, "RestaurantTable", saved.getId(), "RENAMED", Map.of("label", label));
+        table.update(label, location, capacity);
+        RestaurantTable saved;
+        try {
+            saved = tableRepository.saveAndFlush(table);
+        } catch (DataIntegrityViolationException ex) {
+            throw new DuplicateTableLabelException("A table named \"" + label + "\" already exists in branch: " + branchId);
+        }
+        auditService.record(
+                businessId, actorStaffUserId, "RestaurantTable", saved.getId(), "UPDATED",
+                Map.of("label", label, "location", location.name()));
         return saved;
     }
 

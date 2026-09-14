@@ -29,7 +29,8 @@ public class ApiExceptionHandler {
         TableHasVisitHistoryException.class,
         TableInUseException.class,
         DuplicateEmailException.class,
-        DuplicateExpenseCategoryNameException.class
+        DuplicateExpenseCategoryNameException.class,
+        DuplicateTableLabelException.class
     })
     public ProblemDetail handleConflict(RuntimeException ex) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());

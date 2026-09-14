@@ -10,17 +10,18 @@ import com.qrmenu.tenant.BranchBusinessHours;
 import com.qrmenu.tenant.Business;
 import com.qrmenu.tenant.BusinessContact;
 import com.qrmenu.tenant.RestaurantTable;
+import com.qrmenu.tenant.TableLocation;
 import com.qrmenu.tenant.TableQrToken;
 import com.qrmenu.tenant.TenantService;
 import com.qrmenu.tenant.TenantService.BranchBusinessHoursEntry;
 import com.qrmenu.tenant.web.dto.BranchBusinessHoursResponse;
 import com.qrmenu.tenant.web.dto.BranchResponse;
+import com.qrmenu.tenant.web.dto.BulkCreateTablesRequest;
 import com.qrmenu.tenant.web.dto.BusinessContactResponse;
 import com.qrmenu.tenant.web.dto.BusinessResponse;
 import com.qrmenu.tenant.web.dto.CreateBusinessContactRequest;
 import com.qrmenu.tenant.web.dto.CreateTableRequest;
 import com.qrmenu.tenant.web.dto.QrTokenResponse;
-import com.qrmenu.tenant.web.dto.RenameTableRequest;
 import com.qrmenu.tenant.web.dto.SetAddressRequest;
 import com.qrmenu.tenant.web.dto.SetBranchBusinessHoursRequest;
 import com.qrmenu.tenant.web.dto.SetBranchTimezoneRequest;
@@ -31,6 +32,7 @@ import com.qrmenu.tenant.web.dto.TableResponse;
 import com.qrmenu.tenant.web.dto.UpdateBusinessContactRequest;
 import com.qrmenu.tenant.web.dto.UpdateBusinessNameRequest;
 import com.qrmenu.tenant.web.dto.UpdateBusinessSettingsRequest;
+import com.qrmenu.tenant.web.dto.UpdateTableRequest;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
@@ -229,19 +231,39 @@ public class StaffTenantController {
             @PathVariable(required = false) UUID branchId,
             @Valid @RequestBody CreateTableRequest request) {
         StaffContext context = resolveActiveContext(sessionCookie, Permission.BRANCH_MANAGE, branchId);
-        RestaurantTable table = tenantService.createTable(context.businessId(), context.activeBranchId(), request.label());
+        TableLocation location = request.location() != null ? request.location() : TableLocation.INDOOR;
+        RestaurantTable table = tenantService.createTable(
+                context.businessId(), context.activeBranchId(), request.label(), location, request.capacity());
         return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(table));
     }
 
+    /** Otomatik Oluştur: tek transaction içinde "<prefix> <n>" desenli count kadar masa - bkz. TenantService.bulkCreateTables. */
+    @PostMapping({"/tables/bulk", "/branches/{branchId}/tables/bulk"})
+    public ResponseEntity<List<TableResponse>> bulkCreateTables(
+            @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
+            @PathVariable(required = false) UUID branchId,
+            @Valid @RequestBody BulkCreateTablesRequest request) {
+        StaffContext context = resolveActiveContext(sessionCookie, Permission.BRANCH_MANAGE, branchId);
+        List<TableResponse> created = tenantService
+                .bulkCreateTables(
+                        context.businessId(), context.activeBranchId(), request.location(), request.count(),
+                        request.namePrefix(), request.capacity())
+                .stream()
+                .map(this::toResponse)
+                .toList();
+        return ResponseEntity.status(HttpStatus.CREATED).body(created);
+    }
+
     @PatchMapping({"/tables/{tableId}", "/branches/{branchId}/tables/{tableId}"})
-    public ResponseEntity<TableResponse> renameTable(
+    public ResponseEntity<TableResponse> updateTable(
             @CookieValue(name = StaffCookieSupport.COOKIE_NAME, required = false) String sessionCookie,
             @PathVariable(required = false) UUID branchId,
             @PathVariable UUID tableId,
-            @Valid @RequestBody RenameTableRequest request) {
+            @Valid @RequestBody UpdateTableRequest request) {
         StaffContext context = resolveActiveContext(sessionCookie, Permission.BRANCH_MANAGE, branchId);
-        RestaurantTable table = tenantService.renameTable(
-                context.businessId(), context.activeBranchId(), tableId, request.label(), context.staffUserId());
+        RestaurantTable table = tenantService.updateTable(
+                context.businessId(), context.activeBranchId(), tableId, request.label(), request.location(),
+                request.capacity(), context.staffUserId());
         return ResponseEntity.ok(toResponse(table));
     }
 
@@ -359,7 +381,9 @@ public class StaffTenantController {
     }
 
     private TableResponse toResponse(RestaurantTable table) {
-        return new TableResponse(table.getId(), table.getBusinessId(), table.getBranchId(), table.getLabel(), table.isActive());
+        return new TableResponse(
+                table.getId(), table.getBusinessId(), table.getBranchId(), table.getLabel(), table.isActive(),
+                table.getLocation(), table.getCapacity());
     }
 
     private QrTokenResponse toResponse(TableQrToken token) {

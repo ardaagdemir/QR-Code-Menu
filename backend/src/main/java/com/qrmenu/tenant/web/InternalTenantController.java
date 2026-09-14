@@ -95,7 +95,9 @@ class InternalTenantController {
     }
 
     private TableResponse toResponse(RestaurantTable table) {
-        return new TableResponse(table.getId(), table.getBusinessId(), table.getBranchId(), table.getLabel(), table.isActive());
+        return new TableResponse(
+                table.getId(), table.getBusinessId(), table.getBranchId(), table.getLabel(), table.isActive(),
+                table.getLocation(), table.getCapacity());
     }
 
     private QrTokenResponse toResponse(TableQrToken token) {
