@@ -1,8 +1,6 @@
 .wrapper {
   position: relative;
-  margin-top: -22px;
-  padding: 0 var(--space-4) var(--space-3);
-  background: var(--color-bg);
+  padding: var(--space-4) var(--space-4) var(--space-3);
 }
 
 .icon {
@@ -16,14 +14,22 @@
   pointer-events: none;
 }
 
+/* Aynı yükseklik/gölge/border kategori chip'leriyle (CategoryNav.module.css .chip) -
+ * ikisi de aynı toolbar'ın parçası gibi görünsün. */
 .input {
-  min-height: 52px;
+  min-height: var(--tap-target-min);
   padding-left: calc(var(--space-4) + 18px + var(--space-2));
+  padding-right: var(--space-4);
   border-radius: var(--radius-full);
   border-color: var(--color-border);
   background: var(--color-surface-raised);
-  box-shadow: var(--shadow-md);
-  font-size: var(--font-size-base);
+  box-shadow: var(--shadow-sm);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.input::placeholder {
+  font-weight: var(--font-weight-regular);
 }
 
 .input::-webkit-search-cancel-button {
