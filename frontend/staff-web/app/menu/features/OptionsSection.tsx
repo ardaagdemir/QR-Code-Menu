@@ -70,7 +70,7 @@ export default function OptionsSection({ productId, optionGroupId }: Props) {
   useEffect(() => {
     listOptions(optionGroupId)
       .then(setOptions)
-      .catch(() => showToast("Option'lar yüklenemedi.", "error"))
+      .catch(() => showToast("Seçenekler yüklenemedi.", "error"))
       .finally(() => setLoading(false));
   }, [optionGroupId, showToast]);
 
@@ -90,9 +90,9 @@ export default function OptionsSection({ productId, optionGroupId }: Props) {
       setOptions((current) => [...current, option]);
       setFormValues(emptyForm());
       setCreateOpen(false);
-      showToast("Option eklendi.", "success");
+      showToast("Seçenek eklendi.", "success");
     } catch {
-      showToast("Option eklenemedi.", "error");
+      showToast("Seçenek eklenemedi.", "error");
     } finally {
       setSaving(false);
     }
@@ -113,9 +113,9 @@ export default function OptionsSection({ productId, optionGroupId }: Props) {
       const updated = await updateOption(editTarget.id, { name: editValues.name.trim(), priceDeltaMinorUnits });
       setOptions((current) => current.map((o) => (o.id === updated.id ? updated : o)));
       setEditTarget(null);
-      showToast("Option güncellendi.", "success");
+      showToast("Seçenek güncellendi.", "success");
     } catch {
-      showToast("Option güncellenemedi.", "error");
+      showToast("Seçenek güncellenemedi.", "error");
     } finally {
       setSaving(false);
     }
@@ -133,7 +133,7 @@ export default function OptionsSection({ productId, optionGroupId }: Props) {
       const result = await reorderOptions(optionGroupId, reordered.map((o) => o.id));
       setOptions(result);
     } catch {
-      showToast("Option sırası güncellenemedi.", "error");
+      showToast("Seçenek sırası güncellenemedi.", "error");
     } finally {
       setReorderingId(null);
     }
@@ -147,9 +147,9 @@ export default function OptionsSection({ productId, optionGroupId }: Props) {
     try {
       await deleteOption(deleteTarget.id);
       setOptions((current) => current.filter((o) => o.id !== deleteTarget.id));
-      showToast("Option silindi.", "success");
+      showToast("Seçenek silindi.", "success");
     } catch {
-      showToast("Option silinemedi.", "error");
+      showToast("Seçenek silinemedi.", "error");
     } finally {
       setDeleting(false);
       setDeleteTarget(null);
@@ -157,13 +157,13 @@ export default function OptionsSection({ productId, optionGroupId }: Props) {
   }
 
   if (loading) {
-    return <p className={menuStyles.optionsLoading}>Option&apos;lar yükleniyor…</p>;
+    return <p className={menuStyles.optionsLoading}>Seçenekler yükleniyor…</p>;
   }
 
   return (
     <div className={menuStyles.optionsPanel}>
       {options.length === 0 ? (
-        <EmptyState title="Bu grupta option yok" />
+        <EmptyState title="Bu grupta seçenek yok" />
       ) : (
         <ul className={menuStyles.optionList}>
           {options.map((option, index) => (
@@ -178,7 +178,7 @@ export default function OptionsSection({ productId, optionGroupId }: Props) {
                   className={menuStyles.rowIconButton}
                   disabled={index === 0 || reorderingId !== null}
                   onClick={() => handleMove(index, -1)}
-                  aria-label={`${option.name} option'ını yukarı taşı`}
+                  aria-label={`${option.name} seçeneğini yukarı taşı`}
                   title="Yukarı taşı"
                 >
                   <ArrowUp size={13} aria-hidden="true" />
@@ -188,7 +188,7 @@ export default function OptionsSection({ productId, optionGroupId }: Props) {
                   className={menuStyles.rowIconButton}
                   disabled={index === options.length - 1 || reorderingId !== null}
                   onClick={() => handleMove(index, 1)}
-                  aria-label={`${option.name} option'ını aşağı taşı`}
+                  aria-label={`${option.name} seçeneğini aşağı taşı`}
                   title="Aşağı taşı"
                 >
                   <ArrowDown size={13} aria-hidden="true" />
@@ -200,7 +200,7 @@ export default function OptionsSection({ productId, optionGroupId }: Props) {
                     setEditTarget(option);
                     setEditValues(formFromOption(option));
                   }}
-                  aria-label={`${option.name} option'ını düzenle`}
+                  aria-label={`${option.name} seçeneğini düzenle`}
                   title="Düzenle"
                 >
                   <Pencil size={13} aria-hidden="true" />
@@ -209,7 +209,7 @@ export default function OptionsSection({ productId, optionGroupId }: Props) {
                   type="button"
                   className={`${menuStyles.rowIconButton} ${menuStyles.rowIconButtonDanger}`}
                   onClick={() => setDeleteTarget(option)}
-                  aria-label={`${option.name} option'ını sil`}
+                  aria-label={`${option.name} seçeneğini sil`}
                   title="Sil"
                 >
                   <Trash2 size={13} aria-hidden="true" />
@@ -221,16 +221,16 @@ export default function OptionsSection({ productId, optionGroupId }: Props) {
       )}
 
       <Button size="md" variant="secondary" onClick={() => { setFormValues(emptyForm()); setCreateOpen(true); }}>
-        <Plus size={14} aria-hidden="true" /> Option Ekle
+        <Plus size={14} aria-hidden="true" /> Seçenek Ekle
       </Button>
 
       {createOpen ? (
         <Dialog onClose={() => setCreateOpen(false)} labelledBy={dialogTitleId} size="sm">
           <h2 id={dialogTitleId} className={styles.sectionTitle}>
-            Yeni Option
+            Yeni Seçenek
           </h2>
           <form className={styles.section} onSubmit={handleCreate}>
-            <FormField label="Option adı" required>
+            <FormField label="Seçenek adı" required>
               {(controlProps) => (
                 <Input {...controlProps} value={formValues.name} onChange={(e) => setFormValues({ ...formValues, name: e.target.value })} required />
               )}
@@ -255,10 +255,10 @@ export default function OptionsSection({ productId, optionGroupId }: Props) {
       {editTarget ? (
         <Dialog onClose={() => setEditTarget(null)} labelledBy={editDialogTitleId} size="sm">
           <h2 id={editDialogTitleId} className={styles.sectionTitle}>
-            Option&apos;ı Düzenle
+            Seçeneği Düzenle
           </h2>
           <form className={styles.section} onSubmit={handleConfirmEdit}>
-            <FormField label="Option adı" required>
+            <FormField label="Seçenek adı" required>
               {(controlProps) => (
                 <Input {...controlProps} value={editValues.name} onChange={(e) => setEditValues({ ...editValues, name: e.target.value })} required />
               )}
@@ -282,8 +282,8 @@ export default function OptionsSection({ productId, optionGroupId }: Props) {
 
       {deleteTarget ? (
         <ConfirmDialog
-          title="Option'ı Sil"
-          message={`"${deleteTarget.name}" option'ı kalıcı olarak silinecek.`}
+          title="Seçeneği Sil"
+          message={`"${deleteTarget.name}" seçeneği kalıcı olarak silinecek.`}
           confirmLabel="Sil"
           tone="danger"
           confirmLoading={deleting}
