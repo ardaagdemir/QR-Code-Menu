@@ -401,7 +401,7 @@ function CashierDashboardPage() {
             <span className={styles.kpiBody}>
               <span className={styles.kpiLabel}>Günlük Ciro</span>
               <span className={styles.kpiValue}>
-                {financialSummary ? formatPriceMinorUnits(financialSummary.grossSalesMinorUnits) : "—"}
+                {financialSummary ? formatPriceMinorUnits(financialSummary.netSalesMinorUnits) : "—"}
               </span>
             </span>
           </div>
