@@ -294,7 +294,7 @@ export default function OptionGroupsSection({ productId }: Props) {
       {deleteTarget ? (
         <ConfirmDialog
           title="Seçenek Grubunu Sil"
-          message={`"${deleteTarget.name}" grubu ve içindeki tüm option'lar kalıcı olarak silinecek.`}
+          message={`"${deleteTarget.name}" grubu ve içindeki tüm seçenekler kalıcı olarak silinecek.`}
           confirmLabel="Sil"
           tone="danger"
           confirmLoading={deleting}
