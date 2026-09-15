@@ -19,6 +19,13 @@ main.reportsPageWide {
   }
 }
 
+.kpiGridNote {
+  margin: 0 0 var(--space-2);
+  color: var(--color-fg-muted);
+  font-size: var(--font-size-xs);
+  opacity: 0.8;
+}
+
 .kpiGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(205px, 1fr));

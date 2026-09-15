@@ -528,9 +528,10 @@ function BranchReportPage() {
           <ErrorState message={error} onRetry={() => loadReport(presetRange("today", branchTimeZone))} />
         ) : !report ? null : (
           <>
+            <p className={styles.kpiGridNote}>Değerler günlük olarak gösterilmektedir.</p>
             <div className={styles.kpiGrid}>
-              <HeroKpi icon={TrendingUp} label="Günlük Satış Tutarı" value={formatPriceMinorUnits(report.netSalesMinorUnits)} badge="Bugün" />
-              <HeroKpi icon={ShoppingBag} label="Günlük Sipariş Sayısı" value={String(report.orderCount)} badge="Bugün" />
+              <HeroKpi icon={TrendingUp} label="Satış Tutarı" value={formatPriceMinorUnits(report.netSalesMinorUnits)} badge="Bugün" />
+              <HeroKpi icon={ShoppingBag} label="Sipariş Sayısı" value={String(report.orderCount)} badge="Bugün" />
               <HeroKpi icon={RotateCcw} label="İade Sayısı" value={String(report.refundCount)} badge="Bugün" />
               <HeroKpi icon={Banknote} label="İade Tutarı" value={formatPriceMinorUnits(report.refundTotalMinorUnits)} badge="Bugün" />
               <HeroKpi icon={Table2} label="Masa Ziyareti" value={String(report.tableVisitCount)} badge="Bugün" />
