@@ -51,80 +51,83 @@ export default function ProductOptionsSheet({ product, onClose, onConfirm, submi
 
   return (
     <BottomSheet onClose={onClose} labelledBy="product-sheet-title" className={styles.sheet}>
-      <div className={styles.layout}>
-        <div className={styles.media}>
-          {showImage ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={product.imageUrl ?? undefined} alt="" className={styles.image} onError={() => setImageFailed(true)} />
-          ) : (
-            <div className={styles.imagePlaceholder} aria-hidden="true">
-              <DishPlaceholderIcon size={40} />
+      <div className={styles.root}>
+        <IconButton
+          aria-label="Kapat"
+          size="sm"
+          variant="secondary"
+          className={styles.closeButton}
+          onClick={onClose}
+        >
+          ×
+        </IconButton>
+
+        <div className={styles.layout}>
+          <div className={styles.media}>
+            {showImage ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={product.imageUrl ?? undefined} alt="" className={styles.image} onError={() => setImageFailed(true)} />
+            ) : (
+              <div className={styles.imagePlaceholder} aria-hidden="true">
+                <DishPlaceholderIcon size={40} />
+              </div>
+            )}
+          </div>
+
+          <div className={styles.details}>
+            <h2 id="product-sheet-title" className={styles.title}>
+              {product.name}
+            </h2>
+            {product.description ? <p className={styles.description}>{product.description}</p> : null}
+            <p className={styles.price}>{formatPriceMinorUnits(unitPriceMinorUnits)}</p>
+
+            {product.optionGroups.map((group) => (
+              <fieldset key={group.id} className={styles.group}>
+                <legend className={styles.groupLegend}>
+                  {group.name}{" "}
+                  <span className={styles.groupHint}>{group.selectionType === "SINGLE" ? "Zorunlu · 1 seçim" : "Opsiyonel"}</span>
+                </legend>
+                {group.options.map((option) => (
+                  <label key={option.id} className={styles.optionRow}>
+                    <input
+                      type={group.selectionType === "SINGLE" ? "radio" : "checkbox"}
+                      name={group.id}
+                      className={styles.optionInput}
+                      checked={(selectedByGroup[group.id] ?? []).includes(option.id)}
+                      onChange={() =>
+                        group.selectionType === "SINGLE" ? selectSingle(group, option.id) : toggleMultiple(group, option.id)
+                      }
+                    />
+                    <span className={styles.optionName}>{option.name}</span>
+                    {option.priceDeltaMinorUnits !== 0 ? (
+                      <span className={styles.optionDelta}>+{formatPriceMinorUnits(option.priceDeltaMinorUnits)}</span>
+                    ) : null}
+                  </label>
+                ))}
+              </fieldset>
+            ))}
+
+            <div className={styles.quantityRow}>
+              <span className={styles.quantityLabel}>Adet</span>
+              <QuantityStepper value={quantity} onChange={setQuantity} />
             </div>
-          )}
-          <IconButton
-            aria-label="Kapat"
-            size="sm"
-            variant="secondary"
-            className={styles.closeButton}
-            onClick={onClose}
-          >
-            ×
-          </IconButton>
+
+            {errorMessage ? <p className={styles.error}>{errorMessage}</p> : null}
+          </div>
         </div>
 
-        <div className={styles.details}>
-          <h2 id="product-sheet-title" className={styles.title}>
-            {product.name}
-          </h2>
-          {product.description ? <p className={styles.description}>{product.description}</p> : null}
-          <p className={styles.price}>{formatPriceMinorUnits(unitPriceMinorUnits)}</p>
-
-          {product.optionGroups.map((group) => (
-            <fieldset key={group.id} className={styles.group}>
-              <legend className={styles.groupLegend}>
-                {group.name}{" "}
-                <span className={styles.groupHint}>{group.selectionType === "SINGLE" ? "Zorunlu · 1 seçim" : "Opsiyonel"}</span>
-              </legend>
-              {group.options.map((option) => (
-                <label key={option.id} className={styles.optionRow}>
-                  <input
-                    type={group.selectionType === "SINGLE" ? "radio" : "checkbox"}
-                    name={group.id}
-                    className={styles.optionInput}
-                    checked={(selectedByGroup[group.id] ?? []).includes(option.id)}
-                    onChange={() =>
-                      group.selectionType === "SINGLE" ? selectSingle(group, option.id) : toggleMultiple(group, option.id)
-                    }
-                  />
-                  <span className={styles.optionName}>{option.name}</span>
-                  {option.priceDeltaMinorUnits !== 0 ? (
-                    <span className={styles.optionDelta}>+{formatPriceMinorUnits(option.priceDeltaMinorUnits)}</span>
-                  ) : null}
-                </label>
-              ))}
-            </fieldset>
-          ))}
-
-          <div className={styles.quantityRow}>
-            <span className={styles.quantityLabel}>Adet</span>
-            <QuantityStepper value={quantity} onChange={setQuantity} />
-          </div>
-
-          {errorMessage ? <p className={styles.error}>{errorMessage}</p> : null}
-
-          <div className={styles.actions}>
-            <Button variant="secondary" size="lg" onClick={onClose} disabled={submitting}>
-              Vazgeç
-            </Button>
-            <Button
-              size="lg"
-              className={styles.confirmButton}
-              disabled={missingRequiredGroup || submitting}
-              onClick={() => onConfirm(selectedOptionIds, quantity)}
-            >
-              Sepete Ekle · {formatPriceMinorUnits(unitPriceMinorUnits * quantity)}
-            </Button>
-          </div>
+        <div className={styles.actions}>
+          <Button variant="secondary" size="lg" onClick={onClose} disabled={submitting}>
+            Vazgeç
+          </Button>
+          <Button
+            size="lg"
+            className={styles.confirmButton}
+            disabled={missingRequiredGroup || submitting}
+            onClick={() => onConfirm(selectedOptionIds, quantity)}
+          >
+            Sepete Ekle · {formatPriceMinorUnits(unitPriceMinorUnits * quantity)}
+          </Button>
         </div>
       </div>
     </BottomSheet>
