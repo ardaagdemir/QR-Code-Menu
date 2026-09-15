@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { CircleAlert, Eye, EyeOff, LoaderCircle } from "lucide-react";
+import { ArrowRight, CircleAlert, Eye, EyeOff, LoaderCircle, Lock, Mail } from "lucide-react";
 import { login } from "@/lib/api";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
@@ -59,9 +59,9 @@ export default function LoginPage() {
 
         <div className={styles.heading}>
           <h1 id="login-title" className={styles.title}>
-            Personel Girişi
+            Hesabınıza giriş yapın
           </h1>
-          <p className={styles.subtitle}>QR Menü yönetim ve kasa ekranlarına erişmek için giriş yapın.</p>
+          <p className={styles.subtitle}>QR Menü yönetim paneline devam etmek için bilgilerinizi girin.</p>
         </div>
 
         <form className={styles.form} onSubmit={handleSubmit} aria-busy={submitting}>
@@ -72,6 +72,8 @@ export default function LoginPage() {
             <Input
               id="email"
               type="email"
+              icon={<Mail size={18} aria-hidden="true" />}
+              placeholder="ornek@eposta.com"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               autoComplete="email"
@@ -88,6 +90,8 @@ export default function LoginPage() {
               <Input
                 id="password"
                 type={passwordVisible ? "text" : "password"}
+                icon={<Lock size={18} aria-hidden="true" />}
+                placeholder="Şifrenizi girin"
                 className={styles.passwordInput}
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
@@ -122,7 +126,10 @@ export default function LoginPage() {
                 Giriş yapılıyor…
               </>
             ) : (
-              "Giriş Yap"
+              <>
+                Giriş Yap
+                <ArrowRight className={styles.submitIcon} aria-hidden="true" />
+              </>
             )}
           </Button>
         </form>

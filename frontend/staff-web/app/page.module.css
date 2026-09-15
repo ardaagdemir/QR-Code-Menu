@@ -1,20 +1,66 @@
 .page {
   min-height: 100svh;
+  position: relative;
+  overflow: hidden;
   display: grid;
   place-items: center;
   padding: var(--space-6);
-  background: var(--color-page);
   color: var(--color-fg);
+  background: radial-gradient(120% 100% at 50% 0%, #171b28 0%, #0c0e15 55%, #08090d 100%);
+  color-scheme: dark;
+
+  /* Giriş ekranı, kullanıcının uygulama içi açık/koyu tema tercihinden (localStorage,
+   * bkz. lib/theme.ts) bağımsız olarak hep koyu görünsün diye mevcut dark-mode token
+   * değerleri (globals.css [data-theme="dark"] bloğuyla aynı paletten) burada yerel
+   * olarak eziliyor - global tema seçimine dokunmadan sadece bu alt ağaca uygulanır. */
+  --color-fg: #f5f6f8;
+  --color-fg-muted: #97a0b3;
+  --color-surface-raised: rgba(24, 27, 38, 0.6);
+  --color-surface-soft: rgba(255, 255, 255, 0.06);
+  --color-panel-border: rgba(255, 255, 255, 0.09);
+  --color-border-strong: rgba(255, 255, 255, 0.22);
+  --color-danger: #f0847a;
+  --color-danger-bg: rgba(240, 132, 122, 0.14);
+}
+
+.page::before,
+.page::after {
+  content: "";
+  position: absolute;
+  width: 560px;
+  height: 560px;
+  border-radius: 50%;
+  filter: blur(110px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.page::before {
+  top: -200px;
+  left: -200px;
+  background: radial-gradient(circle, rgba(232, 93, 36, 0.32), transparent 70%);
+}
+
+.page::after {
+  bottom: -220px;
+  right: -220px;
+  background: radial-gradient(circle, rgba(232, 93, 36, 0.2), transparent 70%);
 }
 
 .card {
+  position: relative;
+  z-index: 1;
   width: 100%;
-  max-width: 420px;
-  padding: var(--space-8);
+  max-width: 460px;
+  padding: var(--space-10) var(--space-8);
   border: 1px solid var(--color-panel-border);
-  border-radius: var(--radius-lg);
+  border-radius: 24px;
   background: var(--color-surface-raised);
-  box-shadow: var(--shadow-panel);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .brand {
@@ -29,14 +75,15 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 42px;
-  height: 42px;
-  border-radius: var(--radius-md);
-  background: var(--color-primary);
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #ff8a4c, #e85d24);
   color: var(--color-primary-fg);
   font-family: var(--font-family-display);
   font-size: var(--font-size-base);
   font-weight: var(--font-weight-bold);
+  box-shadow: 0 6px 16px rgba(232, 93, 36, 0.4);
 }
 
 .brandWordmark {
@@ -81,6 +128,36 @@
   margin-bottom: var(--space-2);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
+}
+
+/* .input/.hasIcon (Input.module.css) her ikisi de tek class'lı (0,1,0) olduğu için
+ * kazanan sırası import sırasına bağlı kalırdı - element+class (.field input, 0,1,1)
+ * kullanarak bu sayfaya özgü koyu/glass görünümü kaynak sırasından bağımsız garanti
+ * ediyoruz; padding-left (ikon boşluğu) burada set edilmediği için .hasIcon'un değeri
+ * çakışmadan geçerli kalıyor. */
+.field input {
+  min-height: 52px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--color-panel-border);
+  color: var(--color-fg);
+  font-size: var(--font-size-base);
+  transition:
+    border-color var(--transition-fast),
+    background var(--transition-fast);
+}
+
+.field input::placeholder {
+  color: var(--color-fg-muted);
+}
+
+.field input:hover:not(:disabled) {
+  border-color: var(--color-border-strong);
+}
+
+.field input:focus-visible {
+  border-color: var(--color-primary);
+  background: rgba(255, 255, 255, 0.07);
 }
 
 .passwordField {
@@ -129,7 +206,39 @@
 
 .submit {
   width: 100%;
-  margin-top: var(--space-1);
+  margin-top: var(--space-2);
+}
+
+/* Aynı gerekçeyle (bkz. yukarıdaki .field input notu) element+class (.form button.submit)
+ * kullanılıyor - Button.module.css'teki .primary ve onun :hover/:active durumlarını
+ * kaynak sırasından bağımsız, güvenilir şekilde eziyor. */
+.form button.submit {
+  min-height: 54px;
+  border: none;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #ff8a4c 0%, #e85d24 55%, #c8460f 100%);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.01em;
+  box-shadow:
+    0 14px 28px rgba(232, 93, 36, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.form button.submit:not(:disabled):hover {
+  background: linear-gradient(135deg, #ff9a5f 0%, #f0662a 55%, #d14f14 100%);
+  box-shadow:
+    0 16px 32px rgba(232, 93, 36, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+.form button.submit:not(:disabled):active {
+  opacity: 0.92;
+}
+
+.submitIcon {
+  width: 18px;
+  height: 18px;
 }
 
 .error {
@@ -169,8 +278,15 @@
     padding: var(--space-4);
   }
 
+  .page::before,
+  .page::after {
+    width: 320px;
+    height: 320px;
+  }
+
   .card {
     padding: var(--space-6);
+    border-radius: 20px;
   }
 
   .brand {
