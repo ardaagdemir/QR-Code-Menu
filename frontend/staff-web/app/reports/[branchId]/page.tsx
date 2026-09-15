@@ -12,6 +12,7 @@ import {
   Pencil,
   Plus,
   ReceiptText,
+  Banknote,
   RotateCcw,
   Scale,
   Shapes,
@@ -531,6 +532,7 @@ function BranchReportPage() {
               <HeroKpi icon={TrendingUp} label="Günlük Satış Tutarı" value={formatPriceMinorUnits(report.netSalesMinorUnits)} badge="Bugün" />
               <HeroKpi icon={ShoppingBag} label="Günlük Sipariş Sayısı" value={String(report.orderCount)} badge="Bugün" />
               <HeroKpi icon={RotateCcw} label="İade Sayısı" value={String(report.refundCount)} badge="Bugün" />
+              <HeroKpi icon={Banknote} label="İade Tutarı" value={formatPriceMinorUnits(report.refundTotalMinorUnits)} badge="Bugün" />
               <HeroKpi icon={Table2} label="Masa Ziyareti" value={String(report.tableVisitCount)} badge="Bugün" />
               <HeroKpi icon={Users} label="Müşteri Sayısı" value={String(report.guestCountTotal)} badge="Bugün" />
             </div>
