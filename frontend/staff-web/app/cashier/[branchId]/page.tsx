@@ -399,7 +399,7 @@ function CashierDashboardPage() {
               <Wallet size={22} />
             </span>
             <span className={styles.kpiBody}>
-              <span className={styles.kpiLabel}>Günlük Ciro</span>
+              <span className={styles.kpiLabel}>Günlük Satış</span>
               <span className={styles.kpiValue}>
                 {financialSummary ? formatPriceMinorUnits(financialSummary.netSalesMinorUnits) : "—"}
               </span>
