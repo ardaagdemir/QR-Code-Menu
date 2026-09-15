@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import QRCode from "qrcode";
-import JSZip from "jszip";
 import jsPDF from "jspdf";
 import {
   ChevronDown,
@@ -419,34 +418,48 @@ export default function TablesPage() {
       .map((table) => ({ table, token: qrTokens[table.id] as QrToken }));
   }
 
-  async function handleBulkDownloadZip() {
+  async function handleBulkDownloadPng() {
     const selected = getSelectedTablesWithTokens();
     if (selected.length === 0) {
       return;
     }
     setBulkDownloading(true);
     try {
-      const zip = new JSZip();
-      const usedNames = new Set<string>();
-      for (const { table, token } of selected) {
-        const { dataUrl } = await composeLabeledQr(table.label, customerMenuUrl(token.token), 900);
-        const base64 = dataUrl.slice(dataUrl.indexOf(",") + 1);
-        let name = `${safeFilename(table.label)}-qr.png`;
-        let suffix = 2;
-        while (usedNames.has(name)) {
-          name = `${safeFilename(table.label)}-qr-${suffix}.png`;
-          suffix += 1;
-        }
-        usedNames.add(name);
-        zip.file(name, base64, { base64: true });
+      const qrSize = 500;
+      const gap = 24;
+      const outerPadding = 32;
+      const cols = Math.max(1, Math.ceil(Math.sqrt(selected.length)));
+      const rows = Math.ceil(selected.length / cols);
+
+      const composed = await Promise.all(
+        selected.map(({ table, token }) => composeLabeledQr(table.label, customerMenuUrl(token.token), qrSize)),
+      );
+      const images = await Promise.all(composed.map((item) => loadImage(item.dataUrl)));
+      const cellWidth = composed[0].width;
+      const cellHeight = composed[0].height;
+
+      const canvas = document.createElement("canvas");
+      canvas.width = outerPadding * 2 + cols * cellWidth + (cols - 1) * gap;
+      canvas.height = outerPadding * 2 + rows * cellHeight + (rows - 1) * gap;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        throw new Error("Canvas desteklenmiyor.");
       }
-      const blob = await zip.generateAsync({ type: "blob" });
-      const url = URL.createObjectURL(blob);
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      images.forEach((image, index) => {
+        const col = index % cols;
+        const row = Math.floor(index / cols);
+        const x = outerPadding + col * (cellWidth + gap);
+        const y = outerPadding + row * (cellHeight + gap);
+        ctx.drawImage(image, x, y);
+      });
+
       const link = document.createElement("a");
-      link.href = url;
-      link.download = `masa-qr-kodlari-${new Date().toISOString().slice(0, 10)}.zip`;
+      link.href = canvas.toDataURL("image/png");
+      link.download = `masa-qr-kodlari-${new Date().toISOString().slice(0, 10)}.png`;
       link.click();
-      URL.revokeObjectURL(url);
       showToast(`${selected.length} QR kod indirildi.`, "success");
       clearSelection();
     } catch {
@@ -734,7 +747,7 @@ export default function TablesPage() {
               <div className={pageStyles.bulkBar}>
                 <span className={pageStyles.bulkBarText}>{selectedCount} masa seçildi</span>
                 <div className={pageStyles.bulkBarActions}>
-                  <Button size="sm" variant="secondary" onClick={() => void handleBulkDownloadZip()} disabled={bulkDownloading}>
+                  <Button size="sm" variant="secondary" onClick={() => void handleBulkDownloadPng()} disabled={bulkDownloading}>
                     <Download size={13} aria-hidden="true" />
                     {bulkDownloading ? "İndiriliyor…" : `PNG İndir (${selectedCount})`}
                   </Button>
