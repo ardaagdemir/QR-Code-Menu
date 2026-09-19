@@ -53,6 +53,46 @@ const ROLE_LABELS: Record<string, string> = {
   CASHIER: "Kasa Personeli",
 };
 
+/** Kullanıcılar tablosunda hiyerarşi sırası - düşük sayı üstte/solda (bkz. sortStaffUsersForDisplay). */
+const ROLE_RANK: Record<string, number> = {
+  BUSINESS_ADMIN: 0,
+  BRANCH_MANAGER: 1,
+  CASHIER: 2,
+};
+
+/** Kullanıcılar tablosunu şubeye göre grupla (bir şubenin kullanıcıları alt alta), grup
+ * içinde yetki sırasına göre sırala (İşletme Yöneticisi -> Şube Sorumlusu -> Kasa Personeli)
+ * - böylece daha az yetkili roller, daha yetkili rolün "altına" diziliyormuş gibi görünür.
+ * PLATFORM_ADMIN'in şubesi yok, kendi grubunda en sona düşer. isFirstInGroup, gruplar arasına
+ * ince bir ayraç çizgisi koymak için kullanılıyor. */
+function sortStaffUsersForDisplay(
+  users: StaffUser[],
+  branches: Branch[],
+  branchById: Map<string, Branch>,
+): Array<StaffUser & { rank: number; isFirstInGroup: boolean }> {
+  const branchOrder = new Map(branches.map((branch, index) => [branch.id, index]));
+  const withMeta = users.map((user) => {
+    const branch = user.role === "PLATFORM_ADMIN" ? null : branchById.get(user.branchIds[0] ?? "");
+    return {
+      user,
+      branchKey: branch?.id ?? "—",
+      branchOrderIndex: branch ? (branchOrder.get(branch.id) ?? Number.MAX_SAFE_INTEGER) : Number.MAX_SAFE_INTEGER,
+      rank: ROLE_RANK[user.role] ?? 99,
+    };
+  });
+  withMeta.sort((a, b) => {
+    if (a.branchOrderIndex !== b.branchOrderIndex) return a.branchOrderIndex - b.branchOrderIndex;
+    if (a.rank !== b.rank) return a.rank - b.rank;
+    return a.user.email.localeCompare(b.user.email);
+  });
+  let previousBranchKey: string | null = null;
+  return withMeta.map(({ user, branchKey, rank }, index) => {
+    const isFirstInGroup = index > 0 && branchKey !== previousBranchKey;
+    previousBranchKey = branchKey;
+    return { ...user, rank, isFirstInGroup };
+  });
+}
+
 /** Platform Admin Panel - tek işletmenin detayı: aktif/pasif, şubeler, kullanıcılar.
  * PLATFORM_ADMIN only, /api/platform-admin/** üzerinden - businessId path'ten geliyor,
  * çağıranın kendi StaffUser.businessId'sinden bağımsız (gerçek cross-business rol). */
@@ -369,6 +409,7 @@ export default function PlatformAdminBusinessDetailPage() {
   }
 
   const branchById = new Map(branches.map((branch) => [branch.id, branch]));
+  const sortedStaffUsers = sortStaffUsersForDisplay(staffUsers, branches, branchById);
 
   if (loading) {
     return (
@@ -527,12 +568,18 @@ export default function PlatformAdminBusinessDetailPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {staffUsers.map((user) => {
+                  {sortedStaffUsers.map((user) => {
                     const userBranch = user.role === "PLATFORM_ADMIN" ? null : branchById.get(user.branchIds[0] ?? "");
+                    const indentClass = user.rank === 1 ? pageStyles.identityLevel1 : user.rank === 2 ? pageStyles.identityLevel2 : "";
                     return (
-                    <tr key={user.id}>
+                    <tr key={user.id} className={user.isFirstInGroup ? pageStyles.staffGroupStart : undefined}>
                       <td>
-                        <div className={pageStyles.identity}>
+                        <div className={`${pageStyles.identity} ${indentClass}`}>
+                          {user.rank > 0 ? (
+                            <span className={pageStyles.treeConnector} aria-hidden="true">
+                              └
+                            </span>
+                          ) : null}
                           <span className={pageStyles.avatar} aria-hidden="true">{user.email.slice(0, 2).toUpperCase()}</span>
                           <span className={tableStyles.primary}>{user.email}</span>
                         </div>

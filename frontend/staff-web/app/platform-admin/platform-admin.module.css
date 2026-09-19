@@ -36,6 +36,23 @@
   font-weight: var(--font-weight-bold);
 }
 
+.identityLevel1 {
+  padding-left: 14px;
+}
+
+.identityLevel2 {
+  padding-left: 28px;
+}
+
+.treeConnector {
+  color: var(--color-fg-muted);
+  font-size: var(--font-size-sm);
+}
+
+.staffGroupStart td {
+  border-top: 1px solid var(--color-panel-border);
+}
+
 .dangerAction {
   color: var(--color-danger) !important;
 }
