@@ -247,12 +247,18 @@ public class MenuService {
 
     @Transactional
     public ProductOptionGroup createOptionGroup(
-            UUID businessId, UUID productId, String name, SelectionType selectionType, int displayOrder, UUID actorStaffUserId) {
+            UUID businessId,
+            UUID productId,
+            String name,
+            SelectionType selectionType,
+            boolean required,
+            int displayOrder,
+            UUID actorStaffUserId) {
         Product product = productRepository
                 .findByIdAndBusinessId(productId, businessId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found for business: " + productId));
         ProductOptionGroup group = optionGroupRepository.save(
-                new ProductOptionGroup(businessId, product.getId(), name, selectionType, displayOrder));
+                new ProductOptionGroup(businessId, product.getId(), name, selectionType, required, displayOrder));
         auditService.record(
                 businessId, actorStaffUserId, "ProductOptionGroup", group.getId(), "CREATED", Map.of("name", name));
         return group;
@@ -260,12 +266,12 @@ public class MenuService {
 
     @Transactional
     public ProductOptionGroup updateOptionGroup(
-            UUID businessId, UUID optionGroupId, String name, SelectionType selectionType, UUID actorStaffUserId) {
+            UUID businessId, UUID optionGroupId, String name, SelectionType selectionType, Boolean required, UUID actorStaffUserId) {
         ProductOptionGroup group = optionGroupRepository
                 .findByIdAndBusinessId(optionGroupId, businessId)
                 .orElseThrow(
                         () -> new ResourceNotFoundException("Product option group not found for business: " + optionGroupId));
-        group.update(name, selectionType);
+        group.update(name, selectionType, required == null ? group.isRequired() : required);
         ProductOptionGroup saved = optionGroupRepository.save(group);
         auditService.record(
                 businessId, actorStaffUserId, "ProductOptionGroup", saved.getId(), "UPDATED", Map.of("name", name));

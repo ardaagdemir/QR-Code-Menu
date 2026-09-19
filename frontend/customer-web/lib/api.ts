@@ -24,6 +24,7 @@ export type MenuOptionGroup = {
   id: string;
   name: string;
   selectionType: "SINGLE" | "MULTIPLE";
+  required: boolean;
   options: MenuOption[];
 };
 

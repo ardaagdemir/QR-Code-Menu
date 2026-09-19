@@ -557,6 +557,7 @@ export type OptionGroupAdmin = {
   productId: string;
   name: string;
   selectionType: "SINGLE" | "MULTIPLE";
+  required: boolean;
   displayOrder: number;
 };
 
@@ -566,7 +567,7 @@ export async function listOptionGroups(productId: string): Promise<OptionGroupAd
 
 export async function createOptionGroup(
   productId: string,
-  input: { name: string; selectionType: "SINGLE" | "MULTIPLE" },
+  input: { name: string; selectionType: "SINGLE" | "MULTIPLE"; required: boolean },
 ): Promise<OptionGroupAdmin> {
   return apiFetch(`/api/staff/products/${encodeURIComponent(productId)}/option-groups`, {
     method: "POST",
@@ -576,7 +577,7 @@ export async function createOptionGroup(
 
 export async function updateOptionGroup(
   optionGroupId: string,
-  input: { name: string; selectionType: "SINGLE" | "MULTIPLE" },
+  input: { name: string; selectionType: "SINGLE" | "MULTIPLE"; required: boolean },
 ): Promise<OptionGroupAdmin> {
   return apiFetch(`/api/staff/option-groups/${encodeURIComponent(optionGroupId)}`, {
     method: "PATCH",

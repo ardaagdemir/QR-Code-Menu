@@ -272,7 +272,7 @@ public class OrderingService {
         }
         for (ProductOptionGroup group : groups) {
             int selectedCount = currentSelectionByGroupId.getOrDefault(group.getId(), List.of()).size();
-            if (group.getSelectionType() == SelectionType.SINGLE && selectedCount != 1) {
+            if (violatesSelectionRule(group, selectedCount)) {
                 throw new ProductNotOrderableException("Option selection for \"" + group.getName()
                         + "\" is no longer valid, remove this item from the cart to continue: " + product.getId());
             }
@@ -677,12 +677,21 @@ public class OrderingService {
                 selectedOptions.stream().collect(Collectors.groupingBy(ProductOption::getOptionGroupId));
         for (ProductOptionGroup group : groups) {
             int selectedCount = selectedByGroupId.getOrDefault(group.getId(), List.of()).size();
-            if (group.getSelectionType() == SelectionType.SINGLE && selectedCount != 1) {
-                throw new IllegalArgumentException(
-                        "Exactly one option must be selected for group \"" + group.getName() + "\"");
+            if (violatesSelectionRule(group, selectedCount)) {
+                throw new IllegalArgumentException(group.getSelectionType() == SelectionType.SINGLE
+                        ? (group.isRequired()
+                                ? "Exactly one option must be selected for group \"" + group.getName() + "\""
+                                : "At most one option can be selected for group \"" + group.getName() + "\"")
+                        : "At least one option must be selected for group \"" + group.getName() + "\"");
             }
         }
         return selectedOptions;
+    }
+
+    /** required: at least one pick; SINGLE: never more than one (independent of required). */
+    private static boolean violatesSelectionRule(ProductOptionGroup group, int selectedCount) {
+        return (group.isRequired() && selectedCount < 1)
+                || (group.getSelectionType() == SelectionType.SINGLE && selectedCount > 1);
     }
 
     private record CreateOrReuseDraftResult(CustomerOrder order, String newlyIssuedTrackingToken) {

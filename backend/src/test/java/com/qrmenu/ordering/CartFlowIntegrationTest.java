@@ -190,6 +190,52 @@ class CartFlowIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void anOptionalSingleGroupAcceptsNoSelectionButStillRejectsMoreThanOne() throws Exception {
+        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Optional Single Business");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
+        String tableId = TenantFixtures.createTable(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, "Masa 1");
+        String qrToken = TenantFixtures.createQrToken(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, tableId);
+        MenuFixture menu = seedProductWithOptionGroup(businessId, branchId, "Opsiyonel Tekli", 3000, 0, "SINGLE", false);
+        CheckedInVisit visit = TenantFixtures.checkIn(mockMvc, objectMapper, qrToken);
+
+        mockMvc.perform(withCookie(
+                                post("/api/table-visits/{tableVisitId}/cart/items", visit.tableVisitId()), visit)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"productId\":\"" + menu.productId() + "\",\"quantity\":1}"))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(withCookie(
+                                post("/api/table-visits/{tableVisitId}/cart/items", visit.tableVisitId()), visit)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"productId\":\"" + menu.productId() + "\",\"quantity\":1,\"selectedOptionIds\":[\""
+                                + menu.option1Id() + "\",\"" + menu.option2Id() + "\"]}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void aRequiredMultipleGroupRejectsNoSelectionAndAcceptsSeveral() throws Exception {
+        String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Required Multiple Business");
+        String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
+        String tableId = TenantFixtures.createTable(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, branchId, "Masa 1");
+        String qrToken = TenantFixtures.createQrToken(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, tableId);
+        MenuFixture menu = seedProductWithOptionGroup(businessId, branchId, "Zorunlu Çoklu", 3000, 0, "MULTIPLE", true);
+        CheckedInVisit visit = TenantFixtures.checkIn(mockMvc, objectMapper, qrToken);
+
+        mockMvc.perform(withCookie(
+                                post("/api/table-visits/{tableVisitId}/cart/items", visit.tableVisitId()), visit)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"productId\":\"" + menu.productId() + "\",\"quantity\":1}"))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(withCookie(
+                                post("/api/table-visits/{tableVisitId}/cart/items", visit.tableVisitId()), visit)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"productId\":\"" + menu.productId() + "\",\"quantity\":1,\"selectedOptionIds\":[\""
+                                + menu.option1Id() + "\",\"" + menu.option2Id() + "\"]}"))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
     void addingAnOptionThatBelongsToAnotherProductIsRejected() throws Exception {
         String businessId = TenantFixtures.createBusiness(mockMvc, objectMapper, TEST_ADMIN_TOKEN, "Cross Product Business");
         String branchId = TenantFixtures.createBranch(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Şube");
@@ -240,11 +286,23 @@ class CartFlowIntegrationTest extends AbstractIntegrationTest {
     private MenuFixture seedProductWithMandatorySingleOption(
             String businessId, String branchId, String productName, long basePriceMinorUnits, long optionPriceDelta)
             throws Exception {
+        return seedProductWithOptionGroup(businessId, branchId, productName, basePriceMinorUnits, optionPriceDelta, "SINGLE", true);
+    }
+
+    private MenuFixture seedProductWithOptionGroup(
+            String businessId,
+            String branchId,
+            String productName,
+            long basePriceMinorUnits,
+            long optionPriceDelta,
+            String selectionType,
+            boolean required)
+            throws Exception {
         String categoryId = TenantFixtures.createMenuCategory(mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, "Kategori");
         String productId = TenantFixtures.createProduct(
                 mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, categoryId, productName, basePriceMinorUnits);
         String groupId = TenantFixtures.createOptionGroup(
-                mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, productId, "Boyut", "SINGLE");
+                mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, productId, "Boyut", selectionType, required);
         String option1Id = TenantFixtures.createOption(
                 mockMvc, objectMapper, TEST_ADMIN_TOKEN, businessId, productId, groupId, "Seçenek 1", optionPriceDelta);
         String option2Id = TenantFixtures.createOption(

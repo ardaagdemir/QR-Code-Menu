@@ -29,10 +29,11 @@ type Props = {
 type FormValues = {
   name: string;
   selectionType: "SINGLE" | "MULTIPLE";
+  required: boolean;
 };
 
 function emptyForm(): FormValues {
-  return { name: "", selectionType: "SINGLE" };
+  return { name: "", selectionType: "SINGLE", required: true };
 }
 
 const SELECTION_TYPE_LABELS: Record<FormValues["selectionType"], string> = {
@@ -76,7 +77,11 @@ export default function OptionGroupsSection({ productId }: Props) {
     }
     setSaving(true);
     try {
-      const group = await createOptionGroup(productId, { name: formValues.name.trim(), selectionType: formValues.selectionType });
+      const group = await createOptionGroup(productId, {
+        name: formValues.name.trim(),
+        selectionType: formValues.selectionType,
+        required: formValues.required,
+      });
       setGroups((current) => [...current, group]);
       setFormValues(emptyForm());
       setCreateOpen(false);
@@ -98,6 +103,7 @@ export default function OptionGroupsSection({ productId }: Props) {
       const updated = await updateOptionGroup(editTarget.id, {
         name: editValues.name.trim(),
         selectionType: editValues.selectionType,
+        required: editValues.required,
       });
       setGroups((current) => current.map((g) => (g.id === updated.id ? updated : g)));
       setEditTarget(null);
@@ -170,7 +176,9 @@ export default function OptionGroupsSection({ productId }: Props) {
                   >
                     {expanded ? <ChevronDown size={16} aria-hidden="true" /> : <ChevronRight size={16} aria-hidden="true" />}
                     <span className={menuStyles.optionName}>{group.name}</span>
-                    <span className={menuStyles.optionGroupType}>{SELECTION_TYPE_LABELS[group.selectionType]}</span>
+                    <span className={menuStyles.optionGroupType}>
+                      {SELECTION_TYPE_LABELS[group.selectionType]} · {group.required ? "Zorunlu" : "İsteğe bağlı"}
+                    </span>
                   </button>
                   <div className={menuStyles.optionRowActions}>
                     <button
@@ -198,7 +206,7 @@ export default function OptionGroupsSection({ productId }: Props) {
                       className={menuStyles.rowIconButton}
                       onClick={() => {
                         setEditTarget(group);
-                        setEditValues({ name: group.name, selectionType: group.selectionType });
+                        setEditValues({ name: group.name, selectionType: group.selectionType, required: group.required });
                       }}
                       aria-label={`${group.name} grubunu düzenle`}
                       title="Düzenle"
@@ -254,6 +262,17 @@ export default function OptionGroupsSection({ productId }: Props) {
                 </Select>
               )}
             </FormField>
+            <label className={menuStyles.requiredToggle}>
+              <input
+                type="checkbox"
+                checked={formValues.required}
+                onChange={(e) => setFormValues({ ...formValues, required: e.target.checked })}
+              />
+              <span>
+                Zorunlu
+                <small>Müşteri bu gruptan en az bir seçenek seçmeden ürünü sepete ekleyemez.</small>
+              </span>
+            </label>
             <Button type="submit" disabled={saving}>
               {saving ? "Ekleniyor…" : "Ekle"}
             </Button>
@@ -284,6 +303,17 @@ export default function OptionGroupsSection({ productId }: Props) {
                 </Select>
               )}
             </FormField>
+            <label className={menuStyles.requiredToggle}>
+              <input
+                type="checkbox"
+                checked={editValues.required}
+                onChange={(e) => setEditValues({ ...editValues, required: e.target.checked })}
+              />
+              <span>
+                Zorunlu
+                <small>Müşteri bu gruptan en az bir seçenek seçmeden ürünü sepete ekleyemez.</small>
+              </span>
+            </label>
             <Button type="submit" disabled={saving}>
               {saving ? "Kaydediliyor…" : "Kaydet"}
             </Button>

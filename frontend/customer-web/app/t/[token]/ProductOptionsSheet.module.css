@@ -97,6 +97,17 @@
   font-size: var(--font-size-xs);
 }
 
+.clearButton {
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-primary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+}
+
 .optionRow {
   display: flex;
   align-items: center;

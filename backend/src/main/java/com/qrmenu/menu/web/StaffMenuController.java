@@ -182,7 +182,7 @@ public class StaffMenuController {
             @Valid @RequestBody UpdateOptionGroupRequest request) {
         StaffContext context = requireMenuManage(sessionCookie);
         ProductOptionGroup group = menuService.updateOptionGroup(
-                context.businessId(), optionGroupId, request.name(), request.selectionType(), context.staffUserId());
+                context.businessId(), optionGroupId, request.name(), request.selectionType(), request.required(), context.staffUserId());
         return ResponseEntity.ok(toResponse(group));
     }
 
@@ -280,6 +280,7 @@ public class StaffMenuController {
                 productId,
                 request.name(),
                 request.selectionType(),
+                request.requiredOrDefault(),
                 request.displayOrderOrDefault(),
                 context.staffUserId());
         return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(group));
@@ -379,6 +380,7 @@ public class StaffMenuController {
                 group.getProductId(),
                 group.getName(),
                 group.getSelectionType().name(),
+                group.isRequired(),
                 group.getDisplayOrder());
     }
 

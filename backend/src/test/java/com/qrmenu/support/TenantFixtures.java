@@ -165,6 +165,26 @@ public final class TenantFixtures {
         return body.get("id").asText();
     }
 
+    public static String createOptionGroup(
+            MockMvc mockMvc,
+            ObjectMapper objectMapper,
+            String adminToken,
+            String businessId,
+            String productId,
+            String name,
+            String selectionType,
+            boolean required)
+            throws Exception {
+        JsonNode body = perform(
+                mockMvc,
+                post("/internal/businesses/{businessId}/products/{productId}/option-groups", businessId, productId)
+                        .header("X-Internal-Admin-Token", adminToken),
+                objectMapper,
+                "{\"name\":\"" + name + "\",\"selectionType\":\"" + selectionType + "\",\"required\":" + required + "}",
+                201);
+        return body.get("id").asText();
+    }
+
     public static String createOption(
             MockMvc mockMvc,
             ObjectMapper objectMapper,

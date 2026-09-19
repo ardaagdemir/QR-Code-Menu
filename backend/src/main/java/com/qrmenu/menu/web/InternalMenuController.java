@@ -75,7 +75,13 @@ class InternalMenuController {
             @PathVariable UUID productId,
             @Valid @RequestBody CreateOptionGroupRequest request) {
         ProductOptionGroup group = menuService.createOptionGroup(
-                businessId, productId, request.name(), request.selectionType(), request.displayOrderOrDefault(), null);
+                businessId,
+                productId,
+                request.name(),
+                request.selectionType(),
+                request.requiredOrDefault(),
+                request.displayOrderOrDefault(),
+                null);
         return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(group));
     }
 
@@ -128,6 +134,7 @@ class InternalMenuController {
                 group.getProductId(),
                 group.getName(),
                 group.getSelectionType().name(),
+                group.isRequired(),
                 group.getDisplayOrder());
     }
 

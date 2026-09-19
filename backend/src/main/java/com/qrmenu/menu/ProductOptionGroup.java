@@ -13,7 +13,9 @@ import java.util.UUID;
 
 /**
  * (Section 5, "Ürün seçenekleri (modifier)"): SINGLE/MULTIPLE selection type only - no
- * generic/abstract "attribute engine" (Section 12).
+ * generic/abstract "attribute engine" (Section 12). selectionType bounds how many options
+ * may be picked (SINGLE: at most one), required independently says whether picking at
+ * least one is mandatory.
  */
 @Entity
 @Table(name = "product_option_group")
@@ -36,6 +38,9 @@ public class ProductOptionGroup {
     @Column(name = "selection_type", nullable = false, length = 20)
     private SelectionType selectionType;
 
+    @Column(nullable = false)
+    private boolean required;
+
     @Column(name = "display_order", nullable = false)
     private int displayOrder;
 
@@ -49,20 +54,23 @@ public class ProductOptionGroup {
         // JPA
     }
 
-    public ProductOptionGroup(UUID businessId, UUID productId, String name, SelectionType selectionType, int displayOrder) {
+    public ProductOptionGroup(
+            UUID businessId, UUID productId, String name, SelectionType selectionType, boolean required, int displayOrder) {
         this.businessId = businessId;
         this.productId = productId;
         this.name = name;
         this.selectionType = selectionType;
+        this.required = required;
         this.displayOrder = displayOrder;
         Instant now = Instant.now();
         this.createdAt = now;
         this.updatedAt = now;
     }
 
-    public void update(String name, SelectionType selectionType) {
+    public void update(String name, SelectionType selectionType, boolean required) {
         this.name = name;
         this.selectionType = selectionType;
+        this.required = required;
         this.updatedAt = Instant.now();
     }
 
@@ -89,6 +97,10 @@ public class ProductOptionGroup {
 
     public SelectionType getSelectionType() {
         return selectionType;
+    }
+
+    public boolean isRequired() {
+        return required;
     }
 
     public int getDisplayOrder() {

@@ -139,6 +139,7 @@ public class PublicMenuController {
                         group.getId(),
                         group.getName(),
                         group.getSelectionType().name(),
+                        group.isRequired(),
                         optionsByGroupId.getOrDefault(group.getId(), List.of()).stream()
                                 .map(option -> new MenuOptionResponse(
                                         option.getId(), option.getName(), option.getPriceDeltaMinorUnits()))

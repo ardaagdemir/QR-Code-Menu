@@ -17,6 +17,13 @@ type Props = {
   errorMessage: string | null;
 };
 
+function groupHint(group: MenuOptionGroup): string {
+  if (group.selectionType === "SINGLE") {
+    return group.required ? "Zorunlu · 1 seçim" : "Opsiyonel · en fazla 1 seçim";
+  }
+  return group.required ? "Zorunlu · en az 1 seçim" : "Opsiyonel";
+}
+
 export default function ProductOptionsSheet({ product, onClose, onConfirm, submitting, errorMessage }: Props) {
   const [selectedByGroup, setSelectedByGroup] = useState<Record<string, string[]>>({});
   const [quantity, setQuantity] = useState(1);
@@ -25,7 +32,7 @@ export default function ProductOptionsSheet({ product, onClose, onConfirm, submi
   const selectedOptionIds = useMemo(() => Object.values(selectedByGroup).flat(), [selectedByGroup]);
 
   const missingRequiredGroup = product.optionGroups.some(
-    (group) => group.selectionType === "SINGLE" && (selectedByGroup[group.id]?.length ?? 0) !== 1,
+    (group) => group.required && (selectedByGroup[group.id]?.length ?? 0) < 1,
   );
 
   const allOptions = product.optionGroups.flatMap((group) => group.options);
@@ -37,6 +44,10 @@ export default function ProductOptionsSheet({ product, onClose, onConfirm, submi
 
   function selectSingle(group: MenuOptionGroup, optionId: string) {
     setSelectedByGroup((prev) => ({ ...prev, [group.id]: [optionId] }));
+  }
+
+  function clearGroup(group: MenuOptionGroup) {
+    setSelectedByGroup((prev) => ({ ...prev, [group.id]: [] }));
   }
 
   function toggleMultiple(group: MenuOptionGroup, optionId: string) {
@@ -85,7 +96,12 @@ export default function ProductOptionsSheet({ product, onClose, onConfirm, submi
               <fieldset key={group.id} className={styles.group}>
                 <legend className={styles.groupLegend}>
                   {group.name}{" "}
-                  <span className={styles.groupHint}>{group.selectionType === "SINGLE" ? "Zorunlu · 1 seçim" : "Opsiyonel"}</span>
+                  <span className={styles.groupHint}>{groupHint(group)}</span>
+                  {!group.required && group.selectionType === "SINGLE" && (selectedByGroup[group.id]?.length ?? 0) > 0 ? (
+                    <button type="button" className={styles.clearButton} onClick={() => clearGroup(group)}>
+                      Temizle
+                    </button>
+                  ) : null}
                 </legend>
                 {group.options.map((option) => (
                   <label key={option.id} className={styles.optionRow}>
