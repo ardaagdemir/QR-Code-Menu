@@ -38,6 +38,8 @@ import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
  * Public facade for the ordering module (Section 3: "Sepet ayrı bir modül değil" - the
@@ -606,9 +608,25 @@ public class OrderingService {
         return order;
     }
 
+    /**
+     * Sent after the enclosing @Transactional method's transaction actually commits, not
+     * synchronously from inside it (same afterCommit pattern as
+     * MenuService#deleteMediaKeyAfterCommit) - otherwise a customer's SSE-triggered
+     * GET /api/order-tracking/{token}, firing on a separate connection/transaction the
+     * instant the event arrives, can race the still-open write transaction under
+     * READ COMMITTED and read the *previous* status back, making the tracking page look
+     * like it lagged a step behind until a later transition's fetch happens to land after
+     * the earlier commit and catches everything up at once.
+     */
     private void notifyOrderStatusChanged(CustomerOrder order) {
-        orderStatusNotifier.notifyOrderStatusChanged(
-                new OrderStatusUpdate(order.getId(), order.getBranchId(), order.getStatus().name(), order.getOrderNumber()));
+        OrderStatusUpdate update =
+                new OrderStatusUpdate(order.getId(), order.getBranchId(), order.getStatus().name(), order.getOrderNumber());
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                orderStatusNotifier.notifyOrderStatusChanged(update);
+            }
+        });
     }
 
     private List<KitchenQueueOrderView> buildKitchenQueueViews(List<CustomerOrder> orders) {

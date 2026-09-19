@@ -14,6 +14,8 @@ const HAPPY_PATH_STEPS: { key: string; label: string }[] = [
   { key: "COMPLETED", label: "Tamamlandı" },
 ];
 
+const KITCHEN_STEP_INDEX = 2;
+
 /** null dönerse sipariş happy path'te değildir (REJECTED_BY_STORE/CANCELLED) - ayrı bir
  * "durduruldu" durumu olarak gösterilir, adımların bir devamı gibi değil. */
 function stepIndexForStatus(status: string): number | null {
@@ -58,10 +60,17 @@ export default function OrderStatusTimeline({ status }: Props) {
     );
   }
 
+  // Ödeme / İşletme onayı aşamalarında şu anki adım henüz tamamlanmadı, kendisi yanıp söner.
+  // Mutfağa geçildikten sonra (Hazırlanıyor, Hazır, Tamamlandı) ulaşılan adım yeşil olur ve
+  // yanıp sönen, bir sonraki bekleyen adımdır; Tamamlandı'da bekleyen adım kalmaz.
+  const reachedKitchen = currentIndex >= KITCHEN_STEP_INDEX;
+  const doneThroughIndex = reachedKitchen ? currentIndex : currentIndex - 1;
+  const pulseIndex = reachedKitchen ? (currentIndex < HAPPY_PATH_STEPS.length - 1 ? currentIndex + 1 : null) : currentIndex;
+
   return (
     <ol className={styles.timeline}>
       {HAPPY_PATH_STEPS.map((step, index) => {
-        const state: StepState = index < currentIndex ? "done" : index === currentIndex ? "current" : "upcoming";
+        const state: StepState = index <= doneThroughIndex ? "done" : index === pulseIndex ? "current" : "upcoming";
         const isError = status === "PAYMENT_FAILED" && index === currentIndex;
         return (
           <li

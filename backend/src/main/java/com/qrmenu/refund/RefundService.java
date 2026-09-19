@@ -22,6 +22,8 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
  * Public facade for the refund module (Section 4, staff-web screen #6: "tam/kısmi iade
@@ -131,8 +133,19 @@ public class RefundService {
         // the same "something changed, refetch" signal now that the refund has a final
         // COMPLETED/FAILED status closes that race instead of leaving the customer stuck
         // on a stale "iade başlatılacak" read until their next reload/reconnect.
-        orderStatusNotifier.notifyOrderStatusChanged(
-                new OrderStatusUpdate(order.getId(), order.getBranchId(), order.getStatus().name(), order.getOrderNumber()));
+        //
+        // Fired afterCommit (same pattern as OrderingService#notifyOrderStatusChanged),
+        // not synchronously here - this method is still inside its own @Transactional
+        // transaction, so a synchronous send would let the customer's SSE-triggered
+        // refetch race the still-uncommitted refund/order rows under READ COMMITTED.
+        OrderStatusUpdate update =
+                new OrderStatusUpdate(order.getId(), order.getBranchId(), order.getStatus().name(), order.getOrderNumber());
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                orderStatusNotifier.notifyOrderStatusChanged(update);
+            }
+        });
 
         return toView(refund, items);
     }
